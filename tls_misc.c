@@ -378,10 +378,12 @@ error_t tlsSelectSignHashAlgo(TlsContext *context,
             if(context->entity == TLS_CONNECTION_END_CLIENT)
             {
                //Check whether the associated hash algorithm is supported
-               if(supportedSignAlgos->value[i].hash == TLS_HASH_ALGO_SHA1)
+               if(tlsGetHashAlgo(supportedSignAlgos->value[i].hash) == context->prfHashAlgo)
                   context->signHashAlgo = (TlsHashAlgo) supportedSignAlgos->value[i].hash;
-               else if(tlsGetHashAlgo(supportedSignAlgos->value[i].hash) == context->prfHashAlgo)
+#if (TLS_SHA1_SUPPORT == ENABLED)
+               else if(supportedSignAlgos->value[i].hash == TLS_HASH_ALGO_SHA1)
                   context->signHashAlgo = (TlsHashAlgo) supportedSignAlgos->value[i].hash;
+#endif
             }
             //TLS operates as a server?
             else
@@ -389,15 +391,21 @@ error_t tlsSelectSignHashAlgo(TlsContext *context,
                //Check whether the associated hash algorithm is supported
                switch(supportedSignAlgos->value[i].hash)
                {
+#if (TLS_MD5_SUPPORT == ENABLED)
                //MD5 hash identifier?
                case TLS_HASH_ALGO_MD5:
+#endif
+#if (TLS_SHA1_SUPPORT == ENABLED)
                //SHA-1 hash identifier?
                case TLS_HASH_ALGO_SHA1:
-               //SHA-256 hash identifier?
-               case TLS_HASH_ALGO_SHA256:
+#endif
 #if (TLS_SHA224_SUPPORT == ENABLED)
                //SHA-224 hash identifier?
                case TLS_HASH_ALGO_SHA224:
+#endif
+#if (TLS_SHA256_SUPPORT == ENABLED)
+               //SHA-256 hash identifier?
+               case TLS_HASH_ALGO_SHA256:
 #endif
 #if (TLS_SHA384_SUPPORT == ENABLED)
                //SHA-384 hash identifier?
@@ -424,7 +432,17 @@ error_t tlsSelectSignHashAlgo(TlsContext *context,
    else
    {
       //Use default hash algorithm when generating RSA, DSA or ECDSA signatures
+#if (TLS_SHA1_SUPPORT == ENABLED)
       context->signHashAlgo = TLS_HASH_ALGO_SHA1;
+#elif (TLS_SHA224_SUPPORT == ENABLED)
+      context->signHashAlgo = TLS_HASH_ALGO_SHA224;
+#elif (TLS_SHA256_SUPPORT == ENABLED)
+      context->signHashAlgo = TLS_HASH_ALGO_SHA256;
+#elif (TLS_SHA384_SUPPORT == ENABLED)
+      context->signHashAlgo = TLS_HASH_ALGO_SHA384;
+#elif (TLS_SHA512_SUPPORT == ENABLED)
+      context->signHashAlgo = TLS_HASH_ALGO_SHA512;
+#endif
    }
 
    //If no acceptable choices are presented, return an error
@@ -473,8 +491,14 @@ error_t tlsSelectNamedCurve(TlsContext *context,
    }
    else
    {
-      //No list provided
+      //A client that proposes ECC cipher suites may choose not to include
+      //the EllipticCurves extension. In this case, the server is free to
+      //choose any one of the elliptic curves it supports
+#if (TLS_SECP256R1_SUPPORT == ENABLED)
+      context->namedCurve = TLS_EC_CURVE_SECP256R1;
+#else
       context->namedCurve = TLS_EC_CURVE_NONE;
+#endif
    }
 
    //If no acceptable choices are presented, return an error
@@ -1226,7 +1250,7 @@ error_t tlsGenerateRsaSignature(const RsaPrivateKey *key,
    //Return status code
    return error;
 #else
-   //Not implemented
+   //RSA signature generation is not supported
    return ERROR_NOT_IMPLEMENTED;
 #endif
 }
@@ -1357,7 +1381,7 @@ error_t tlsVerifyRsaSignature(const RsaPublicKey *key,
    //Return status code
    return error;
 #else
-   //Not implemented
+   //RSA signature verification is not supported
    return ERROR_NOT_IMPLEMENTED;
 #endif
 }
@@ -1365,9 +1389,7 @@ error_t tlsVerifyRsaSignature(const RsaPublicKey *key,
 
 /**
  * @brief Generate DSA signature
- * @param[in] prngAlgo PRNG algorithm
- * @param[in] prngContext Pointer to the PRNG context
- * @param[in] key Signer's DSA private key
+ * @param[in] context Pointer to the TLS context
  * @param[in] digest Digest of the message to be signed
  * @param[in] digestLength Length in octets of the digest
  * @param[out] signature Resulting signature
@@ -1375,33 +1397,46 @@ error_t tlsVerifyRsaSignature(const RsaPublicKey *key,
  * @return Error code
  **/
 
-error_t tlsGenerateDsaSignature(const PrngAlgo *prngAlgo, void *prngContext, const DsaPrivateKey *key,
-   const uint8_t *digest, size_t digestLength, uint8_t *signature, size_t *signatureLength)
+error_t tlsGenerateDsaSignature(TlsContext *context, const uint8_t *digest,
+   size_t digestLength, uint8_t *signature, size_t *signatureLength)
 {
 #if (TLS_DSA_SIGN_SUPPORT == ENABLED || TLS_DHE_DSS_SUPPORT == ENABLED)
    error_t error;
+   DsaPrivateKey privateKey;
    DsaSignature dsaSignature;
 
+   //Initialize DSA private key
+   dsaInitPrivateKey(&privateKey);
    //Initialize DSA signature
    dsaInitSignature(&dsaSignature);
 
-   //Generate DSA signature
-   error = dsaGenerateSignature(prngAlgo, prngContext,
-      key, digest, digestLength, &dsaSignature);
-   //Failed to generate signature?
-   if(error)
-      return error;
+   //Decode the PEM structure that holds the DSA private key
+   error = pemReadDsaPrivateKey(context->cert->privateKey,
+      context->cert->privateKeyLength, &privateKey);
 
-   //Encode the resulting (R, S) integer pair using ASN.1
-   error = dsaWriteSignature(&dsaSignature, signature, signatureLength);
+   //Check status code
+   if(!error)
+   {
+      //Generate DSA signature
+      error = dsaGenerateSignature(context->prngAlgo, context->prngContext,
+         &privateKey, digest, digestLength, &dsaSignature);
+   }
+
+   //Check status code
+   if(!error)
+   {
+      //Encode the resulting (R, S) integer pair using ASN.1
+      error = dsaWriteSignature(&dsaSignature, signature, signatureLength);
+   }
 
    //Free previously allocated resources
+   dsaFreePrivateKey(&privateKey);
    dsaFreeSignature(&dsaSignature);
 
    //Return status code
    return error;
 #else
-   //Not implemented
+   //DSA signature generation is not supported
    return ERROR_NOT_IMPLEMENTED;
 #endif
 }
@@ -1409,7 +1444,7 @@ error_t tlsGenerateDsaSignature(const PrngAlgo *prngAlgo, void *prngContext, con
 
 /**
  * @brief Verify DSA signature
- * @param[in] key Signer's DSA public key
+ * @param[in] context Pointer to the TLS context
  * @param[in] digest Digest of the message whose signature is to be verified
  * @param[in] digestLength Length in octets of the digest
  * @param[in] signature Signature to be verified
@@ -1417,7 +1452,7 @@ error_t tlsGenerateDsaSignature(const PrngAlgo *prngAlgo, void *prngContext, con
  * @return Error code
  **/
 
-error_t tlsVerifyDsaSignature(const DsaPublicKey *key, const uint8_t *digest,
+error_t tlsVerifyDsaSignature(TlsContext *context, const uint8_t *digest,
    size_t digestLength, const uint8_t *signature, size_t signatureLength)
 {
 #if (TLS_DSA_SIGN_SUPPORT == ENABLED || TLS_DHE_DSS_SUPPORT == ENABLED)
@@ -1429,12 +1464,14 @@ error_t tlsVerifyDsaSignature(const DsaPublicKey *key, const uint8_t *digest,
 
    //Read the ASN.1 encoded DSA signature
    error = dsaReadSignature(signature, signatureLength, &dsaSignature);
-   //Failed to decode ASN.1 structure?
-   if(error)
-      return error;
 
-   //DSA signature verification
-   error = dsaVerifySignature(key, digest, digestLength, &dsaSignature);
+   //Check status code
+   if(!error)
+   {
+      //DSA signature verification
+      error = dsaVerifySignature(&context->peerDsaPublicKey,
+         digest, digestLength, &dsaSignature);
+   }
 
    //Free previously allocated resources
    dsaFreeSignature(&dsaSignature);
@@ -1442,7 +1479,7 @@ error_t tlsVerifyDsaSignature(const DsaPublicKey *key, const uint8_t *digest,
    //Return status code
    return error;
 #else
-   //Not implemented
+   //DSA signature verification is not supported
    return ERROR_NOT_IMPLEMENTED;
 #endif
 }
@@ -1450,10 +1487,7 @@ error_t tlsVerifyDsaSignature(const DsaPublicKey *key, const uint8_t *digest,
 
 /**
  * @brief Generate ECDSA signature
- * @param[in] params EC domain parameters
- * @param[in] prngAlgo PRNG algorithm
- * @param[in] prngContext Pointer to the PRNG context
- * @param[in] key Signer's ECDSA private key
+ * @param[in] context Pointer to the TLS context
  * @param[in] digest Digest of the message to be signed
  * @param[in] digestLength Length in octets of the digest
  * @param[out] signature Resulting signature
@@ -1461,8 +1495,7 @@ error_t tlsVerifyDsaSignature(const DsaPublicKey *key, const uint8_t *digest,
  * @return Error code
  **/
 
-error_t tlsGenerateEcdsaSignature(const EcDomainParameters *params,
-   const PrngAlgo *prngAlgo, void *prngContext, const Mpi *key, const uint8_t *digest,
+error_t tlsGenerateEcdsaSignature(TlsContext *context, const uint8_t *digest,
    size_t digestLength, uint8_t *signature, size_t *signatureLength)
 {
 #if (TLS_ECDSA_SIGN_SUPPORT == ENABLED || TLS_ECDHE_ECDSA_SUPPORT == ENABLED)
@@ -1472,23 +1505,64 @@ error_t tlsGenerateEcdsaSignature(const EcDomainParameters *params,
    //Initialize ECDSA signature
    ecdsaInitSignature(&ecdsaSignature);
 
-   //Generate ECDSA signature
-   error = ecdsaGenerateSignature(params, prngAlgo,
-      prngContext, key, digest, digestLength, &ecdsaSignature);
-   //Failed to generate signature?
-   if(error)
-      return error;
+#if (TLS_ECC_CALLBACK_SUPPORT == ENABLED)
+   //Any registered callback?
+   if(context->ecdsaSignCallback != NULL)
+   {
+      //Invoke user callback function
+      error = context->ecdsaSignCallback(context, digest, digestLength,
+         &ecdsaSignature);
+   }
+   else
+#endif
+   {
+      EcDomainParameters params;
+      Mpi privateKey;
 
-   //Encode the resulting (R, S) integer pair using ASN.1
-   error = ecdsaWriteSignature(&ecdsaSignature, signature, signatureLength);
+      //Initialize EC domain parameters
+      ecInitDomainParameters(&params);
+      //Initialize EC private key
+      mpiInit(&privateKey);
 
-   //Free previously allocated resources
+      //Decode the PEM structure that holds the EC domain parameters
+      error = pemReadEcParameters(context->cert->privateKey,
+         context->cert->privateKeyLength, &params);
+
+      //Check status code
+      if(!error)
+      {
+         //Decode the PEM structure that holds the EC private key
+         error = pemReadEcPrivateKey(context->cert->privateKey,
+            context->cert->privateKeyLength, &privateKey);
+      }
+
+      //Check status code
+      if(!error)
+      {
+         //Generate ECDSA signature
+         error = ecdsaGenerateSignature(&params, context->prngAlgo,
+            context->prngContext, &privateKey, digest, digestLength, &ecdsaSignature);
+      }
+
+      //Release previously allocated resources
+      ecFreeDomainParameters(&params);
+      mpiFree(&privateKey);
+   }
+
+   //Check status code
+   if(!error)
+   {
+      //Encode the resulting (R, S) integer pair using ASN.1
+      error = ecdsaWriteSignature(&ecdsaSignature, signature, signatureLength);
+   }
+
+   //Release previously allocated resources
    ecdsaFreeSignature(&ecdsaSignature);
 
    //Return status code
    return error;
 #else
-   //Not implemented
+   //ECDSA signature generation is not supported
    return ERROR_NOT_IMPLEMENTED;
 #endif
 }
@@ -1496,8 +1570,7 @@ error_t tlsGenerateEcdsaSignature(const EcDomainParameters *params,
 
 /**
  * @brief Verify ECDSA signature
- * @param[in] params EC domain parameters
- * @param[in] key Signer's ECDSA public key
+ * @param[in] context Pointer to the TLS context
  * @param[in] digest Digest of the message whose signature is to be verified
  * @param[in] digestLength Length in octets of the digest
  * @param[in] signature Signature to be verified
@@ -1505,9 +1578,8 @@ error_t tlsGenerateEcdsaSignature(const EcDomainParameters *params,
  * @return Error code
  **/
 
-error_t tlsVerifyEcdsaSignature(const EcDomainParameters *params,
-   const EcPoint *key, const uint8_t *digest, size_t digestLength,
-   const uint8_t *signature, size_t signatureLength)
+error_t tlsVerifyEcdsaSignature(TlsContext *context, const uint8_t *digest,
+   size_t digestLength, const uint8_t *signature, size_t signatureLength)
 {
 #if (TLS_ECDSA_SIGN_SUPPORT == ENABLED || TLS_ECDHE_ECDSA_SUPPORT == ENABLED)
    error_t error;
@@ -1518,13 +1590,34 @@ error_t tlsVerifyEcdsaSignature(const EcDomainParameters *params,
 
    //Read the ASN.1 encoded ECDSA signature
    error = ecdsaReadSignature(signature, signatureLength, &ecdsaSignature);
-   //Failed to decode ASN.1 structure?
-   if(error)
-      return error;
 
-   //ECDSA signature verification
-   error = ecdsaVerifySignature(params, key,
-      digest, digestLength, &ecdsaSignature);
+   //Check status code
+   if(!error)
+   {
+#if (TLS_ECC_CALLBACK_SUPPORT == ENABLED)
+      //Any registered callback?
+      if(context->ecdsaVerifyCallback != NULL)
+      {
+         //Invoke user callback function
+         error = context->ecdsaVerifyCallback(context, digest, digestLength,
+            &ecdsaSignature);
+      }
+      else
+#endif
+      {
+         //No callback function defined
+         error = ERROR_UNSUPPORTED_ELLIPTIC_CURVE;
+      }
+
+      //Check status code
+      if(error == ERROR_UNSUPPORTED_ELLIPTIC_CURVE ||
+         error == ERROR_UNSUPPORTED_HASH_ALGO)
+      {
+         //ECDSA signature verification
+         error = ecdsaVerifySignature(&context->peerEcParams,
+            &context->peerEcPublicKey, digest, digestLength, &ecdsaSignature);
+      }
+   }
 
    //Free previously allocated resources
    ecdsaFreeSignature(&ecdsaSignature);
@@ -1532,7 +1625,7 @@ error_t tlsVerifyEcdsaSignature(const EcDomainParameters *params,
    //Return status code
    return error;
 #else
-   //Not implemented
+   //ECDSA signature verification is not supported
    return ERROR_NOT_IMPLEMENTED;
 #endif
 }
@@ -2448,19 +2541,28 @@ const char_t *tlsGetVersionName(uint16_t version)
 
 const HashAlgo *tlsGetHashAlgo(uint8_t hashAlgoId)
 {
+   //Invalid hash identifier?
+   if(hashAlgoId == TLS_HASH_ALGO_NONE)
+      return NULL;
+#if (TLS_MD5_SUPPORT == ENABLED)
    //MD5 hash identifier?
-   if(hashAlgoId == TLS_HASH_ALGO_MD5)
+   else if(hashAlgoId == TLS_HASH_ALGO_MD5)
       return MD5_HASH_ALGO;
+#endif
+#if (TLS_SHA1_SUPPORT == ENABLED)
    //SHA-1 hash identifier?
    else if(hashAlgoId == TLS_HASH_ALGO_SHA1)
       return SHA1_HASH_ALGO;
-   //SHA-256 hash identifier?
-   else if(hashAlgoId == TLS_HASH_ALGO_SHA256)
-      return SHA256_HASH_ALGO;
+#endif
 #if (TLS_SHA224_SUPPORT == ENABLED)
    //SHA-224 hash identifier?
    else if(hashAlgoId == TLS_HASH_ALGO_SHA224)
       return SHA224_HASH_ALGO;
+#endif
+#if (TLS_SHA256_SUPPORT == ENABLED)
+   //SHA-256 hash identifier?
+   else if(hashAlgoId == TLS_HASH_ALGO_SHA256)
+      return SHA256_HASH_ALGO;
 #endif
 #if (TLS_SHA384_SUPPORT == ENABLED)
    //SHA-384 hash identifier?

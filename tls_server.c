@@ -858,10 +858,12 @@ error_t tlsFormatCertificateRequest(TlsContext *context,
       n = 0;
 
 #if (TLS_RSA_SIGN_SUPPORT == ENABLED)
-      //SHA-1 with RSA is always supported
+#if (TLS_SHA1_SUPPORT == ENABLED)
+      //SHA-1 with RSA is supported
       supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
       supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA1;
-
+#endif
+#if (TLS_SHA256_SUPPORT == ENABLED)
       //The hash algorithm used for PRF operations can also be used for signing
       if(context->prfHashAlgo == SHA256_HASH_ALGO)
       {
@@ -869,8 +871,10 @@ error_t tlsFormatCertificateRequest(TlsContext *context,
          supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
          supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA256;
       }
+#endif
 #if (TLS_SHA384_SUPPORT == ENABLED)
-      else if(context->prfHashAlgo == SHA384_HASH_ALGO)
+      //The hash algorithm used for PRF operations can also be used for signing
+      if(context->prfHashAlgo == SHA384_HASH_ALGO)
       {
          //SHA-384 with RSA is supported
          supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
@@ -878,11 +882,14 @@ error_t tlsFormatCertificateRequest(TlsContext *context,
       }
 #endif
 #endif
+
 #if (TLS_DSA_SIGN_SUPPORT == ENABLED)
-      //DSA with SHA-1 is always supported
+#if (TLS_SHA1_SUPPORT == ENABLED)
+      //DSA with SHA-1 is supported
       supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_DSA;
       supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA1;
-
+#endif
+#if (TLS_SHA256_SUPPORT == ENABLED)
       //The hash algorithm used for PRF operations can also be used for signing
       if(context->prfHashAlgo == SHA256_HASH_ALGO)
       {
@@ -891,11 +898,15 @@ error_t tlsFormatCertificateRequest(TlsContext *context,
          supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA256;
       }
 #endif
+#endif
+
 #if (TLS_ECDSA_SIGN_SUPPORT == ENABLED)
-      //ECDSA with SHA-1 is always supported
+#if (TLS_SHA1_SUPPORT == ENABLED)
+      //ECDSA with SHA-1 is supported
       supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
       supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA1;
-
+#endif
+#if (TLS_SHA256_SUPPORT == ENABLED)
       //The hash algorithm used for PRF operations can also be used for signing
       if(context->prfHashAlgo == SHA256_HASH_ALGO)
       {
@@ -903,8 +914,10 @@ error_t tlsFormatCertificateRequest(TlsContext *context,
          supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
          supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA256;
       }
+#endif
 #if (TLS_SHA384_SUPPORT == ENABLED)
-      else if(context->prfHashAlgo == SHA384_HASH_ALGO)
+      //The hash algorithm used for PRF operations can also be used for signing
+      if(context->prfHashAlgo == SHA384_HASH_ALGO)
       {
          //ECDSA with SHA-384 is supported
          supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
@@ -912,6 +925,7 @@ error_t tlsFormatCertificateRequest(TlsContext *context,
       }
 #endif
 #endif
+
       //Fix the length of the list
       supportedSignAlgos->length = htons(n * sizeof(TlsSignHashAlgo));
       //Total length of the message
@@ -1612,7 +1626,7 @@ error_t tlsParseCertificateVerify(TlsContext *context, const TlsCertificateVerif
             return error;
 
          //Verify DSA signature using client's public key
-         error = tlsVerifyDsaSignature(&context->peerDsaPublicKey, context->verifyData,
+         error = tlsVerifyDsaSignature(context, context->verifyData,
             SHA1_DIGEST_SIZE, signature->value, ntohs(signature->length));
       }
       else
@@ -1629,8 +1643,8 @@ error_t tlsParseCertificateVerify(TlsContext *context, const TlsCertificateVerif
             return error;
 
          //Verify ECDSA signature using client's public key
-         error = tlsVerifyEcdsaSignature(&context->peerEcParams, &context->peerEcPublicKey,
-            context->verifyData, SHA1_DIGEST_SIZE, signature->value, ntohs(signature->length));
+         error = tlsVerifyEcdsaSignature(context, context->verifyData,
+            SHA1_DIGEST_SIZE, signature->value, ntohs(signature->length));
       }
       else
 #endif
@@ -1698,7 +1712,7 @@ error_t tlsParseCertificateVerify(TlsContext *context, const TlsCertificateVerif
       if(signature->algorithm.signature == TLS_SIGN_ALGO_DSA)
       {
          //Verify DSA signature using client's public key
-         error = tlsVerifyDsaSignature(&context->peerDsaPublicKey, context->verifyData,
+         error = tlsVerifyDsaSignature(context, context->verifyData,
             hashAlgo->digestSize, signature->value, ntohs(signature->length));
       }
       else
@@ -1708,8 +1722,8 @@ error_t tlsParseCertificateVerify(TlsContext *context, const TlsCertificateVerif
       if(signature->algorithm.signature == TLS_SIGN_ALGO_ECDSA)
       {
          //Verify ECDSA signature using client's public key
-         error = tlsVerifyEcdsaSignature(&context->peerEcParams, &context->peerEcPublicKey,
-            context->verifyData, hashAlgo->digestSize, signature->value, ntohs(signature->length));
+         error = tlsVerifyEcdsaSignature(context, context->verifyData,
+            hashAlgo->digestSize, signature->value, ntohs(signature->length));
       }
       else
 #endif

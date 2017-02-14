@@ -96,6 +96,13 @@
    #error TLS_SESSION_CACHE_LIFETIME parameter is not valid
 #endif
 
+//ECC callback functions
+#ifndef TLS_ECC_CALLBACK_SUPPORT
+   #define TLS_ECC_CALLBACK_SUPPORT DISABLED
+#elif (TLS_ECC_CALLBACK_SUPPORT != ENABLED && TLS_ECC_CALLBACK_SUPPORT != DISABLED)
+   #error TLS_ECC_CALLBACK_SUPPORT parameter is not valid
+#endif
+
 //SNI (Server Name Indication) extension
 #ifndef TLS_SNI_SUPPORT
    #define TLS_SNI_SUPPORT ENABLED
@@ -133,7 +140,7 @@
 
 //DHE_DSS key exchange support
 #ifndef TLS_DHE_DSS_SUPPORT
-   #define TLS_DHE_DSS_SUPPORT ENABLED
+   #define TLS_DHE_DSS_SUPPORT DISABLED
 #elif (TLS_DHE_DSS_SUPPORT != ENABLED && TLS_DHE_DSS_SUPPORT != DISABLED)
    #error TLS_DHE_DSS_SUPPORT parameter is not valid
 #endif
@@ -203,7 +210,7 @@
 
 //DSA signature capability
 #ifndef TLS_DSA_SIGN_SUPPORT
-   #define TLS_DSA_SIGN_SUPPORT ENABLED
+   #define TLS_DSA_SIGN_SUPPORT DISABLED
 #elif (TLS_DSA_SIGN_SUPPORT != ENABLED && TLS_DSA_SIGN_SUPPORT != DISABLED)
    #error TLS_DSA_SIGN_SUPPORT parameter is not valid
 #endif
@@ -231,7 +238,7 @@
 
 //CCM AEAD support
 #ifndef TLS_CCM_CIPHER_SUPPORT
-   #define TLS_CCM_CIPHER_SUPPORT ENABLED
+   #define TLS_CCM_CIPHER_SUPPORT DISABLED
 #elif (TLS_CCM_CIPHER_SUPPORT != ENABLED && TLS_CCM_CIPHER_SUPPORT != DISABLED)
    #error TLS_CCM_CIPHER_SUPPORT parameter is not valid
 #endif
@@ -301,14 +308,14 @@
 
 //SEED cipher support
 #ifndef TLS_SEED_SUPPORT
-   #define TLS_SEED_SUPPORT ENABLED
+   #define TLS_SEED_SUPPORT DISABLED
 #elif (TLS_SEED_SUPPORT != ENABLED && TLS_SEED_SUPPORT != DISABLED)
    #error TLS_SEED_SUPPORT parameter is not valid
 #endif
 
 //ARIA cipher support
 #ifndef TLS_ARIA_SUPPORT
-   #define TLS_ARIA_SUPPORT ENABLED
+   #define TLS_ARIA_SUPPORT DISABLED
 #elif (TLS_ARIA_SUPPORT != ENABLED && TLS_ARIA_SUPPORT != DISABLED)
    #error TLS_ARIA_SUPPORT parameter is not valid
 #endif
@@ -350,7 +357,7 @@
 
 //SHA-512 hash support
 #ifndef TLS_SHA512_SUPPORT
-   #define TLS_SHA512_SUPPORT ENABLED
+   #define TLS_SHA512_SUPPORT DISABLED
 #elif (TLS_SHA512_SUPPORT != ENABLED && TLS_SHA512_SUPPORT != DISABLED)
    #error TLS_SHA512_SUPPORT parameter is not valid
 #endif
@@ -383,7 +390,7 @@
    #error TLS_SECP192K1_SUPPORT parameter is not valid
 #endif
 
-//secp192r1 elliptic curve support
+//secp192r1 elliptic curve support (NIST P-192)
 #ifndef TLS_SECP192R1_SUPPORT
    #define TLS_SECP192R1_SUPPORT ENABLED
 #elif (TLS_SECP192R1_SUPPORT != ENABLED && TLS_SECP192R1_SUPPORT != DISABLED)
@@ -397,7 +404,7 @@
    #error TLS_SECP224K1_SUPPORT parameter is not valid
 #endif
 
-//secp224r1 elliptic curve support
+//secp224r1 elliptic curve support (NIST P-224)
 #ifndef TLS_SECP224R1_SUPPORT
    #define TLS_SECP224R1_SUPPORT ENABLED
 #elif (TLS_SECP224R1_SUPPORT != ENABLED && TLS_SECP224R1_SUPPORT != DISABLED)
@@ -411,21 +418,21 @@
    #error TLS_SECP256K1_SUPPORT parameter is not valid
 #endif
 
-//secp256r1 elliptic curve support
+//secp256r1 elliptic curve support (NIST P-256)
 #ifndef TLS_SECP256R1_SUPPORT
    #define TLS_SECP256R1_SUPPORT ENABLED
 #elif (TLS_SECP256R1_SUPPORT != ENABLED && TLS_SECP256R1_SUPPORT != DISABLED)
    #error TLS_SECP256R1_SUPPORT parameter is not valid
 #endif
 
-//secp384r1 elliptic curve support
+//secp384r1 elliptic curve support (NIST P-384) 
 #ifndef TLS_SECP384R1_SUPPORT
    #define TLS_SECP384R1_SUPPORT ENABLED
 #elif (TLS_SECP384R1_SUPPORT != ENABLED && TLS_SECP384R1_SUPPORT != DISABLED)
    #error TLS_SECP384R1_SUPPORT parameter is not valid
 #endif
 
-//secp521r1 elliptic curve support
+//secp521r1 elliptic curve support (NIST P-521)
 #ifndef TLS_SECP521R1_SUPPORT
    #define TLS_SECP521R1_SUPPORT ENABLED
 #elif (TLS_SECP521R1_SUPPORT != ENABLED && TLS_SECP521R1_SUPPORT != DISABLED)
@@ -559,7 +566,8 @@ typedef enum
    TLS_FLAG_BREAK_CHAR = 0x1000,
    TLS_FLAG_BREAK_CRLF = 0x100A,
    TLS_FLAG_WAIT_ACK   = 0x2000,
-   TLS_FLAG_BUFFER     = 0x4000
+   TLS_FLAG_NO_DELAY   = 0x4000,
+   TLS_FLAG_DELAY      = 0x8000
 } TlsFlags;
 
 
@@ -1308,6 +1316,29 @@ typedef error_t (*TlsPskCallback)(TlsContext *context,
 
 
 /**
+ * @brief ECDH key agreement callback function
+ **/
+
+typedef error_t (*TlsEcdhCallback)(TlsContext *context);
+
+
+/**
+ * @brief ECDSA signature generation callback function
+ **/
+
+typedef error_t (*TlsEcdsaSignCallback)(TlsContext *context,
+   const uint8_t *digest, size_t digestLength, EcdsaSignature *signature);
+
+
+/**
+ * @brief ECDSA signature verification callback function
+ **/
+
+typedef error_t (*TlsEcdsaVerifyCallback)(TlsContext *context,
+   const uint8_t *digest, size_t digestLength, EcdsaSignature *signature);
+
+
+/**
  * @brief Structure describing a cipher suite
  **/
 
@@ -1395,6 +1426,12 @@ struct _TlsContext
    uint_t numCipherSuites;                  ///<Number of cipher suites in the list
 
    char_t *serverName;                      ///<Fully qualified DNS hostname of the server
+
+#if (TLS_ECC_CALLBACK_SUPPORT == ENABLED)
+   TlsEcdhCallback ecdhCallback;
+   TlsEcdsaSignCallback ecdsaSignCallback;
+   TlsEcdsaVerifyCallback ecdsaVerifyCallback;
+#endif
 
 #if (TLS_ALPN_SUPPORT == ENABLED)
    char_t *protocolList;                    ///<List of supported ALPN protocols
@@ -1562,6 +1599,14 @@ error_t tlsSetCipherSuites(TlsContext *context,
 
 error_t tlsSetDhParameters(TlsContext *context,
    const char_t *params, size_t length);
+
+error_t tlsSetEcdhCallback(TlsContext *context, TlsEcdhCallback ecdhCallback);
+
+error_t tlsSetEcdsaSignCallback(TlsContext *context,
+   TlsEcdsaSignCallback ecdsaSignCallback);
+
+error_t tlsSetEcdsaVerifyCallback(TlsContext *context,
+   TlsEcdsaVerifyCallback ecdsaVerifyCallback);
 
 error_t tlsSetAlpnProtocolList(TlsContext *context, const char_t *protocolList);
 const char_t *tlsGetAlpnProtocol(TlsContext *context);

@@ -74,19 +74,17 @@ error_t tlsGenerateRsaSignature(const RsaPrivateKey *key,
 error_t tlsVerifyRsaSignature(const RsaPublicKey *key,
    const uint8_t *digest, const uint8_t *signature, size_t signatureLength);
 
-error_t tlsGenerateDsaSignature(const PrngAlgo *prngAlgo, void *prngContext, const DsaPrivateKey *key,
-   const uint8_t *digest, size_t digestLength, uint8_t *signature, size_t *signatureLength);
-
-error_t tlsVerifyDsaSignature(const DsaPublicKey *key, const uint8_t *digest,
-   size_t digestLength, const uint8_t *signature, size_t signatureLength);
-
-error_t tlsGenerateEcdsaSignature(const EcDomainParameters *params,
-   const PrngAlgo *prngAlgo, void *prngContext, const Mpi *key, const uint8_t *digest,
+error_t tlsGenerateDsaSignature(TlsContext *context, const uint8_t *digest,
    size_t digestLength, uint8_t *signature, size_t *signatureLength);
 
-error_t tlsVerifyEcdsaSignature(const EcDomainParameters *params,
-   const EcPoint *key, const uint8_t *digest, size_t digestLength,
-   const uint8_t *signature, size_t signatureLength);
+error_t tlsVerifyDsaSignature(TlsContext *context, const uint8_t *digest,
+   size_t digestLength, const uint8_t *signature, size_t signatureLength);
+
+error_t tlsGenerateEcdsaSignature(TlsContext *context, const uint8_t *digest,
+   size_t digestLength, uint8_t *signature, size_t *signatureLength);
+
+error_t tlsVerifyEcdsaSignature(TlsContext *context, const uint8_t *digest,
+   size_t digestLength, const uint8_t *signature, size_t signatureLength);
 
 error_t tlsGeneratePskPremasterSecret(TlsContext *context);
 error_t tlsGenerateKeys(TlsContext *context);

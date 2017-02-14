@@ -239,12 +239,42 @@ error_t tlsFormatClientKeyParams(TlsContext *context,
       error_t error;
       size_t n;
 
-      //Generate an ephemeral key pair
-      error = ecdhGenerateKeyPair(&context->ecdhContext,
-         context->prngAlgo, context->prngContext);
-      //Any error to report?
-      if(error)
+#if (TLS_ECC_CALLBACK_SUPPORT == ENABLED)
+      //Any registered callback?
+      if(context->ecdhCallback != NULL)
+      {
+         //Invoke user callback function
+         error = context->ecdhCallback(context);
+      }
+      else
+#endif
+      {
+         //No callback function defined
+         error = ERROR_UNSUPPORTED_ELLIPTIC_CURVE;
+      }
+
+      //Check status code
+      if(error == ERROR_UNSUPPORTED_ELLIPTIC_CURVE)
+      {
+         //Generate an ephemeral key pair
+         error = ecdhGenerateKeyPair(&context->ecdhContext,
+            context->prngAlgo, context->prngContext);
+         //Any error to report?
+         if(error)
+            return error;
+
+         //Calculate the negotiated key Z
+         error = ecdhComputeSharedSecret(&context->ecdhContext, context->premasterSecret,
+            TLS_MAX_PREMASTER_SECRET_SIZE, &context->premasterSecretLen);
+         //Any error to report?
+         if(error)
+            return error;
+      }
+      else if(error != NO_ERROR)
+      {
+         //Report an error
          return error;
+      }
 
       //Encode the client's public key to an opaque vector
       error = tlsWriteEcPoint(&context->ecdhContext.params,
@@ -255,13 +285,6 @@ error_t tlsFormatClientKeyParams(TlsContext *context,
 
       //Total number of bytes that have been written
       *written = n;
-
-      //Calculate the negotiated key Z
-      error = ecdhComputeSharedSecret(&context->ecdhContext, context->premasterSecret,
-         TLS_MAX_PREMASTER_SECRET_SIZE, &context->premasterSecretLen);
-      //Any error to report?
-      if(error)
-         return error;
    }
    else
 #endif
@@ -682,7 +705,7 @@ error_t tlsVerifyServerKeySignature(TlsContext *context, const uint8_t *p,
          if(!error)
          {
             //DSA signature verification
-            error = tlsVerifyDsaSignature(&context->peerDsaPublicKey, context->verifyData,
+            error = tlsVerifyDsaSignature(context, context->verifyData,
                SHA1_DIGEST_SIZE, signature->value, ntohs(signature->length));
          }
       }
@@ -714,8 +737,7 @@ error_t tlsVerifyServerKeySignature(TlsContext *context, const uint8_t *p,
          if(!error)
          {
             //ECDSA signature verification
-            error = tlsVerifyEcdsaSignature(&context->peerEcParams,
-               &context->peerEcPublicKey, context->verifyData,
+            error = tlsVerifyEcdsaSignature(context, context->verifyData,
                SHA1_DIGEST_SIZE, signature->value, ntohs(signature->length));
          }
       }
@@ -785,7 +807,7 @@ error_t tlsVerifyServerKeySignature(TlsContext *context, const uint8_t *p,
                signature->algorithm.signature == TLS_SIGN_ALGO_DSA)
             {
                //DSA signature verification
-               error = tlsVerifyDsaSignature(&context->peerDsaPublicKey, hashContext->digest,
+               error = tlsVerifyDsaSignature(context, hashContext->digest,
                   hashAlgo->digestSize, signature->value, ntohs(signature->length));
             }
             else
@@ -796,8 +818,8 @@ error_t tlsVerifyServerKeySignature(TlsContext *context, const uint8_t *p,
                signature->algorithm.signature == TLS_SIGN_ALGO_ECDSA)
             {
                //ECDSA signature verification
-               error = tlsVerifyEcdsaSignature(&context->peerEcParams, &context->peerEcPublicKey,
-                  hashContext->digest, hashAlgo->digestSize, signature->value, ntohs(signature->length));
+               error = tlsVerifyEcdsaSignature(context, hashContext->digest,
+                  hashAlgo->digestSize, signature->value, ntohs(signature->length));
             }
             else
 #endif

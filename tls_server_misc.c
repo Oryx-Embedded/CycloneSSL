@@ -376,10 +376,6 @@ error_t tlsGenerateServerKeySignature(TlsContext *context,
       if(context->keyExchMethod == TLS_KEY_EXCH_DHE_DSS)
       {
          Sha1Context *sha1Context;
-         DsaPrivateKey privateKey;
-
-         //Initialize DSA private key
-         dsaInitPrivateKey(&privateKey);
 
          //Allocate a memory buffer to hold the SHA-1 context
          sha1Context = tlsAllocMem(sizeof(Sha1Context));
@@ -405,22 +401,10 @@ error_t tlsGenerateServerKeySignature(TlsContext *context,
          //Check status code
          if(!error)
          {
-            //Decode the PEM structure that holds the DSA private key
-            error = pemReadDsaPrivateKey(context->cert->privateKey,
-               context->cert->privateKeyLength, &privateKey);
-         }
-
-         //Check status code
-         if(!error)
-         {
             //Sign the key exchange parameters using DSA
-            error = tlsGenerateDsaSignature(context->prngAlgo,
-               context->prngContext, &privateKey, context->verifyData,
+            error = tlsGenerateDsaSignature(context, context->verifyData,
                SHA1_DIGEST_SIZE, signature->value, written);
          }
-
-         //Release previously allocated resources
-         dsaFreePrivateKey(&privateKey);
       }
       else
 #endif
@@ -429,13 +413,6 @@ error_t tlsGenerateServerKeySignature(TlsContext *context,
       if(context->keyExchMethod == TLS_KEY_EXCH_ECDHE_ECDSA)
       {
          Sha1Context *sha1Context;
-         EcDomainParameters ecParams;
-         Mpi privateKey;
-
-         //Initialize EC domain parameters
-         ecInitDomainParameters(&ecParams);
-         //Initialize EC private key
-         mpiInit(&privateKey);
 
          //Allocate a memory buffer to hold the SHA-1 context
          sha1Context = tlsAllocMem(sizeof(Sha1Context));
@@ -461,31 +438,10 @@ error_t tlsGenerateServerKeySignature(TlsContext *context,
          //Check status code
          if(!error)
          {
-            //Decode the PEM structure that holds the EC domain parameters
-            error = pemReadEcParameters(context->cert->privateKey,
-               context->cert->privateKeyLength, &ecParams);
-         }
-
-         //Check status code
-         if(!error)
-         {
-            //Decode the PEM structure that holds the EC private key
-            error = pemReadEcPrivateKey(context->cert->privateKey,
-               context->cert->privateKeyLength, &privateKey);
-         }
-
-         //Check status code
-         if(!error)
-         {
             //Sign the key exchange parameters using ECDSA
-            error = tlsGenerateEcdsaSignature(&ecParams, context->prngAlgo,
-               context->prngContext, &privateKey, context->verifyData,
+            error = tlsGenerateEcdsaSignature(context, context->verifyData,
                SHA1_DIGEST_SIZE, signature->value, written);
          }
-
-         //Release previously allocated resources
-         ecFreeDomainParameters(&ecParams);
-         mpiFree(&privateKey);
       }
       else
 #endif
@@ -566,30 +522,13 @@ error_t tlsGenerateServerKeySignature(TlsContext *context,
             //Check whether DHE_DSS key exchange method is currently used
             if(context->keyExchMethod == TLS_KEY_EXCH_DHE_DSS)
             {
-               DsaPrivateKey privateKey;
-
-               //Initialize DSA private key
-               dsaInitPrivateKey(&privateKey);
-
                //Set the relevant signature algorithm
                signature->algorithm.signature = TLS_SIGN_ALGO_DSA;
                signature->algorithm.hash = context->signHashAlgo;
 
-               //Decode the PEM structure that holds the DSA private key
-               error = pemReadDsaPrivateKey(context->cert->privateKey,
-                  context->cert->privateKeyLength, &privateKey);
-
-               //Check status code
-               if(!error)
-               {
-                  //Sign the key exchange parameters using DSA
-                  error = tlsGenerateDsaSignature(context->prngAlgo,
-                     context->prngContext, &privateKey, hashContext->digest,
-                     hashAlgo->digestSize, signature->value, written);
-               }
-
-               //Release previously allocated resources
-               dsaFreePrivateKey(&privateKey);
+               //Sign the key exchange parameters using DSA
+               error = tlsGenerateDsaSignature(context, hashContext->digest,
+                  hashAlgo->digestSize, signature->value, written);
             }
             else
 #endif
@@ -597,42 +536,13 @@ error_t tlsGenerateServerKeySignature(TlsContext *context,
             //Check whether ECDHE_ECDSA key exchange method is currently used
             if(context->keyExchMethod == TLS_KEY_EXCH_ECDHE_ECDSA)
             {
-               EcDomainParameters ecParams;
-               Mpi privateKey;
-
-               //Initialize EC domain parameters
-               ecInitDomainParameters(&ecParams);
-               //Initialize EC private key
-               mpiInit(&privateKey);
-
                //Set the relevant signature algorithm
                signature->algorithm.signature = TLS_SIGN_ALGO_ECDSA;
                signature->algorithm.hash = context->signHashAlgo;
 
-               //Decode the PEM structure that holds the EC domain parameters
-               error = pemReadEcParameters(context->cert->privateKey,
-                  context->cert->privateKeyLength, &ecParams);
-
-               //Check status code
-               if(!error)
-               {
-                  //Decode the PEM structure that holds the EC private key
-                  error = pemReadEcPrivateKey(context->cert->privateKey,
-                     context->cert->privateKeyLength, &privateKey);
-               }
-
-               //Check status code
-               if(!error)
-               {
-                  //Sign the key exchange parameters using ECDSA
-                  error = tlsGenerateEcdsaSignature(&ecParams, context->prngAlgo,
-                     context->prngContext, &privateKey, hashContext->digest,
-                     hashAlgo->digestSize, signature->value, written);
-               }
-
-               //Release previously allocated memory
-               ecFreeDomainParameters(&ecParams);
-               mpiFree(&privateKey);
+               //Sign the key exchange parameters using ECDSA
+               error = tlsGenerateEcdsaSignature(context, hashContext->digest,
+                  hashAlgo->digestSize, signature->value, written);
             }
             else
 #endif

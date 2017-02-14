@@ -872,68 +872,82 @@ error_t tlsFormatClientHello(TlsContext *context,
       n = 0;
 
 #if (TLS_RSA_SIGN_SUPPORT == ENABLED)
-      //MD5 with RSA is always supported
+#if (TLS_MD5_SUPPORT == ENABLED)
+      //MD5 with RSA support
       supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
       supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_MD5;
-      //SHA-1 with RSA is always supported
+#endif
+#if (TLS_SHA1_SUPPORT == ENABLED)
+      //SHA-1 with RSA support
       supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
       supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA1;
+#endif
 #if (TLS_SHA224_SUPPORT == ENABLED)
-      //SHA-224 with RSA support is optional
+      //SHA-224 with RSA support
       supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
       supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA224;
 #endif
-      //SHA-256 with RSA is always supported
+#if (TLS_SHA256_SUPPORT == ENABLED)
+      //SHA-256 with RSA support
       supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
       supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA256;
+#endif
 #if (TLS_SHA384_SUPPORT == ENABLED)
-      //SHA-384 with RSA support is optional
+      //SHA-384 with RSA support
       supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
       supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA384;
 #endif
 #if (TLS_SHA512_SUPPORT == ENABLED)
-      //SHA-512 with RSA support is optional
+      //SHA-512 with RSA support
       supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
       supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA512;
 #endif
 #endif
 
 #if (TLS_DSA_SIGN_SUPPORT == ENABLED)
-      //DSA with SHA-1 is always supported
+#if (TLS_SHA1_SUPPORT == ENABLED)
+      //DSA with SHA-1 support
       supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_DSA;
       supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA1;
+#endif
 #if (TLS_SHA224_SUPPORT == ENABLED)
-      //DSA with SHA-224 support is optional
+      //DSA with SHA-224 support
       supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_DSA;
       supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA224;
 #endif
-      //DSA with SHA-256 is always supported
+#if (TLS_SHA256_SUPPORT == ENABLED)
+      //DSA with SHA-256 support
       supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_DSA;
       supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA256;
+#endif
 #endif
 
 #if (TLS_ECDSA_SIGN_SUPPORT == ENABLED)
       //Any ECC cipher suite proposed by the client?
       if(eccCipherSuite)
       {
-         //ECDSA with SHA-1 is always supported
+#if (TLS_SHA1_SUPPORT == ENABLED)
+         //ECDSA with SHA-1 support
          supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
          supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA1;
+#endif
 #if (TLS_SHA224_SUPPORT == ENABLED)
-         //ECDSA with SHA-224 support is optional
+         //ECDSA with SHA-224 support
          supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
          supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA224;
 #endif
-         //ECDSA with SHA-256 is always supported
+#if (TLS_SHA256_SUPPORT == ENABLED)
+         //ECDSA with SHA-256 support
          supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
          supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA256;
+#endif
 #if (TLS_SHA384_SUPPORT == ENABLED)
-         //ECDSA with SHA-384 support is optional
+         //ECDSA with SHA-384 support
          supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
          supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA384;
 #endif
 #if (TLS_SHA512_SUPPORT == ENABLED)
-         //ECDSA with SHA-512 support is optional
+         //ECDSA with SHA-512 support
          supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
          supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA512;
 #endif
@@ -1133,11 +1147,6 @@ error_t tlsFormatCertificateVerify(TlsContext *context,
       //The client's certificate contains a valid DSA public key?
       if(context->cert->type == TLS_CERT_DSS_SIGN)
       {
-         DsaPrivateKey privateKey;
-
-         //Initialize DSA private key
-         dsaInitPrivateKey(&privateKey);
-
          //Digest all the handshake messages starting at ClientHello
          error = tlsFinalizeHandshakeHash(context, SHA1_HASH_ALGO,
             context->handshakeSha1Context, "", context->verifyData);
@@ -1145,22 +1154,10 @@ error_t tlsFormatCertificateVerify(TlsContext *context,
          //Check status code
          if(!error)
          {
-            //Decode the PEM structure that holds the DSA private key
-            error = pemReadDsaPrivateKey(context->cert->privateKey,
-               context->cert->privateKeyLength, &privateKey);
-         }
-
-         //Check status code
-         if(!error)
-         {
             //Generate a DSA signature using the client's private key
-            error = tlsGenerateDsaSignature(context->prngAlgo,
-               context->prngContext, &privateKey, context->verifyData,
+            error = tlsGenerateDsaSignature(context, context->verifyData,
                SHA1_DIGEST_SIZE, signature->value, length);
          }
-
-         //Release previously allocated resources
-         dsaFreePrivateKey(&privateKey);
       }
       else
 #endif
@@ -1168,14 +1165,6 @@ error_t tlsFormatCertificateVerify(TlsContext *context,
       //The client's certificate contains a valid ECDSA public key?
       if(context->cert->type == TLS_CERT_ECDSA_SIGN)
       {
-         EcDomainParameters params;
-         Mpi privateKey;
-
-         //Initialize EC domain parameters
-         ecInitDomainParameters(&params);
-         //Initialize EC private key
-         mpiInit(&privateKey);
-
          //Digest all the handshake messages starting at ClientHello
          error = tlsFinalizeHandshakeHash(context, SHA1_HASH_ALGO,
             context->handshakeSha1Context, "", context->verifyData);
@@ -1183,31 +1172,10 @@ error_t tlsFormatCertificateVerify(TlsContext *context,
          //Check status code
          if(!error)
          {
-            //Decode the PEM structure that holds the EC domain parameters
-            error = pemReadEcParameters(context->cert->privateKey,
-               context->cert->privateKeyLength, &params);
-         }
-
-         //Check status code
-         if(!error)
-         {
-            //Decode the PEM structure that holds the EC private key
-            error = pemReadEcPrivateKey(context->cert->privateKey,
-               context->cert->privateKeyLength, &privateKey);
-         }
-
-         //Check status code
-         if(!error)
-         {
             //Generate an ECDSA signature using the client's private key
-            error = tlsGenerateEcdsaSignature(&params, context->prngAlgo,
-               context->prngContext, &privateKey, context->verifyData,
+            error = tlsGenerateEcdsaSignature(context, context->verifyData,
                SHA1_DIGEST_SIZE, signature->value, length);
          }
-
-         //Release previously allocated resources
-         ecFreeDomainParameters(&params);
-         mpiFree(&privateKey);
       }
       else
 #endif
@@ -1293,30 +1261,13 @@ error_t tlsFormatCertificateVerify(TlsContext *context,
          //The client's certificate contains a valid DSA public key?
          if(context->cert->type == TLS_CERT_DSS_SIGN)
          {
-            DsaPrivateKey privateKey;
-
-            //Initialize DSA private key
-            dsaInitPrivateKey(&privateKey);
-
             //Set the relevant signature algorithm
             signature->algorithm.signature = TLS_SIGN_ALGO_DSA;
             signature->algorithm.hash = context->signHashAlgo;
 
-            //Decode the PEM structure that holds the DSA private key
-            error = pemReadDsaPrivateKey(context->cert->privateKey,
-               context->cert->privateKeyLength, &privateKey);
-
-            //Check status code
-            if(!error)
-            {
-               //Generate a DSA signature using the client's private key
-               error = tlsGenerateDsaSignature(context->prngAlgo,
-                  context->prngContext, &privateKey, context->verifyData,
-                  hashAlgo->digestSize, signature->value, length);
-            }
-
-            //Release previously allocated resources
-            dsaFreePrivateKey(&privateKey);
+            //Generate a DSA signature using the client's private key
+            error = tlsGenerateDsaSignature(context, context->verifyData,
+               hashAlgo->digestSize, signature->value, length);
          }
          else
 #endif
@@ -1324,42 +1275,13 @@ error_t tlsFormatCertificateVerify(TlsContext *context,
          //The client's certificate contains a valid ECDSA public key?
          if(context->cert->type == TLS_CERT_ECDSA_SIGN)
          {
-            EcDomainParameters params;
-            Mpi privateKey;
-
-            //Initialize EC domain parameters
-            ecInitDomainParameters(&params);
-            //Initialize EC private key
-            mpiInit(&privateKey);
-
             //Set the relevant signature algorithm
             signature->algorithm.signature = TLS_SIGN_ALGO_ECDSA;
             signature->algorithm.hash = context->signHashAlgo;
 
-            //Decode the PEM structure that holds the EC domain parameters
-            error = pemReadEcParameters(context->cert->privateKey,
-               context->cert->privateKeyLength, &params);
-
-            //Check status code
-            if(!error)
-            {
-               //Decode the PEM structure that holds the EC private key
-               error = pemReadEcPrivateKey(context->cert->privateKey,
-                  context->cert->privateKeyLength, &privateKey);
-            }
-
-            //Check status code
-            if(!error)
-            {
-               //Generate an ECDSA signature using the client's private key
-               error = tlsGenerateEcdsaSignature(&params, context->prngAlgo,
-                  context->prngContext, &privateKey, context->verifyData,
-                  hashAlgo->digestSize, signature->value, length);
-            }
-
-            //Release previously allocated resources
-            ecFreeDomainParameters(&params);
-            mpiFree(&privateKey);
+            //Generate an ECDSA signature using the client's private key
+            error = tlsGenerateEcdsaSignature(context, context->verifyData,
+               hashAlgo->digestSize, signature->value, length);
          }
          else
 #endif

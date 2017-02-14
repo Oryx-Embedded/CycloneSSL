@@ -393,6 +393,86 @@ error_t tlsSetDhParameters(TlsContext *context,
 
 
 /**
+ * @brief Register ECDH key agreement callback function
+ * @param[in] context Pointer to the TLS context
+ * @param[in] pskCallback PSK callback function
+ * @return Error code
+ **/
+
+error_t tlsSetEcdhCallback(TlsContext *context, TlsEcdhCallback ecdhCallback)
+{
+#if (TLS_ECC_CALLBACK_SUPPORT == ENABLED)
+   //Invalid parameters?
+   if(context == NULL || ecdhCallback == NULL)
+      return ERROR_INVALID_PARAMETER;
+
+   //Save the ECDH key agreement callback function
+   context->ecdhCallback = ecdhCallback;
+
+   //Successful processing
+   return NO_ERROR;
+#else
+   //PSK key exchange is not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
+}
+
+
+/**
+ * @brief ECDSA signature generation callback function
+ * @param[in] context Pointer to the TLS context
+ * @param[in] pskCallback PSK callback function
+ * @return Error code
+ **/
+
+error_t tlsSetEcdsaSignCallback(TlsContext *context,
+   TlsEcdsaSignCallback ecdsaSignCallback)
+{
+#if (TLS_ECC_CALLBACK_SUPPORT == ENABLED)
+   //Invalid parameters?
+   if(context == NULL || ecdsaSignCallback == NULL)
+      return ERROR_INVALID_PARAMETER;
+
+   //Save the ECDSA signature generation callback function
+   context->ecdsaSignCallback = ecdsaSignCallback;
+
+   //Successful processing
+   return NO_ERROR;
+#else
+   //PSK key exchange is not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
+}
+
+
+/**
+ * @brief Register ECDSA signature verification callback function
+ * @param[in] context Pointer to the TLS context
+ * @param[in] pskCallback PSK callback function
+ * @return Error code
+ **/
+
+error_t tlsSetEcdsaVerifyCallback(TlsContext *context,
+   TlsEcdsaVerifyCallback ecdsaVerifyCallback)
+{
+#if (TLS_ECC_CALLBACK_SUPPORT == ENABLED)
+   //Invalid parameters?
+   if(context == NULL || ecdsaVerifyCallback == NULL)
+      return ERROR_INVALID_PARAMETER;
+
+   //Save the ECDSA signature verification callback function
+   context->ecdsaVerifyCallback = ecdsaVerifyCallback;
+
+   //Successful processing
+   return NO_ERROR;
+#else
+   //PSK key exchange is not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
+}
+
+
+/**
  * @brief Set the list of supported ALPN protocols
  * @param[in] context Pointer to the TLS context
  * @param[in] protocolList Comma-delimited list of supported protocols
@@ -690,10 +770,12 @@ error_t tlsAddCertificate(TlsContext *context, const char_t *certChain,
    if(context == NULL)
       return ERROR_INVALID_PARAMETER;
 
-   //Check parameters
+   //Check whether the certificate chain is valid
    if(certChain == NULL || certChainLength == 0)
       return ERROR_INVALID_PARAMETER;
-   if(privateKey == NULL || privateKeyLength == 0)
+
+   //The private key is optionnal
+   if(privateKey == NULL && privateKeyLength != 0)
       return ERROR_INVALID_PARAMETER;
 
    //Make sure there is enough room to add the certificate
