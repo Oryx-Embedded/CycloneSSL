@@ -1025,7 +1025,7 @@ error_t tlsRead(TlsContext *context, void *data,
       return ERROR_INVALID_PARAMETER;
 
    //Check parameters
-   if(data == NULL && received == NULL)
+   if(data == NULL || received == NULL)
       return ERROR_INVALID_PARAMETER;
 
    //Ensure the I/O callback functions are properly registered
