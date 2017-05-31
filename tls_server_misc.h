@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.7.6
+ * @version 1.7.8
  **/
 
 #ifndef _TLS_SERVER_MISC_H
@@ -37,15 +37,15 @@ error_t tlsFormatPskIdentityHint(TlsContext *context,
    uint8_t *p, size_t *written);
 
 error_t tlsFormatServerKeyParams(TlsContext *context,
-    uint8_t *p, size_t *written);
+   uint8_t *p, size_t *written);
 
 error_t tlsGenerateServerKeySignature(TlsContext *context,
    uint8_t *p, const uint8_t *params, size_t paramsLen, size_t *written);
 
 error_t tlsParsePskIdentity(TlsContext *context,
-    const uint8_t *p, size_t length, size_t *consumed);
+   const uint8_t *p, size_t length, size_t *consumed);
 
 error_t tlsParseClientKeyParams(TlsContext *context,
-    const uint8_t *p, size_t length, size_t *consumed);
+   const uint8_t *p, size_t length, size_t *consumed);
 
 #endif

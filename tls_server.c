@@ -29,7 +29,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.7.6
+ * @version 1.7.8
  **/
 
 //Switch to the appropriate trace level
@@ -1064,7 +1064,8 @@ error_t tlsFormatServerHelloDone(TlsContext *context,
  * @return Error code
  **/
 
-error_t tlsParseClientHello(TlsContext *context, const TlsClientHello *message, size_t length)
+error_t tlsParseClientHello(TlsContext *context,
+   const TlsClientHello *message, size_t length)
 {
    error_t error;
    size_t i;
@@ -1431,7 +1432,8 @@ error_t tlsParseClientHello(TlsContext *context, const TlsClientHello *message, 
  * @return Error code
  **/
 
-error_t tlsParseClientKeyExchange(TlsContext *context, const TlsClientKeyExchange *message, size_t length)
+error_t tlsParseClientKeyExchange(TlsContext *context,
+   const TlsClientKeyExchange *message, size_t length)
 {
    error_t error;
    size_t n;
@@ -1557,7 +1559,8 @@ error_t tlsParseClientKeyExchange(TlsContext *context, const TlsClientKeyExchang
  * @return Error code
  **/
 
-error_t tlsParseCertificateVerify(TlsContext *context, const TlsCertificateVerify *message, size_t length)
+error_t tlsParseCertificateVerify(TlsContext *context,
+   const TlsCertificateVerify *message, size_t length)
 {
    error_t error;
    size_t n;

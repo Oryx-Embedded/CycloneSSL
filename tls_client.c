@@ -29,7 +29,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.7.6
+ * @version 1.7.8
  **/
 
 //Switch to the appropriate trace level
@@ -1328,7 +1328,8 @@ error_t tlsFormatCertificateVerify(TlsContext *context,
  * @return Error code
  **/
 
-error_t tlsParseServerHello(TlsContext *context, const TlsServerHello *message, size_t length)
+error_t tlsParseServerHello(TlsContext *context,
+   const TlsServerHello *message, size_t length)
 {
    error_t error;
    size_t n;
@@ -1510,7 +1511,8 @@ error_t tlsParseServerHello(TlsContext *context, const TlsServerHello *message, 
  * @return Error code
  **/
 
-error_t tlsParseServerKeyExchange(TlsContext *context, const TlsServerKeyExchange *message, size_t length)
+error_t tlsParseServerKeyExchange(TlsContext *context,
+   const TlsServerKeyExchange *message, size_t length)
 {
    error_t error;
    size_t n;
@@ -1641,7 +1643,8 @@ error_t tlsParseServerKeyExchange(TlsContext *context, const TlsServerKeyExchang
  * @return Error code
  **/
 
-error_t tlsParseCertificateRequest(TlsContext *context, const TlsCertificateRequest *message, size_t length)
+error_t tlsParseCertificateRequest(TlsContext *context,
+   const TlsCertificateRequest *message, size_t length)
 {
    uint_t i;
    size_t n;
@@ -1811,7 +1814,8 @@ error_t tlsParseCertificateRequest(TlsContext *context, const TlsCertificateRequ
  * @return Error code
  **/
 
-error_t tlsParseServerHelloDone(TlsContext *context, const TlsServerHelloDone *message, size_t length)
+error_t tlsParseServerHelloDone(TlsContext *context,
+   const TlsServerHelloDone *message, size_t length)
 {
    //Debug message
    TRACE_INFO("ServerHelloDone message received (%" PRIuSIZE " bytes)...\r\n", length);

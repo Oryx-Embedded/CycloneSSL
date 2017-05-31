@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.7.6
+ * @version 1.7.8
  **/
 
 #ifndef _TLS_H
@@ -68,14 +68,14 @@
    #error TLS_SERVER_SUPPORT parameter is not valid
 #endif
 
-//Minimum version that can be negotiated
+//Minimum TLS version that can be negotiated
 #ifndef TLS_MIN_VERSION
    #define TLS_MIN_VERSION TLS_VERSION_1_0
 #elif (TLS_MIN_VERSION < SSL_VERSION_3_0)
    #error TLS_MIN_VERSION parameter is not valid
 #endif
 
-//Maximum version that can be negotiated
+//Maximum TLS version that can be negotiated
 #ifndef TLS_MAX_VERSION
    #define TLS_MAX_VERSION TLS_VERSION_1_2
 #elif (TLS_MAX_VERSION > TLS_VERSION_1_2 || TLS_MAX_VERSION < TLS_MIN_VERSION)
@@ -425,7 +425,7 @@
    #error TLS_SECP256R1_SUPPORT parameter is not valid
 #endif
 
-//secp384r1 elliptic curve support (NIST P-384) 
+//secp384r1 elliptic curve support (NIST P-384)
 #ifndef TLS_SECP384R1_SUPPORT
    #define TLS_SECP384R1_SUPPORT ENABLED
 #elif (TLS_SECP384R1_SUPPORT != ENABLED && TLS_SECP384R1_SUPPORT != DISABLED)
@@ -531,6 +531,17 @@
 //Forward declaration of TlsContext structure
 struct _TlsContext;
 #define TlsContext struct _TlsContext
+
+
+/**
+ * @brief TLS transport procotols
+ **/
+
+typedef enum
+{
+   TLS_TRANSPORT_PROTOCOL_STREAM   = 0,
+   TLS_TRANSPORT_PROTOCOL_DATAGRAM = 1
+} TlsTransportProtocol;
 
 
 /**
@@ -1111,7 +1122,7 @@ typedef __start_packed struct
 
 
 /**
- * @brief General format of TLS records
+ * @brief TLS record
  **/
 
 typedef __start_packed struct
@@ -1124,7 +1135,7 @@ typedef __start_packed struct
 
 
 /**
- * @brief Handshake message
+ * @brief TLS handshake message
  **/
 
 typedef __start_packed struct
@@ -1414,6 +1425,7 @@ typedef struct
 struct _TlsContext
 {
    TlsState state;                          ///<TLS handshake finite state machine
+   TlsTransportProtocol transportProtocol;  ///<Transport protocol (stream or datagram)
    TlsConnectionEnd entity;                 ///<Client or server operation
 
    TlsIoHandle handle;                      ///<Handle for I/O operations

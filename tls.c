@@ -29,7 +29,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.7.6
+ * @version 1.7.8
  **/
 
 //Switch to the appropriate trace level
@@ -72,6 +72,8 @@ TlsContext *tlsInit(void)
 
       //Default state
       context->state = TLS_STATE_INIT;
+      //Default transport protocol
+      context->transportProtocol = TLS_TRANSPORT_PROTOCOL_STREAM;
       //Default operation mode
       context->entity = TLS_CONNECTION_END_CLIENT;
       //Default TLS version
@@ -395,7 +397,7 @@ error_t tlsSetDhParameters(TlsContext *context,
 /**
  * @brief Register ECDH key agreement callback function
  * @param[in] context Pointer to the TLS context
- * @param[in] pskCallback PSK callback function
+ * @param[in] ecdhCallback ECDH callback function
  * @return Error code
  **/
 
@@ -421,7 +423,7 @@ error_t tlsSetEcdhCallback(TlsContext *context, TlsEcdhCallback ecdhCallback)
 /**
  * @brief ECDSA signature generation callback function
  * @param[in] context Pointer to the TLS context
- * @param[in] pskCallback PSK callback function
+ * @param[in] ecdsaSignCallback ECDSA signature generation callback function
  * @return Error code
  **/
 
@@ -448,7 +450,7 @@ error_t tlsSetEcdsaSignCallback(TlsContext *context,
 /**
  * @brief Register ECDSA signature verification callback function
  * @param[in] context Pointer to the TLS context
- * @param[in] pskCallback PSK callback function
+ * @param[in] ecdsaVerifyCallback ECDSA signature verification callback function
  * @return Error code
  **/
 

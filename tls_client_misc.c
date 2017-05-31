@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.7.6
+ * @version 1.7.8
  **/
 
 //Switch to the appropriate trace level
@@ -309,7 +309,7 @@ error_t tlsFormatClientKeyParams(TlsContext *context,
  **/
 
 error_t tlsParsePskIdentityHint(TlsContext *context,
-    const uint8_t *p, size_t length, size_t *consumed)
+   const uint8_t *p, size_t length, size_t *consumed)
 {
    size_t n;
    TlsPskIdentityHint *pskIdentityHint;
@@ -372,7 +372,7 @@ error_t tlsParsePskIdentityHint(TlsContext *context,
  **/
 
 error_t tlsParseServerKeyParams(TlsContext *context,
-    const uint8_t *p, size_t length, size_t *consumed)
+   const uint8_t *p, size_t length, size_t *consumed)
 {
    error_t error;
    const uint8_t *params;
