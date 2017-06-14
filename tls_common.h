@@ -32,8 +32,16 @@
 //Dependencies
 #include "tls.h"
 
+//C++ guard
+#ifdef __cplusplus
+   extern "C" {
+#endif
+
 //TLS related functions
 error_t tlsHandshake(TlsContext *context);
+
+error_t tlsSendHandshakeMessage(TlsContext *context,
+   const void *data, size_t length, TlsMessageType type);
 
 error_t tlsSendCertificate(TlsContext *context);
 error_t tlsSendChangeCipherSpec(TlsContext *context);
@@ -63,5 +71,10 @@ error_t tlsParseFinished(TlsContext *context,
 
 error_t tlsParseAlert(TlsContext *context,
    const TlsAlert *message, size_t length);
+
+//C++ guard
+#ifdef __cplusplus
+   }
+#endif
 
 #endif

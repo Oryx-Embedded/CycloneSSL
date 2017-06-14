@@ -32,7 +32,18 @@
 //Dependencies
 #include "tls.h"
 
+//C++ guard
+#ifdef __cplusplus
+   extern "C" {
+#endif
+
 //TLS server specific functions
+error_t tlsFormatServerEcPointFormatsExtension(TlsContext *context,
+   uint8_t *p, size_t *written);
+
+error_t tlsFormatServerRenegoInfoExtension(TlsContext *context,
+   uint8_t *p, size_t *written);
+
 error_t tlsFormatPskIdentityHint(TlsContext *context,
    uint8_t *p, size_t *written);
 
@@ -47,5 +58,10 @@ error_t tlsParsePskIdentity(TlsContext *context,
 
 error_t tlsParseClientKeyParams(TlsContext *context,
    const uint8_t *p, size_t length, size_t *consumed);
+
+//C++ guard
+#ifdef __cplusplus
+   }
+#endif
 
 #endif

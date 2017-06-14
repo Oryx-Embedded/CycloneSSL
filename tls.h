@@ -103,6 +103,13 @@
    #error TLS_ECC_CALLBACK_SUPPORT parameter is not valid
 #endif
 
+//Secure renegotiation
+#ifndef TLS_SECURE_RENEGOTIATION_SUPPORT
+   #define TLS_SECURE_RENEGOTIATION_SUPPORT DISABLED
+#elif (TLS_SECURE_RENEGOTIATION_SUPPORT != ENABLED && TLS_SECURE_RENEGOTIATION_SUPPORT != DISABLED)
+   #error TLS_SECURE_RENEGOTIATION_SUPPORT parameter is not valid
+#endif
+
 //SNI (Server Name Indication) extension
 #ifndef TLS_SNI_SUPPORT
    #define TLS_SNI_SUPPORT ENABLED
@@ -531,6 +538,11 @@
 //Forward declaration of TlsContext structure
 struct _TlsContext;
 #define TlsContext struct _TlsContext
+
+//C++ guard
+#ifdef __cplusplus
+   extern "C" {
+#endif
 
 
 /**
@@ -1077,6 +1089,17 @@ typedef __start_packed struct
 
 
 /**
+ * @brief Renegotiated connection
+ **/
+
+typedef __start_packed struct
+{
+   uint8_t length;  //0
+   uint8_t value[]; //1
+} __end_packed TlsRenegoConnection;
+
+
+/**
  * @brief PSK identity
  **/
 
@@ -1147,17 +1170,22 @@ typedef __start_packed struct
 
 
 /**
+ * @brief HelloRequest message
+ **/
+
+typedef void TlsHelloRequest;
+
+
+/**
  * @brief ClientHello message
  **/
 
 typedef __start_packed struct
 {
-   uint8_t msgType;         //0
-   uint8_t length[3];       //1-3
-   uint16_t clientVersion;  //4-5
-   TlsRandom random;        //6-37
-   uint8_t sessionIdLength; //38
-   uint8_t sessionId[];     //39
+   uint16_t clientVersion;  //0-1
+   TlsRandom random;        //2-33
+   uint8_t sessionIdLength; //34
+   uint8_t sessionId[];     //35
 } __end_packed TlsClientHello;
 
 
@@ -1167,12 +1195,10 @@ typedef __start_packed struct
 
 typedef __start_packed struct
 {
-   uint8_t msgType;         //0
-   uint8_t length[3];       //1-3
-   uint16_t serverVersion;  //4-5
-   TlsRandom random;        //6-37
-   uint8_t sessionIdLength; //38
-   uint8_t sessionId[];     //39
+   uint16_t serverVersion;  //0-1
+   TlsRandom random;        //2-33
+   uint8_t sessionIdLength; //34
+   uint8_t sessionId[];     //35
 } __end_packed TlsServerHello;
 
 
@@ -1182,10 +1208,8 @@ typedef __start_packed struct
 
 typedef __start_packed struct
 {
-   uint8_t msgType;                  //0
-   uint8_t length[3];                //1-3
-   uint8_t certificateListLength[3]; //4-6
-   uint8_t certificateList[];        //7
+   uint8_t certificateListLength[3]; //0-2
+   uint8_t certificateList[];        //3
 } __end_packed TlsCertificate;
 
 
@@ -1193,12 +1217,7 @@ typedef __start_packed struct
  * @brief ServerKeyExchange message
  **/
 
-typedef __start_packed struct
-{
-   uint8_t msgType;   //0
-   uint8_t length[3]; //1-3
-   uint8_t data[];    //4
-} __end_packed TlsServerKeyExchange;
+typedef void TlsServerKeyExchange;
 
 
 /**
@@ -1207,10 +1226,8 @@ typedef __start_packed struct
 
 typedef __start_packed struct
 {
-   uint8_t msgType;                 //0
-   uint8_t length[3];               //1-3
-   uint8_t certificateTypesLength;  //4
-   uint8_t certificateTypes[];      //5
+   uint8_t certificateTypesLength;  //0
+   uint8_t certificateTypes[];      //1
 } __end_packed TlsCertificateRequest;
 
 
@@ -1218,47 +1235,28 @@ typedef __start_packed struct
  * @brief ServerHelloDone message
  **/
 
-typedef __start_packed struct
-{
-   uint8_t msgType;   //0
-   uint8_t length[3]; //1-3
-} __end_packed TlsServerHelloDone;
+typedef void TlsServerHelloDone;
 
 
 /**
  * @brief ClientKeyExchange message
  **/
 
-typedef __start_packed struct
-{
-   uint8_t msgType;   //0
-   uint8_t length[3]; //1-3
-   uint8_t data[];    //4
-} __end_packed TlsClientKeyExchange;
+typedef void TlsClientKeyExchange;
 
 
 /**
  * @brief CertificateVerify message
  **/
 
-typedef __start_packed struct
-{
-   uint8_t msgType;     //0
-   uint8_t length[3];   //1-3
-   uint8_t signature[]; //4
-} __end_packed TlsCertificateVerify;
+typedef void TlsCertificateVerify;
 
 
 /**
  * @brief Finished message
  **/
 
-typedef __start_packed struct
-{
-   uint8_t msgType;      //0
-   uint8_t length[3];    //1-3
-   uint8_t verifyData[]; //4
-} __end_packed TlsFinished;
+typedef void TlsFinished;
 
 
 /**
@@ -1416,6 +1414,40 @@ typedef struct
 
 
 /**
+ * @brief Encryption engine
+ **/
+
+typedef struct
+{
+   uint16_t version;             ///<Negotiated TLS version
+   uint8_t macKey[48];           ///<MAC key
+   size_t macKeyLen;             ///<Length of the MAC key
+   uint8_t encKey[32];           ///<Encryption key
+   size_t encKeyLen;             ///<Length of the encryption key
+   uint8_t iv[16];               ///<Initialization vector
+   size_t fixedIvLen;            ///<Length of the fixed part of the IV
+   size_t recordIvLen;           ///<Length of the IV
+   size_t authTagLen;            ///<Length of the authentication tag
+   const CipherAlgo *cipherAlgo; ///<Cipher algorithm
+   void *cipherContext;          ///<Cipher context
+   CipherMode cipherMode;        ///<Cipher mode of operation
+   const HashAlgo *hashAlgo;     ///<Hash algorithm for MAC operations
+   HmacContext *hmacContext;     ///<HMAC context
+#if (TLS_GCM_CIPHER_SUPPORT == ENABLED)
+   GcmContext *gcmContext;       ///<GCM context
+#endif
+   TlsSequenceNumber seqNum;     ///<Sequence number
+} TlsEncryptionEngine;
+
+
+/**
+ * @brief Decryption engine
+ **/
+
+typedef TlsEncryptionEngine TlsDecryptionEngine;
+
+
+/**
  * @brief TLS context
  *
  * An opaque data structure that represents a TLS connection
@@ -1498,33 +1530,17 @@ struct _TlsContext
 
    uint16_t clientVersion;                  ///<Latest version supported by the client
    uint16_t version;                        ///<Negotiated TLS version
-   uint16_t cipherSuite;                    ///<Negotiated cipher suite
    uint8_t compressionMethod;               ///<Negotiated compression algorithm
    uint16_t namedCurve;                     ///<Named curve
 
-   TlsHashAlgo signHashAlgo;                ///<Hash algorithm used for signing
+   TlsCipherSuiteInfo cipherSuite;          ///<Negotiated cipher suite
    TlsKeyExchMethod keyExchMethod;          ///<Key exchange method
-   const CipherAlgo *cipherAlgo;            ///<Bulk cipher algorithm
-   CipherMode cipherMode;                   ///<Cipher mode of operation
-   const HashAlgo *hashAlgo;                ///<Hash algorithm for MAC operations
-   const HashAlgo *prfHashAlgo;             ///<Hash algorithm for PRF operations
-   size_t macKeyLen;                        ///<Number of bytes that are used for generating MAC keys
-   size_t encKeyLen;                        ///<Number of bytes that are used for generating encryption keys
-   size_t fixedIvLen;                       ///<Amount of data needed to be generated for the IV
-   size_t recordIvLen;                      ///<Length of the IV
-   size_t authTagLen;                       ///<Length of the authentication tag
-   size_t verifyDataLen;                    ///<Length of the verify data
+   TlsHashAlgo signHashAlgo;                ///<Hash algorithm used for signing
 
-//#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
    Md5Context *handshakeMd5Context;         ///<MD5 context used to compute verify data
    Sha1Context *handshakeSha1Context;       ///<SHA-1 context used to compute verify data
-//#endif
-
-//#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    HashContext *handshakeHashContext;       ///<Hash context used to compute verify data (TLS 1.2)
-//#endif
-
-   uint8_t verifyData[64];                  ///<Verify data
+   HmacContext hmacContext;                 ///<HMAC context
 
    bool_t ecPointFormatExtFound;            ///<The EcPointFormats extension has been received
 
@@ -1539,12 +1555,9 @@ struct _TlsContext
    bool_t closeNotifySent;                  ///<A closure alert has been sent
    bool_t closeNotifyReceived;              ///<A closure alert has been received from the peer
 
-   HmacContext hmacContext;                 ///<HMAC context
-   void *writeCipherContext;                ///<Bulk cipher context for write operations
-   void *readCipherContext;                 ///<Bulk cipher context for read operations
-#if (TLS_GCM_CIPHER_SUPPORT == ENABLED)
-   GcmContext *writeGcmContext;             ///<GCM context for write operations
-   GcmContext *readGcmContext;              ///<GCM context for read operations
+#if (TLS_SECURE_RENEGOTIATION_SUPPORT == ENABLED)
+   bool_t secureRenegoEnabled;              ///<Secure renegociation enabled
+   bool_t secureRenegoFlag;                 ///<Secure renegociation flag
 #endif
 
    uint8_t *txBuffer;                       ///<TX buffer
@@ -1579,15 +1592,13 @@ struct _TlsContext
    size_t premasterSecretLen;               ///<Length of the premaster secret
    uint8_t masterSecret[48];                ///<Master secret
    uint8_t keyBlock[192];                   ///<Key material
-   uint8_t *writeMacKey;                    ///<Write MAC key
-   uint8_t *readMacKey;                     ///<Read MAC key
-   uint8_t *writeEncKey;                    ///<Encryption key that serves for write operations
-   uint8_t *readEncKey;                     ///<Encryption key that serves for read operations
-   uint8_t *writeIv;                        ///<Write IV
-   uint8_t *readIv;                         ///<Read IV
+   uint8_t clientVerifyData[64];            ///<Client verify data
+   size_t clientVerifyDataLen;              ///<Length of the client verify data
+   uint8_t serverVerifyData[64];            ///<Server verify data
+   size_t serverVerifyDataLen;              ///<Length of the server verify data
 
-   TlsSequenceNumber writeSeqNum;           ///<Write sequence number
-   TlsSequenceNumber readSeqNum;            ///<Read sequence number
+   TlsEncryptionEngine encryptionEngine;    ///<Encryption engine
+   TlsDecryptionEngine decryptionEngine;    ///<Decryption engine
 };
 
 
@@ -1596,6 +1607,9 @@ TlsContext *tlsInit(void);
 
 error_t tlsSetIoCallbacks(TlsContext *context, TlsIoHandle handle,
    TlsIoSendCallback sendCallback, TlsIoReceiveCallback receiveCallback);
+
+error_t tlsSetTransportProtocol(TlsContext *context,
+   TlsTransportProtocol transportProtocol);
 
 error_t tlsSetConnectionEnd(TlsContext *context, TlsConnectionEnd entity);
 error_t tlsSetPrng(TlsContext *context, const PrngAlgo *prngAlgo, void *prngContext);
@@ -1634,6 +1648,8 @@ error_t tlsSetTrustedCaList(TlsContext *context,
 error_t tlsAddCertificate(TlsContext *context, const char_t *certChain,
    size_t certChainLength, const char_t *privateKey, size_t privateKeyLength);
 
+error_t tlsEnableSecureRenegotiation(TlsContext *context, bool_t enable);
+
 error_t tlsConnect(TlsContext *context);
 
 error_t tlsWrite(TlsContext *context, const void *data,
@@ -1652,5 +1668,10 @@ error_t tlsRestoreSession(TlsContext *context, const TlsSession *session);
 
 TlsCache *tlsInitCache(uint_t size);
 void tlsFreeCache(TlsCache *cache);
+
+//C++ guard
+#ifdef __cplusplus
+   }
+#endif
 
 #endif

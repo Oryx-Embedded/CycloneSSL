@@ -33,6 +33,11 @@
 #include "crypto.h"
 #include "tls.h"
 
+//C++ guard
+#ifdef __cplusplus
+   extern "C" {
+#endif
+
 //SSL 3.0 related constants
 extern const uint8_t sslPad1[48];
 extern const uint8_t sslPad2[48];
@@ -41,7 +46,12 @@ extern const uint8_t sslPad2[48];
 error_t sslExpandKey(const uint8_t *secret, size_t secretLength,
    const uint8_t *random, size_t randomLength, uint8_t *output, size_t outputLength);
 
-error_t sslComputeMac(TlsContext *context, const void *secret, TlsSequenceNumber seqNum,
-   const TlsRecord *record, const uint8_t *data, size_t length, uint8_t *mac);
+error_t sslComputeMac(TlsEncryptionEngine *encryptionEngine,
+   const TlsRecord *record, const uint8_t *data, size_t dataLength, uint8_t *mac);
+
+//C++ guard
+#ifdef __cplusplus
+   }
+#endif
 
 #endif

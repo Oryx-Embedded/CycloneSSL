@@ -90,6 +90,49 @@ error_t tlsHandshake(TlsContext *context)
 
 
 /**
+ * @brief Send handshake message
+ * @param[in] context Pointer to the TLS context
+ * @param[in] data Pointer to the handshake message
+ * @param[in] length Length of the handshake message
+ * @param[in] type Handshake message type
+ * @return Error code
+ **/
+
+error_t tlsSendHandshakeMessage(TlsContext *context,
+   const void *data, size_t length, TlsMessageType type)
+{
+   error_t error;
+   TlsHandshake *message;
+
+   //Point to the handshake message header
+   message = (TlsHandshake *) data;
+
+   //Make room for the handshake message header
+   memmove(message->data, data, length);
+
+   //Handshake message type
+   message->msgType = type;
+   //Number of bytes in the message
+   STORE24BE(length, message->length);
+
+   //Total length of the handshake message
+   length += sizeof(TlsHandshake);
+
+   //The HelloRequest message must not be included in the message hashes
+   //that are maintained throughout the handshake and used in the Finished
+   //messages and the CertificateVerify message
+   if(type != TLS_TYPE_HELLO_REQUEST)
+      tlsUpdateHandshakeHash(context, data, length);
+
+   //Send handshake message
+   error = tlsWriteProtocolData(context, data, length, TLS_TYPE_HANDSHAKE);
+
+   //Return status code
+   return error;
+}
+
+
+/**
  * @brief Send Certificate message
  * @param[in] context Pointer to the TLS context
  * @return Error code
@@ -105,7 +148,7 @@ error_t tlsSendCertificate(TlsContext *context)
    error = NO_ERROR;
 
    //Point to the buffer where to format the message
-   message = (void *) context->txBuffer;
+   message = (void *) (context->txBuffer + context->txBufferLen);
 
 #if (TLS_CLIENT_SUPPORT == ENABLED)
    //TLS operates as a client?
@@ -147,7 +190,8 @@ error_t tlsSendCertificate(TlsContext *context)
                TRACE_DEBUG_ARRAY("  ", message, length);
 
                //Send handshake message
-               error = tlsWriteProtocolData(context, message, length, TLS_TYPE_HANDSHAKE);
+               error = tlsSendHandshakeMessage(context, message, length,
+                  TLS_TYPE_CERTIFICATE);
             }
          }
       }
@@ -173,7 +217,8 @@ error_t tlsSendCertificate(TlsContext *context)
             TRACE_DEBUG_ARRAY("  ", message, length);
 
             //Send handshake message
-            error = tlsWriteProtocolData(context, message, length, TLS_TYPE_HANDSHAKE);
+            error = tlsSendHandshakeMessage(context, message, length,
+               TLS_TYPE_CERTIFICATE);
          }
       }
    }
@@ -218,7 +263,7 @@ error_t tlsSendChangeCipherSpec(TlsContext *context)
    TlsChangeCipherSpec *message;
 
    //Point to the buffer where to format the message
-   message = (TlsChangeCipherSpec *) context->txBuffer;
+   message = (TlsChangeCipherSpec *) (context->txBuffer + context->txBufferLen);
 
    //Format ChangeCipherSpec message
    error = tlsFormatChangeCipherSpec(context, message, &length);
@@ -231,14 +276,16 @@ error_t tlsSendChangeCipherSpec(TlsContext *context)
       TRACE_DEBUG_ARRAY("  ", message, length);
 
       //Send ChangeCipherSpec message
-      error = tlsWriteProtocolData(context, message, length, TLS_TYPE_CHANGE_CIPHER_SPEC);
+      error = tlsWriteProtocolData(context, (uint8_t *) message,
+         length, TLS_TYPE_CHANGE_CIPHER_SPEC);
    }
 
    //Check status code
    if(error == NO_ERROR || error == ERROR_WOULD_BLOCK || error == ERROR_TIMEOUT)
    {
       //Initialize encryption engine
-      error = tlsInitEncryptionEngine(context);
+      error = tlsInitEncryptionEngine(context, &context->encryptionEngine,
+         context->entity);
    }
 
    //Check status code
@@ -280,11 +327,23 @@ error_t tlsSendFinished(TlsContext *context)
    TlsFinished *message;
 
    //Point to the buffer where to format the message
-   message = (TlsFinished *) context->txBuffer;
+   message = (TlsFinished *) (context->txBuffer + context->txBufferLen);
 
-   //The verify data is generated from all messages in this handshake
-   //up to but not including the Finished message
-   error = tlsComputeVerifyData(context, context->entity);
+   //TLS operates as a client or a server?
+   if(context->entity == TLS_CONNECTION_END_CLIENT)
+   {
+      //The verify data is generated from all messages in this handshake
+      //up to but not including the Finished message
+      error = tlsComputeVerifyData(context, TLS_CONNECTION_END_CLIENT,
+         context->clientVerifyData, &context->clientVerifyDataLen);
+   }
+   else
+   {
+      //The verify data is generated from all messages in this handshake
+      //up to but not including the Finished message
+      error = tlsComputeVerifyData(context, TLS_CONNECTION_END_SERVER,
+         context->serverVerifyData, &context->serverVerifyDataLen);
+   }
 
    //Check status code
    if(!error)
@@ -301,7 +360,8 @@ error_t tlsSendFinished(TlsContext *context)
       TRACE_DEBUG_ARRAY("  ", message, length);
 
       //Send handshake message
-      error = tlsWriteProtocolData(context, message, length, TLS_TYPE_HANDSHAKE);
+      error = tlsSendHandshakeMessage(context, message, length,
+         TLS_TYPE_FINISHED);
    }
 
    //Check status code
@@ -346,7 +406,7 @@ error_t tlsSendAlert(TlsContext *context, uint8_t level, uint8_t description)
    TlsAlert *message;
 
    //Point to the buffer where to format the message
-   message = (TlsAlert *) context->txBuffer;
+   message = (TlsAlert *) (context->txBuffer + context->txBufferLen);
 
    //Format Alert message
    error = tlsFormatAlert(context, level, description, message, &length);
@@ -359,7 +419,8 @@ error_t tlsSendAlert(TlsContext *context, uint8_t level, uint8_t description)
       TRACE_INFO_ARRAY("  ", message, length);
 
       //Send Alert message
-      error = tlsWriteProtocolData(context, message, length, TLS_TYPE_ALERT);
+      error = tlsWriteProtocolData(context, (uint8_t *) message,
+         length, TLS_TYPE_ALERT);
    }
 
    //Alert messages convey the severity of the message
@@ -420,9 +481,6 @@ error_t tlsFormatCertificate(TlsContext *context,
 
    //Initialize status code
    error = NO_ERROR;
-
-   //Handshake message type
-   message->msgType = TLS_TYPE_CERTIFICATE;
 
    //Point to the first certificate of the list
    p = message->certificateList;
@@ -493,11 +551,6 @@ error_t tlsFormatCertificate(TlsContext *context,
    //Consider the 3-byte length field
    *length += 3;
 
-   //Fix the length field
-   STORE24BE(*length, message->length);
-   //Length of the complete handshake message
-   *length += sizeof(TlsHandshake);
-
    //Return status code
    return error;
 }
@@ -536,17 +589,21 @@ error_t tlsFormatChangeCipherSpec(TlsContext *context,
 error_t tlsFormatFinished(TlsContext *context,
    TlsFinished *message, size_t *length)
 {
-   //Handshake message type
-   message->msgType = TLS_TYPE_FINISHED;
-
-   //The length of the verify data depends on the cipher suite
-   STORE24BE(context->verifyDataLen, message->length);
-
-   //Copy the verify data
-   memcpy(message->verifyData, context->verifyData, context->verifyDataLen);
-
-   //Length of the complete handshake message
-   *length = context->verifyDataLen + sizeof(TlsHandshake);
+   //TLS operates as a client or a server?
+   if(context->entity == TLS_CONNECTION_END_CLIENT)
+   {
+      //Copy the client's verify data
+      memcpy(message, context->clientVerifyData, context->clientVerifyDataLen);
+      //Length of the handshake message
+      *length = context->clientVerifyDataLen;
+   }
+   else
+   {
+      //Copy the server's verify data
+      memcpy(message, context->serverVerifyData, context->serverVerifyDataLen);
+      //Length of the handshake message
+      *length = context->serverVerifyDataLen;
+   }
 
    //Successful processing
    return NO_ERROR;
@@ -587,7 +644,8 @@ error_t tlsFormatAlert(TlsContext *context, uint8_t level,
  * @return Error code
  **/
 
-error_t tlsParseCertificate(TlsContext *context, const TlsCertificate *message, size_t length)
+error_t tlsParseCertificate(TlsContext *context,
+   const TlsCertificate *message, size_t length)
 {
    error_t error;
    const uint8_t *p;
@@ -623,9 +681,6 @@ error_t tlsParseCertificate(TlsContext *context, const TlsCertificate *message, 
       if(context->state != TLS_STATE_CLIENT_CERTIFICATE)
          return ERROR_UNEXPECTED_MESSAGE;
    }
-
-   //Update the hash value with the incoming handshake message
-   tlsUpdateHandshakeHash(context, message, length);
 
    //Get the size occupied by the certificate list
    n = LOAD24BE(message->certificateListLength);
@@ -1030,7 +1085,8 @@ error_t tlsParseCertificate(TlsContext *context, const TlsCertificate *message, 
  * @return Error code
  **/
 
-error_t tlsParseChangeCipherSpec(TlsContext *context, const TlsChangeCipherSpec *message, size_t length)
+error_t tlsParseChangeCipherSpec(TlsContext *context,
+   const TlsChangeCipherSpec *message, size_t length)
 {
    error_t error;
 
@@ -1056,21 +1112,35 @@ error_t tlsParseChangeCipherSpec(TlsContext *context, const TlsChangeCipherSpec 
          return ERROR_UNEXPECTED_MESSAGE;
    }
 
-   //Initialize decryption engine
-   error = tlsInitDecryptionEngine(context);
-   //Any error to report?
-   if(error)
-      return error;
-
    //Inform the record layer that subsequent records will be protected
    //under the newly negotiated encryption algorithm
    context->changeCipherSpecReceived = TRUE;
 
-   //Prepare to receive a Finished message from the peer...
+   //TLS operates as a client or a server?
    if(context->entity == TLS_CONNECTION_END_CLIENT)
+   {
+      //Initialize decryption engine using server write keys
+      error = tlsInitEncryptionEngine(context, &context->decryptionEngine,
+         TLS_CONNECTION_END_SERVER);
+      //Any error to report?
+      if(error)
+         return error;
+
+      //Prepare to receive a Finished message from the server
       context->state = TLS_STATE_SERVER_FINISHED;
+   }
    else
+   {
+      //Initialize decryption engine using client write keys
+      error = tlsInitEncryptionEngine(context, &context->decryptionEngine,
+         TLS_CONNECTION_END_CLIENT);
+      //Any error to report?
+      if(error)
+         return error;
+
+      //Prepare to receive a Finished message from the client
       context->state = TLS_STATE_CLIENT_FINISHED;
+   }
 
    //Successful processing
    return NO_ERROR;
@@ -1085,17 +1155,14 @@ error_t tlsParseChangeCipherSpec(TlsContext *context, const TlsChangeCipherSpec 
  * @return Error code
  **/
 
-error_t tlsParseFinished(TlsContext *context, const TlsFinished *message, size_t length)
+error_t tlsParseFinished(TlsContext *context,
+   const TlsFinished *message, size_t length)
 {
    error_t error;
 
    //Debug message
    TRACE_INFO("Finished message received (%" PRIuSIZE " bytes)...\r\n", length);
    TRACE_DEBUG_ARRAY("  ", message, length);
-
-   //Check the length of the Finished message
-   if(length < sizeof(TlsFinished))
-      return ERROR_DECODING_FAILED;
 
    //TLS operates as a client or a server?
    if(context->entity == TLS_CONNECTION_END_CLIENT)
@@ -1104,39 +1171,22 @@ error_t tlsParseFinished(TlsContext *context, const TlsFinished *message, size_t
       if(context->state != TLS_STATE_SERVER_FINISHED)
          return ERROR_UNEXPECTED_MESSAGE;
 
-      //The verify data is generated from all messages in this
-      //handshake up to but not including the Finished message
-      error = tlsComputeVerifyData(context, TLS_CONNECTION_END_SERVER);
-   }
-   else
-   {
-      //Check current state
-      if(context->state != TLS_STATE_CLIENT_FINISHED)
-         return ERROR_UNEXPECTED_MESSAGE;
+      //The verify data is generated from all messages in this handshake
+      //up to but not including the Finished message
+      error = tlsComputeVerifyData(context, TLS_CONNECTION_END_SERVER,
+         context->serverVerifyData, &context->serverVerifyDataLen);
+      //Unable to generate the verify data?
+      if(error)
+         return error;
 
-      //The verify data is generated from all messages in this
-      //handshake up to but not including the Finished message
-      error = tlsComputeVerifyData(context, TLS_CONNECTION_END_CLIENT);
-   }
+      //Check the length of the Finished message
+      if(length != context->serverVerifyDataLen)
+         return ERROR_DECODING_FAILED;
 
-   //Unable to generate the verify data?
-   if(error)
-      return error;
+      //Check the resulting verify data
+      if(memcmp(message, context->serverVerifyData, context->serverVerifyDataLen))
+         return ERROR_INVALID_SIGNATURE;
 
-   //Check message length
-   if(LOAD24BE(message->length) != context->verifyDataLen)
-      return ERROR_DECODING_FAILED;
-
-   //Check the resulting verify data
-   if(memcmp(message->verifyData, context->verifyData, context->verifyDataLen))
-      return ERROR_INVALID_SIGNATURE;
-
-   //Update the hash value with the incoming handshake message
-   tlsUpdateHandshakeHash(context, message, length);
-
-   //TLS operates as a client or a server?
-   if(context->entity == TLS_CONNECTION_END_CLIENT)
-   {
       //Use abbreviated or full handshake?
       if(context->resume)
          context->state = TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC;
@@ -1145,6 +1195,26 @@ error_t tlsParseFinished(TlsContext *context, const TlsFinished *message, size_t
    }
    else
    {
+      //Check current state
+      if(context->state != TLS_STATE_CLIENT_FINISHED)
+         return ERROR_UNEXPECTED_MESSAGE;
+
+      //The verify data is generated from all messages in this handshake
+      //up to but not including the Finished message
+      error = tlsComputeVerifyData(context, TLS_CONNECTION_END_CLIENT,
+         context->clientVerifyData, &context->clientVerifyDataLen);
+      //Unable to generate the verify data?
+      if(error)
+         return error;
+
+      //Check the length of the Finished message
+      if(length != context->clientVerifyDataLen)
+         return ERROR_DECODING_FAILED;
+
+      //Check the resulting verify data
+      if(memcmp(message, context->clientVerifyData, context->clientVerifyDataLen))
+         return ERROR_INVALID_SIGNATURE;
+
       //Use abbreviated or full handshake?
       if(context->resume)
          context->state = TLS_STATE_APPLICATION_DATA;
@@ -1165,7 +1235,8 @@ error_t tlsParseFinished(TlsContext *context, const TlsFinished *message, size_t
  * @return Error code
  **/
 
-error_t tlsParseAlert(TlsContext *context, const TlsAlert *message, size_t length)
+error_t tlsParseAlert(TlsContext *context,
+   const TlsAlert *message, size_t length)
 {
    //Debug message
    TRACE_INFO("Alert message received (%" PRIuSIZE " bytes)...\r\n", length);

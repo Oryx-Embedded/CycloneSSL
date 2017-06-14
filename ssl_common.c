@@ -137,35 +137,33 @@ error_t sslExpandKey(const uint8_t *secret, size_t secretLength,
 
 /**
  * @brief Compute message authentication code (SSL 3.0)
- * @param[in] context Pointer to the TLS context
- * @param[in] secret MAC secret
- * @param[in] seqNum 64-bit sequence number
+ * @param[in] encryptionEngine Pointer to the encryption/decryption engine
  * @param[in] record Pointer to the TLS record
  * @param[in] data Pointer to the record data
- * @param[in] length Length of the data
+ * @param[in] dataLength Length of the data
  * @param[out] mac The computed MAC value
  * @return Error code
  **/
 
-error_t sslComputeMac(TlsContext *context, const void *secret, TlsSequenceNumber seqNum,
-   const TlsRecord *record, const uint8_t *data, size_t length, uint8_t *mac)
+error_t sslComputeMac(TlsEncryptionEngine *encryptionEngine,
+   const TlsRecord *record, const uint8_t *data, size_t dataLength, uint8_t *mac)
 {
    size_t padLength;
+   const HashAlgo *hashAlgo;
    HashContext *hashContext;
-   const HashAlgo *hash;
 
-   //Hash function that will be used to compute MAC
-   hash = context->hashAlgo;
+   //Point to the hash algorithm to be used
+   hashAlgo = encryptionEngine->hashAlgo;
    //Point to the hash context
-   hashContext = (HashContext *) context->hmacContext.hashContext;
+   hashContext = (HashContext *) encryptionEngine->hmacContext->hashContext;
 
    //The length of pad1 and pad2 depends on hash algorithm
-   if(hash == MD5_HASH_ALGO)
+   if(hashAlgo == MD5_HASH_ALGO)
    {
       //48-byte long patterns are used with MD5
       padLength = 48;
    }
-   else if(hash == SHA1_HASH_ALGO)
+   else if(hashAlgo == SHA1_HASH_ALGO)
    {
       //40-byte long patterns are used with SHA-1
       padLength = 40;
@@ -177,21 +175,21 @@ error_t sslComputeMac(TlsContext *context, const void *secret, TlsSequenceNumber
    }
 
    //Compute hash(secret + pad1 + seqNum + type + length + data)
-   hash->init(hashContext);
-   hash->update(hashContext, secret, context->macKeyLen);
-   hash->update(hashContext, sslPad1, padLength);
-   hash->update(hashContext, seqNum, sizeof(TlsSequenceNumber));
-   hash->update(hashContext, &record->type, sizeof(record->type));
-   hash->update(hashContext, (void *) &record->length, sizeof(record->length));
-   hash->update(hashContext, data, length);
-   hash->final(hashContext, mac);
+   hashAlgo->init(hashContext);
+   hashAlgo->update(hashContext, encryptionEngine->macKey, encryptionEngine->macKeyLen);
+   hashAlgo->update(hashContext, sslPad1, padLength);
+   hashAlgo->update(hashContext, encryptionEngine->seqNum, sizeof(TlsSequenceNumber));
+   hashAlgo->update(hashContext, &record->type, sizeof(record->type));
+   hashAlgo->update(hashContext, (void *) &record->length, sizeof(record->length));
+   hashAlgo->update(hashContext, data, dataLength);
+   hashAlgo->final(hashContext, mac);
 
    //Then compute hash(secret + pad2 + hash(secret + pad1 + seqNum + type + length + data))
-   hash->init(hashContext);
-   hash->update(hashContext, secret, context->macKeyLen);
-   hash->update(hashContext, sslPad2, padLength);
-   hash->update(hashContext, mac, hash->digestSize);
-   hash->final(hashContext, mac);
+   hashAlgo->init(hashContext);
+   hashAlgo->update(hashContext, encryptionEngine->macKey, encryptionEngine->macKeyLen);
+   hashAlgo->update(hashContext, sslPad2, padLength);
+   hashAlgo->update(hashContext, mac, hashAlgo->digestSize);
+   hashAlgo->final(hashContext, mac);
 
    //Successful processing
    return NO_ERROR;

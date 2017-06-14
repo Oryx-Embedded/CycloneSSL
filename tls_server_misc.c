@@ -47,6 +47,131 @@
 
 
 /**
+ * @brief Format EcPointFormats extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] p Output stream where to write the EcPointFormats extension
+ * @param[out] written Total number of bytes that have been written
+ * @return Error code
+ **/
+
+error_t tlsFormatServerEcPointFormatsExtension(TlsContext *context,
+   uint8_t *p, size_t *written)
+{
+   size_t n = 0;
+
+#if (TLS_ECDH_ANON_SUPPORT == ENABLED || TLS_ECDHE_RSA_SUPPORT == ENABLED || \
+   TLS_ECDHE_ECDSA_SUPPORT == ENABLED || TLS_ECDHE_PSK_SUPPORT == ENABLED)
+   //A server that selects an ECC cipher suite in response to a ClientHello
+   //message including an EcPointFormats extension appends this extension
+   //to its ServerHello message
+   if(tlsIsEccCipherSuite(context->cipherSuite.identifier))
+   {
+      //EcPointFormats extension found in the ClientHello message?
+      if(context->ecPointFormatExtFound)
+      {
+         TlsExtension *extension;
+         TlsEcPointFormatList *ecPointFormatList;
+
+         //Add the EcPointFormats extension
+         extension = (TlsExtension *) p;
+         //Type of the extension
+         extension->type = HTONS(TLS_EXT_EC_POINT_FORMATS);
+
+         //Point to the list of supported EC point formats
+         ecPointFormatList = (TlsEcPointFormatList *) extension->value;
+         //Items in the list are ordered according to server's preferences
+         n = 0;
+
+         //The server can parse only the uncompressed point format...
+         ecPointFormatList->value[n++] = TLS_EC_POINT_FORMAT_UNCOMPRESSED;
+         //Fix the length of the list
+         ecPointFormatList->length = n;
+
+         //Consider the 2-byte length field that precedes the list
+         n += sizeof(TlsEcPointFormatList);
+         //Fix the length of the extension
+         extension->length = htons(n);
+
+         //Compute the length, in bytes, of the EcPointFormats extension
+         n += sizeof(TlsExtension);
+      }
+   }
+#endif
+
+   //Total number of bytes that have been written
+   *written = n;
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
+ * @brief Format RenegotiationInfo extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] p Output stream where to write the RenegotiationInfo extension
+ * @param[out] written Total number of bytes that have been written
+ * @return Error code
+ **/
+
+error_t tlsFormatServerRenegoInfoExtension(TlsContext *context,
+   uint8_t *p, size_t *written)
+{
+   size_t n = 0;
+
+#if (TLS_SECURE_RENEGOTIATION_SUPPORT == ENABLED)
+   //Check whether secure renegotiation is enabled
+   if(context->secureRenegoEnabled)
+   {
+      //During secure renegotiation, the server must include a renegotiation_info
+      //extension containing the saved client_verify_data and server_verify_data
+      if(context->secureRenegoFlag)
+      {
+         TlsExtension *extension;
+         TlsRenegoConnection *renegoConnection;
+
+         //Determine the length of the renegotiated_connection field
+         n = context->clientVerifyDataLen + context->serverVerifyDataLen;
+
+         //Add the RenegotiationInfo extension
+         extension = (TlsExtension *) p;
+         //Type of the extension
+         extension->type = HTONS(TLS_EXT_RENEGOTIATION_INFO);
+
+         //Point to the renegotiated_connection field
+         renegoConnection = (TlsRenegoConnection *) extension->value;
+         //Set the length of the verify data
+         renegoConnection->length = n;
+
+         //Copy the saved client_verify_data
+         memcpy(renegoConnection->value, context->clientVerifyData,
+            context->clientVerifyDataLen);
+
+         //Copy the saved client_verify_data
+         memcpy(renegoConnection->value + context->clientVerifyDataLen,
+            context->serverVerifyData, context->serverVerifyDataLen);
+
+         //Consider the length field that precedes the renegotiated_connection
+         //field
+         n += sizeof(TlsRenegoConnection);
+         //Fix the length of the extension
+         extension->length = htons(n);
+
+         //Compute the length, in bytes, of the RenegotiationInfo extension
+         n += sizeof(TlsExtension);
+      }
+   }
+#endif
+
+   //Total number of bytes that have been written
+   *written = n;
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
  * @brief Format PSK identity hint
  * @param[in] context Pointer to the TLS context
  * @param[in] p Output stream where to write the PSK identity hint
@@ -314,7 +439,7 @@ error_t tlsGenerateServerKeySignature(TlsContext *context,
             md5Init(md5Context);
             md5Update(md5Context, context->random, 64);
             md5Update(md5Context, params, paramsLen);
-            md5Final(md5Context, context->verifyData);
+            md5Final(md5Context, context->serverVerifyData);
 
             //Release previously allocated memory
             tlsFreeMem(md5Context);
@@ -338,7 +463,7 @@ error_t tlsGenerateServerKeySignature(TlsContext *context,
                sha1Init(sha1Context);
                sha1Update(sha1Context, context->random, 64);
                sha1Update(sha1Context, params, paramsLen);
-               sha1Final(sha1Context, context->verifyData + MD5_DIGEST_SIZE);
+               sha1Final(sha1Context, context->serverVerifyData + MD5_DIGEST_SIZE);
 
                //Release previously allocated memory
                tlsFreeMem(sha1Context);
@@ -363,7 +488,7 @@ error_t tlsGenerateServerKeySignature(TlsContext *context,
          {
             //Sign the key exchange parameters using RSA
             error = tlsGenerateRsaSignature(&privateKey,
-               context->verifyData, signature->value, written);
+               context->serverVerifyData, signature->value, written);
          }
 
          //Release previously allocated resources
@@ -387,7 +512,7 @@ error_t tlsGenerateServerKeySignature(TlsContext *context,
             sha1Init(sha1Context);
             sha1Update(sha1Context, context->random, 64);
             sha1Update(sha1Context, params, paramsLen);
-            sha1Final(sha1Context, context->verifyData);
+            sha1Final(sha1Context, context->serverVerifyData);
 
             //Release previously allocated memory
             tlsFreeMem(sha1Context);
@@ -402,7 +527,7 @@ error_t tlsGenerateServerKeySignature(TlsContext *context,
          if(!error)
          {
             //Sign the key exchange parameters using DSA
-            error = tlsGenerateDsaSignature(context, context->verifyData,
+            error = tlsGenerateDsaSignature(context, context->serverVerifyData,
                SHA1_DIGEST_SIZE, signature->value, written);
          }
       }
@@ -424,7 +549,7 @@ error_t tlsGenerateServerKeySignature(TlsContext *context,
             sha1Init(sha1Context);
             sha1Update(sha1Context, context->random, 64);
             sha1Update(sha1Context, params, paramsLen);
-            sha1Final(sha1Context, context->verifyData);
+            sha1Final(sha1Context, context->serverVerifyData);
 
             //Release previously allocated memory
             tlsFreeMem(sha1Context);
@@ -439,7 +564,7 @@ error_t tlsGenerateServerKeySignature(TlsContext *context,
          if(!error)
          {
             //Sign the key exchange parameters using ECDSA
-            error = tlsGenerateEcdsaSignature(context, context->verifyData,
+            error = tlsGenerateEcdsaSignature(context, context->serverVerifyData,
                SHA1_DIGEST_SIZE, signature->value, written);
          }
       }

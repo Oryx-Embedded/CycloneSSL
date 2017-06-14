@@ -32,12 +32,17 @@
 //Dependencies
 #include "tls.h"
 
+//C++ guard
+#ifdef __cplusplus
+   extern "C" {
+#endif
+
 //TLS related functions
 error_t tlsWriteProtocolData(TlsContext *context,
-   const void *data, size_t length, TlsContentType contentType);
+   const uint8_t *data, size_t length, TlsContentType contentType);
 
 error_t tlsReadProtocolData(TlsContext *context,
-   void **data, size_t *length, TlsContentType *contentType);
+   uint8_t **data, size_t *length, TlsContentType *contentType);
 
 error_t tlsWriteRecord(TlsContext *context, const uint8_t *data,
    size_t length, TlsContentType contentType);
@@ -49,5 +54,10 @@ error_t tlsEncryptRecord(TlsContext *context, TlsRecord *record);
 error_t tlsDecryptRecord(TlsContext *context, TlsRecord *record);
 
 void tlsIncSequenceNumber(TlsSequenceNumber seqNum);
+
+//C++ guard
+#ifdef __cplusplus
+   }
+#endif
 
 #endif

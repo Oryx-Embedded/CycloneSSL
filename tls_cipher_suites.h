@@ -39,6 +39,11 @@
    {identifier, #identifier, keyExchMethod, cipherAlgo, cipherMode, hashAlgo, prfHashAlgo, \
    macKeyLen, encKeyLen, fixedIvLen, recordIvLen, authTagLen, verifyDataLen}
 
+//C++ guard
+#ifdef __cplusplus
+   extern "C" {
+#endif
+
 
 /**
  * @brief Cipher suite list
@@ -408,5 +413,10 @@ uint_t tlsGetNumSupportedCipherSuites(void);
 const char_t *tlsGetCipherSuiteName(uint16_t identifier);
 bool_t tlsIsCipherSuiteSupported(uint16_t identifier);
 bool_t tlsIsEccCipherSuite(uint16_t identifier);
+
+//C++ guard
+#ifdef __cplusplus
+   }
+#endif
 
 #endif

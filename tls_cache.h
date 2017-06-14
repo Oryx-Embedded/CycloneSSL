@@ -32,11 +32,21 @@
 //Dependencies
 #include "tls.h"
 
+//C++ guard
+#ifdef __cplusplus
+   extern "C" {
+#endif
+
 //Session cache management
 TlsCache *tlsInitCache(uint_t size);
 TlsSession *tlsFindCache(TlsCache *cache, const uint8_t *id, size_t length);
 error_t tlsSaveToCache(TlsContext *context);
 error_t tlsRemoveFromCache(TlsContext *context);
 void tlsFreeCache(TlsCache *cache);
+
+//C++ guard
+#ifdef __cplusplus
+   }
+#endif
 
 #endif

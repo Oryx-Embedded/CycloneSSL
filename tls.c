@@ -160,6 +160,35 @@ error_t tlsSetIoCallbacks(TlsContext *context, TlsIoHandle handle,
 
 
 /**
+ * @brief Set the transport protocol to be used
+ * @param[in] context Pointer to the TLS context
+ * @param[in] transportProtocol Transport protocol to be used
+ * @return Error code
+ **/
+
+error_t tlsSetTransportProtocol(TlsContext *context,
+   TlsTransportProtocol transportProtocol)
+{
+   //Invalid TLS context?
+   if(context == NULL)
+      return ERROR_INVALID_PARAMETER;
+
+   //Invalid parameter?
+   if(transportProtocol != TLS_TRANSPORT_PROTOCOL_STREAM &&
+      transportProtocol != TLS_TRANSPORT_PROTOCOL_DATAGRAM)
+   {
+      return ERROR_INVALID_PARAMETER;
+   }
+
+   //Set transport protocol
+   context->transportProtocol = transportProtocol;
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
  * @brief Set operation mode (client or server)
  * @param[in] context Pointer to the TLS context
  * @param[in] entity Specifies whether this entity is considered a client or a server
@@ -854,6 +883,34 @@ error_t tlsAddCertificate(TlsContext *context, const char_t *certChain,
 
 
 /**
+ * @brief Enable secure renegotiation
+ * @param[in] context Pointer to the TLS context
+ * @param[in] enable specifies whether secure renegotiation is allowed
+ * @return Error code
+ **/
+
+error_t tlsEnableSecureRenegotiation(TlsContext *context, bool_t enable)
+{
+#if (TLS_SECURE_RENEGOTIATION_SUPPORT == ENABLED)
+   size_t length;
+
+   //Invalid TLS context?
+   if(context == NULL)
+      return ERROR_INVALID_PARAMETER;
+
+   //Enable or disable secure renegotiation
+   context->secureRenegoEnabled = enable;
+
+   //Successful processing
+   return NO_ERROR;
+#else
+   //Secure renegotiation is not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
+}
+
+
+/**
  * @brief Initiate the TLS handshake
  * @param[in] context Pointer to the TLS context
  * @return Error code
@@ -959,7 +1016,12 @@ error_t tlsWrite(TlsContext *context, const void *data,
    while(totalLength < length)
    {
       //Check current state
-      if(context->state == TLS_STATE_APPLICATION_DATA)
+      if(context->state < TLS_STATE_APPLICATION_DATA)
+      {
+         //Perform TLS handshake
+         error = tlsConnect(context);
+      }
+      else if(context->state == TLS_STATE_APPLICATION_DATA)
       {
          //Calculate the number of bytes to write at a time
          n = MIN(length - totalLength, context->txRecordMaxLen);
@@ -1044,10 +1106,15 @@ error_t tlsRead(TlsContext *context, void *data,
    while(*received < size)
    {
       //Check current state
-      if(context->state == TLS_STATE_APPLICATION_DATA)
+      if(context->state < TLS_STATE_APPLICATION_DATA)
+      {
+         //Perform TLS handshake
+         error = tlsConnect(context);
+      }
+      else if(context->state == TLS_STATE_APPLICATION_DATA)
       {
          //The TLS record layer receives uninterpreted data from higher layers
-         error = tlsReadProtocolData(context, (void **) &p, &n, &contentType);
+         error = tlsReadProtocolData(context, &p, &n, &contentType);
 
          //Check status code
          if(!error)
@@ -1104,6 +1171,33 @@ error_t tlsRead(TlsContext *context, void *data,
 
                //Advance data pointer
                data = (uint8_t *) data + n;
+            }
+            //Handshake message received?
+            else if(contentType == TLS_TYPE_HANDSHAKE)
+            {
+#if (TLS_CLIENT_SUPPORT == ENABLED)
+               //TLS operates as a client?
+               if(context->entity == TLS_CONNECTION_END_CLIENT)
+               {
+                  //Parse incoming handshake message
+                  error = tlsParseServerMessage(context);
+               }
+               else
+#endif
+#if (TLS_SERVER_SUPPORT == ENABLED)
+               //TLS operates as a server?
+               if(context->entity == TLS_CONNECTION_END_SERVER)
+               {
+                  //Parse incoming handshake message
+                  error = tlsParseClientMessage(context);
+               }
+               else
+#endif
+               //Unsupported mode of operation?
+               {
+                  //Report an error
+                  error = ERROR_FAILURE;
+               }
             }
             //Alert message received?
             else if(contentType == TLS_TYPE_ALERT)
@@ -1251,7 +1345,7 @@ error_t tlsShutdownEx(TlsContext *context, bool_t waitForCloseNotify)
             else if(!context->closeNotifyReceived && waitForCloseNotify)
             {
                //Wait for the responding close_notify alert
-               error = tlsReadProtocolData(context, (void **) &p, &n, &contentType);
+               error = tlsReadProtocolData(context, &p, &n, &contentType);
 
                //Check status code
                if(!error)
@@ -1405,39 +1499,13 @@ void tlsFree(TlsContext *context)
       //Release the hash context used to compute verify data (TLS 1.2)
       if(context->handshakeHashContext != NULL)
       {
-         memset(context->handshakeHashContext, 0, context->prfHashAlgo->contextSize);
          tlsFreeMem(context->handshakeHashContext);
       }
 
-      //Release the encryption context (TX path)
-      if(context->writeCipherContext != NULL)
-      {
-         memset(context->writeCipherContext, 0, context->cipherAlgo->contextSize);
-         tlsFreeMem(context->writeCipherContext);
-      }
-
-      //Release the encryption context (RX path)
-      if(context->readCipherContext != NULL)
-      {
-         memset(context->readCipherContext, 0, context->cipherAlgo->contextSize);
-         tlsFreeMem(context->readCipherContext);
-      }
-
-#if (TLS_GCM_CIPHER_SUPPORT == ENABLED)
-      //Release the GCM context (TX path)
-      if(context->writeGcmContext != NULL)
-      {
-         memset(context->writeGcmContext, 0, sizeof(GcmContext));
-         tlsFreeMem(context->writeGcmContext);
-      }
-
-      //Release the GCM context (RX path)
-      if(context->readGcmContext != NULL)
-      {
-         memset(context->readGcmContext, 0, sizeof(GcmContext));
-         tlsFreeMem(context->readGcmContext);
-      }
-#endif
+      //Release encryption engine
+      tlsFreeEncryptionEngine(&context->encryptionEngine);
+      //Release decryption engine
+      tlsFreeEncryptionEngine(&context->decryptionEngine);
 
       //Clear the TLS context before freeing memory
       memset(context, 0, sizeof(TlsContext));
@@ -1460,7 +1528,7 @@ error_t tlsSaveSession(const TlsContext *context, TlsSession *session)
       return ERROR_INVALID_PARAMETER;
 
    //Invalid session parameters?
-   if(!context->sessionIdLen || !context->cipherSuite)
+   if(!context->sessionIdLen || !context->cipherSuite.identifier)
       return ERROR_FAILURE;
 
    //Save session identifier
@@ -1471,7 +1539,7 @@ error_t tlsSaveSession(const TlsContext *context, TlsSession *session)
    session->timestamp = osGetSystemTime();
 
    //Negotiated cipher suite and compression method
-   session->cipherSuite = context->cipherSuite;
+   session->cipherSuite = context->cipherSuite.identifier;
    session->compressionMethod = context->compressionMethod;
 
    //Save master secret
@@ -1500,7 +1568,7 @@ error_t tlsRestoreSession(TlsContext *context, const TlsSession *session)
    context->sessionIdLen = session->idLength;
 
    //Negotiated cipher suite and compression method
-   context->cipherSuite = session->cipherSuite;
+   context->cipherSuite.identifier = session->cipherSuite;
    context->compressionMethod = session->compressionMethod;
 
    //Restore master secret

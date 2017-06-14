@@ -33,6 +33,11 @@
 #include "tls.h"
 #include "x509.h"
 
+//C++ guard
+#ifdef __cplusplus
+   extern "C" {
+#endif
+
 //TLS related functions
 void tlsProcessError(TlsContext *context, error_t errorCode);
 
@@ -54,10 +59,13 @@ void tlsUpdateHandshakeHash(TlsContext *context, const void *data, size_t length
 error_t tlsFinalizeHandshakeHash(TlsContext *context, const HashAlgo *hash,
    const void *hashContext, const char_t *label, uint8_t *output);
 
-error_t tlsComputeVerifyData(TlsContext *context, TlsConnectionEnd entity);
+error_t tlsComputeVerifyData(TlsContext *context, TlsConnectionEnd entity,
+   uint8_t *verifyData, size_t *verifyDataLength);
 
-error_t tlsInitEncryptionEngine(TlsContext *context);
-error_t tlsInitDecryptionEngine(TlsContext *context);
+error_t tlsInitEncryptionEngine(TlsContext *context,
+   TlsEncryptionEngine *encryptionEngine, TlsConnectionEnd entity);
+
+void tlsFreeEncryptionEngine(TlsEncryptionEngine *encryptionEngine);
 
 error_t tlsWriteMpi(const Mpi *a, uint8_t *data, size_t *length);
 error_t tlsReadMpi(Mpi *a, const uint8_t *data, size_t size, size_t *length);
@@ -107,5 +115,10 @@ const char_t *tlsGetVersionName(uint16_t version);
 const HashAlgo *tlsGetHashAlgo(uint8_t hashAlgoId);
 const EcCurveInfo *tlsGetCurveInfo(uint16_t namedCurve);
 TlsEcNamedCurve tlsGetNamedCurve(const uint8_t *oid, size_t length);
+
+//C++ guard
+#ifdef __cplusplus
+   }
+#endif
 
 #endif

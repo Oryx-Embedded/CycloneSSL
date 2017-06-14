@@ -32,7 +32,36 @@
 //Dependencies
 #include "tls.h"
 
+//C++ guard
+#ifdef __cplusplus
+   extern "C" {
+#endif
+
 //TLS client specific functions
+error_t tlsFormatCipherSuites(TlsContext *context,
+   bool_t *eccCipherSuite, uint8_t *p, size_t *written);
+
+error_t tlsFormatCompressionMethods(TlsContext *context,
+   uint8_t *p, size_t *written);
+
+error_t tlsFormatServerNameExtension(TlsContext *context,
+   uint8_t *p, size_t *written);
+
+error_t tlsFormatAlpnExtension(TlsContext *context,
+   uint8_t *p, size_t *written);
+
+error_t tlsFormatEllipticCurvesExtension(TlsContext *context,
+   uint8_t *p, size_t *written);
+
+error_t tlsFormatClientEcPointFormatsExtension(TlsContext *context,
+   uint8_t *p, size_t *written);
+
+error_t tlsFormatSignatureAlgorithmsExtension(TlsContext *context,
+   bool_t eccCipherSuite, uint8_t *p, size_t *written);
+
+error_t tlsFormatClientRenegoInfoExtension(TlsContext *context,
+   uint8_t *p, size_t *written);
+
 error_t tlsFormatPskIdentity(TlsContext *context,
    uint8_t *p, size_t *written);
 
@@ -47,5 +76,10 @@ error_t tlsParseServerKeyParams(TlsContext *context,
 
 error_t tlsVerifyServerKeySignature(TlsContext *context, const uint8_t *p,
    size_t length, const uint8_t *params, size_t paramsLen, size_t *consumed);
+
+//C++ guard
+#ifdef __cplusplus
+   }
+#endif
 
 #endif

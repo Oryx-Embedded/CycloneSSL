@@ -33,6 +33,8 @@
 #include <string.h>
 #include "tls.h"
 #include "tls_cipher_suites.h"
+#include "tls_client.h"
+#include "tls_server.h"
 #include "tls_common.h"
 #include "tls_record.h"
 #include "tls_misc.h"
@@ -71,6 +73,7 @@ void tlsProcessError(TlsContext *context, error_t errorCode)
       //The read/write operation has failed
       case ERROR_WRITE_FAILED:
       case ERROR_READ_FAILED:
+         context->state = TLS_STATE_CLOSED;
          break;
       //An inappropriate message was received
       case ERROR_UNEXPECTED_MESSAGE:
@@ -176,7 +179,7 @@ error_t tlsGenerateRandomValue(TlsContext *context, TlsRandom *random)
 
 
 /**
- * @brief Set TLS version to use
+ * @brief Set the TLS version to be used
  * @param[in] context Pointer to the TLS context
  * @param[in] version TLS version
  * @return Error code
@@ -275,38 +278,31 @@ error_t tlsSetCipherSuite(TlsContext *context, uint16_t identifier)
    //Ensure that the selected cipher suite matches all the criteria
    if(acceptable)
    {
-      //Save cipher suite identifier
-      context->cipherSuite = identifier;
-      //Set key exchange method
+      //Save the negotiated cipher suite
+      context->cipherSuite = *cipherSuite;
+      //Set the key exchange method to be used
       context->keyExchMethod = cipherSuite->keyExchMethod;
 
-      //Set encryption algorithm and hash function
-      context->cipherAlgo = cipherSuite->cipherAlgo;
-      context->cipherMode = cipherSuite->cipherMode;
-      context->hashAlgo = cipherSuite->hashAlgo;
-      context->prfHashAlgo = cipherSuite->prfHashAlgo;
-
-      //Set appropriate length for MAC keys, encryption keys and IVs
-      context->macKeyLen = cipherSuite->macKeyLen;
-      context->encKeyLen = cipherSuite->encKeyLen;
-      context->fixedIvLen = cipherSuite->fixedIvLen;
-      context->recordIvLen = cipherSuite->recordIvLen;
-
-      //Size of the authentication tag
-      context->authTagLen = cipherSuite->authTagLen;
-      //Size of the verify data
-      context->verifyDataLen = cipherSuite->verifyDataLen;
-
-      //PRF with the SHA-256 is used for all cipher suites published
-      //prior than TLS 1.2 when TLS 1.2 is negotiated
-      if(context->prfHashAlgo == NULL)
-         context->prfHashAlgo = SHA256_HASH_ALGO;
+      //PRF with the SHA-256 is used for all cipher suites published prior
+      //than TLS 1.2 when TLS 1.2 is negotiated
+      if(context->cipherSuite.prfHashAlgo == NULL)
+         context->cipherSuite.prfHashAlgo = SHA256_HASH_ALGO;
 
       //The length of the verify data depends on the TLS version currently used
       if(context->version == SSL_VERSION_3_0)
-         context->verifyDataLen = 36;
+      {
+         //Verify data is always 36-byte long for SSL 3.0
+         context->cipherSuite.verifyDataLen = 36;
+      }
       else if(context->version <= TLS_VERSION_1_1)
-         context->verifyDataLen = 12;
+      {
+         //Verify data is always 12-byte long for TLS 1.0 and 1.1
+         context->cipherSuite.verifyDataLen = 12;
+      }
+      else
+      {
+         //The length of the verify data depends on the cipher suite for TLS 1.2
+      }
 
       //Successful processing
       error = NO_ERROR;
@@ -378,11 +374,15 @@ error_t tlsSelectSignHashAlgo(TlsContext *context,
             if(context->entity == TLS_CONNECTION_END_CLIENT)
             {
                //Check whether the associated hash algorithm is supported
-               if(tlsGetHashAlgo(supportedSignAlgos->value[i].hash) == context->prfHashAlgo)
+               if(tlsGetHashAlgo(supportedSignAlgos->value[i].hash) == context->cipherSuite.prfHashAlgo)
+               {
                   context->signHashAlgo = (TlsHashAlgo) supportedSignAlgos->value[i].hash;
+               }
 #if (TLS_SHA1_SUPPORT == ENABLED)
                else if(supportedSignAlgos->value[i].hash == TLS_HASH_ALGO_SHA1)
+               {
                   context->signHashAlgo = (TlsHashAlgo) supportedSignAlgos->value[i].hash;
+               }
 #endif
             }
             //TLS operates as a server?
@@ -518,6 +518,27 @@ error_t tlsSelectNamedCurve(TlsContext *context,
 
 error_t tlsInitHandshakeHash(TlsContext *context)
 {
+   //SHA-1 context already instantiated?
+   if(context->handshakeSha1Context != NULL)
+   {
+      tlsFreeMem(context->handshakeSha1Context);
+      context->handshakeSha1Context = NULL;
+   }
+
+   //MD5 context already instantiated?
+   if(context->handshakeMd5Context != NULL)
+   {
+      tlsFreeMem(context->handshakeMd5Context);
+      context->handshakeMd5Context = NULL;
+   }
+
+   //Hash algorithm context already instantiated?
+   if(context->handshakeHashContext != NULL)
+   {
+      tlsFreeMem(context->handshakeHashContext);
+      context->handshakeHashContext = NULL;
+   }
+
    //Allocate SHA-1 context
    context->handshakeSha1Context = tlsAllocMem(sizeof(Sha1Context));
    //Failed to allocate memory?
@@ -532,15 +553,9 @@ error_t tlsInitHandshakeHash(TlsContext *context)
    {
       //Allocate MD5 context
       context->handshakeMd5Context = tlsAllocMem(sizeof(Md5Context));
-
       //Failed to allocate memory?
       if(context->handshakeMd5Context == NULL)
-      {
-         //Clean up side effects
-         tlsFreeMem(context->handshakeSha1Context);
-         //Report an error
          return ERROR_OUT_OF_MEMORY;
-      }
 
       //Initialize MD5 context
       md5Init(context->handshakeMd5Context);
@@ -548,40 +563,49 @@ error_t tlsInitHandshakeHash(TlsContext *context)
    //TLS 1.2 currently selected?
    else
    {
-      //Allocate a memory buffer to hold the hash algorithm context
-      context->handshakeHashContext = tlsAllocMem(context->prfHashAlgo->contextSize);
+      const HashAlgo *hashAlgo;
 
+      //Point to the hash algorithm to be used
+      hashAlgo = context->cipherSuite.prfHashAlgo;
+
+      //Allocate hash algorithm context
+      context->handshakeHashContext = tlsAllocMem(hashAlgo->contextSize);
       //Failed to allocate memory?
       if(context->handshakeHashContext == NULL)
-      {
-         //Clean up side effects
-         tlsFreeMem(context->handshakeSha1Context);
-         //Report an error
          return ERROR_OUT_OF_MEMORY;
-      }
 
       //Initialize the hash algorithm context
-      context->prfHashAlgo->init(context->handshakeHashContext);
+      hashAlgo->init(context->handshakeHashContext);
    }
 
 #if (TLS_CLIENT_SUPPORT == ENABLED)
    //TLS operates as a client?
    if(context->entity == TLS_CONNECTION_END_CLIENT)
    {
+      error_t error;
       size_t length;
       TlsHandshake *message;
 
-      //Point to the ClientHello message
-      message = (TlsHandshake *) (context->txBuffer + sizeof(TlsRecord));
-      //Retrieve the length of the message
-      length = LOAD24BE(message->length);
+      //Point to the buffer where to format the handshake message
+      message = (TlsHandshake *) context->txBuffer;
 
-      //Sanity check
-      if(length <= context->txRecordMaxLen)
-      {
-         //Update the hash value with ClientHello message contents
-         tlsUpdateHandshakeHash(context, message, length + sizeof(TlsHandshake));
-      }
+      //Format ClientHello message
+      error = tlsFormatClientHello(context,
+         (TlsClientHello *) message->data, &length);
+      //Any error to report?
+      if(error)
+         return error;
+
+      //Handshake message type
+      message->msgType = TLS_TYPE_CLIENT_HELLO;
+      //Number of bytes in the message
+      STORE24BE(length, message->length);
+
+      //Total length of the handshake message
+      length += sizeof(TlsHandshake);
+
+      //Update the hash value with the ClientHello message
+      tlsUpdateHandshakeHash(context, message, length);
    }
 #endif
 
@@ -600,22 +624,27 @@ error_t tlsInitHandshakeHash(TlsContext *context)
 void tlsUpdateHandshakeHash(TlsContext *context, const void *data, size_t length)
 {
    //Update SHA-1 hash value with message contents
-   if(context->handshakeSha1Context)
+   if(context->handshakeSha1Context != NULL)
       sha1Update(context->handshakeSha1Context, data, length);
 
    //SSL 3.0, TLS 1.0 or 1.1 currently selected?
    if(context->version <= TLS_VERSION_1_1)
    {
       //Update MD5 hash value with message contents
-      if(context->handshakeMd5Context)
+      if(context->handshakeMd5Context != NULL)
          md5Update(context->handshakeMd5Context, data, length);
    }
    //TLS 1.2 currently selected?
    else
    {
+      const HashAlgo *hashAlgo;
+
+      //Point to the hash algorithm to be used
+      hashAlgo = context->cipherSuite.prfHashAlgo;
+
       //Update hash value with message contents
-      if(context->handshakeHashContext)
-         context->prfHashAlgo->update(context->handshakeHashContext, data, length);
+      if(context->handshakeHashContext != NULL)
+         hashAlgo->update(context->handshakeHashContext, data, length);
    }
 }
 
@@ -707,11 +736,15 @@ error_t tlsFinalizeHandshakeHash(TlsContext *context, const HashAlgo *hash,
 /**
  * @brief Compute verify data from previous handshake messages
  * @param[in] context Pointer to the TLS context
- * @param[in] entity Specifies whether the computation is performed at client or server side
+ * @param[in] entity Specifies whether the computation is performed at client
+ *   or server side
+ * @param[out] verifyData Pointer to the buffer where to store the verify data
+ * @param[out] verifyDataLength Length of the verify data
  * @return Error code
  **/
 
-error_t tlsComputeVerifyData(TlsContext *context, TlsConnectionEnd entity)
+error_t tlsComputeVerifyData(TlsContext *context, TlsConnectionEnd entity,
+   uint8_t *verifyData, size_t *verifyDataLength)
 {
    error_t error;
    const char_t *label;
@@ -720,19 +753,19 @@ error_t tlsComputeVerifyData(TlsContext *context, TlsConnectionEnd entity)
    //SSL 3.0 currently selected?
    if(context->version == SSL_VERSION_3_0)
    {
-      //Computation is performed at client or server side?
+      //Check whether computation is performed at client or server side
       label = (entity == TLS_CONNECTION_END_CLIENT) ? "CLNT" : "SRVR";
 
       //Compute MD5(masterSecret + pad2 + MD5(handshakeMessages + label + masterSecret + pad1))
       error = tlsFinalizeHandshakeHash(context, MD5_HASH_ALGO,
-         context->handshakeMd5Context, label, context->verifyData);
+         context->handshakeMd5Context, label, verifyData);
       //Any error to report?
       if(error)
          return error;
 
       //Compute SHA(masterSecret + pad2 + SHA(handshakeMessages + label + masterSecret + pad1))
       error = tlsFinalizeHandshakeHash(context, SHA1_HASH_ALGO,
-         context->handshakeSha1Context, label, context->verifyData + MD5_DIGEST_SIZE);
+         context->handshakeSha1Context, label, verifyData + MD5_DIGEST_SIZE);
       //Any error to report?
       if(error)
          return error;
@@ -762,11 +795,14 @@ error_t tlsComputeVerifyData(TlsContext *context, TlsConnectionEnd entity)
          return error;
 
       //Computation is performed at client or server side?
-      label = (entity == TLS_CONNECTION_END_CLIENT) ? "client finished" : "server finished";
+      if(entity == TLS_CONNECTION_END_CLIENT)
+         label = "client finished";
+      else
+         label = "server finished";
 
       //Verify data is always 12-byte long for TLS 1.0 and 1.1
       error = tlsPrf(context->masterSecret, 48, label, buffer,
-         MD5_DIGEST_SIZE + SHA1_DIGEST_SIZE, context->verifyData, 12);
+         MD5_DIGEST_SIZE + SHA1_DIGEST_SIZE, verifyData, 12);
       //Any error to report?
       if(error)
          return error;
@@ -777,23 +813,34 @@ error_t tlsComputeVerifyData(TlsContext *context, TlsConnectionEnd entity)
    //TLS 1.2 currently selected?
    if(context->version == TLS_VERSION_1_2)
    {
-      //Allocate a memory buffer to hold the hash algorithm context
-      HashContext *hashContext = tlsAllocMem(context->prfHashAlgo->contextSize);
+      const HashAlgo *hashAlgo;
+      HashContext *hashContext;
+
+      //Point to the hash algorithm to be used
+      hashAlgo = context->cipherSuite.prfHashAlgo;
+
+      //Allocate hash algorithm context
+      hashContext = tlsAllocMem(hashAlgo->contextSize);
       //Failed to allocate memory?
       if(hashContext == NULL)
          return ERROR_OUT_OF_MEMORY;
 
       //The original hash context must be preserved
-      memcpy(hashContext, context->handshakeHashContext, context->prfHashAlgo->contextSize);
+      memcpy(hashContext, context->handshakeHashContext, hashAlgo->contextSize);
+
       //Finalize hash computation
-      context->prfHashAlgo->final(hashContext, NULL);
+      hashAlgo->final(hashContext, NULL);
 
       //Computation is performed at client or server side?
-      label = (entity == TLS_CONNECTION_END_CLIENT) ? "client finished" : "server finished";
+      if(entity == TLS_CONNECTION_END_CLIENT)
+         label = "client finished";
+      else
+         label = "server finished";
 
       //Generate the verify data
-      error = tlsPrf2(context->prfHashAlgo, context->masterSecret, 48, label, hashContext->digest,
-         context->prfHashAlgo->digestSize, context->verifyData, context->verifyDataLen);
+      error = tlsPrf2(hashAlgo, context->masterSecret, 48, label,
+         hashContext->digest, hashAlgo->digestSize, verifyData,
+         context->cipherSuite.verifyDataLen);
 
       //Release previously allocated memory
       tlsFreeMem(hashContext);
@@ -810,9 +857,12 @@ error_t tlsComputeVerifyData(TlsContext *context, TlsConnectionEnd entity)
       return ERROR_INVALID_VERSION;
    }
 
+   //Save the length of the verify data
+   *verifyDataLength = context->cipherSuite.verifyDataLen;
+
    //Debug message
    TRACE_DEBUG("Verify data:\r\n");
-   TRACE_DEBUG_ARRAY("  ", context->verifyData, context->verifyDataLen);
+   TRACE_DEBUG_ARRAY("  ", verifyData, *verifyDataLength);
 
    //Successful processing
    return NO_ERROR;
@@ -822,60 +872,123 @@ error_t tlsComputeVerifyData(TlsContext *context, TlsConnectionEnd entity)
 /**
  * @brief Initialize encryption engine
  * @param[in] context Pointer to the TLS context
+ * @param[in] encryptionEngine Pointer to the encryption/decryption engine to
+ *   be initialized
+ * @param[in] entity Specifies whether client or server write keys shall be used
  * @return Error code
  **/
 
-error_t tlsInitEncryptionEngine(TlsContext *context)
+error_t tlsInitEncryptionEngine(TlsContext *context,
+   TlsEncryptionEngine *encryptionEngine, TlsConnectionEnd entity)
 {
    error_t error;
+   const uint8_t *p;
+   TlsCipherSuiteInfo *cipherSuite;
+
+   //Point to the negotiated cipher suite
+   cipherSuite = &context->cipherSuite;
+
+   //Release encryption engine
+   tlsFreeEncryptionEngine(encryptionEngine);
+
+   //Save negotiated TLS version
+   encryptionEngine->version = context->version;
+
+   //The sequence number must be set to zero whenever a connection state is
+   //made the active state
+   memset(encryptionEngine->seqNum, 0, sizeof(TlsSequenceNumber));
+
+   //Set appropriate length for MAC key, encryption key, IV and
+   //authentication tag
+   encryptionEngine->macKeyLen = cipherSuite->macKeyLen;
+   encryptionEngine->encKeyLen = cipherSuite->encKeyLen;
+   encryptionEngine->fixedIvLen = cipherSuite->fixedIvLen;
+   encryptionEngine->recordIvLen = cipherSuite->recordIvLen;
+   encryptionEngine->authTagLen = cipherSuite->authTagLen;
+
+   //Check whether client or server write keys shall be used
+   if(entity == TLS_CONNECTION_END_CLIENT)
+   {
+      //Point to the key material
+      p = context->keyBlock;
+      //Save MAC key
+      memcpy(encryptionEngine->macKey, p, cipherSuite->macKeyLen);
+
+      //Advance current position in the key block
+      p += 2 * cipherSuite->macKeyLen;
+      //Save encryption key
+      memcpy(encryptionEngine->encKey, p, cipherSuite->encKeyLen);
+
+      //Advance current position in the key block
+      p += 2 * cipherSuite->encKeyLen;
+      //Save initialization vector
+      memcpy(encryptionEngine->iv, p, cipherSuite->fixedIvLen);
+   }
+   //TLS operates as a server?
+   else
+   {
+      //Point to the key material
+      p = context->keyBlock + cipherSuite->macKeyLen;
+      //Save MAC key
+      memcpy(encryptionEngine->macKey, p, cipherSuite->macKeyLen);
+
+      //Advance current position in the key block
+      p += cipherSuite->macKeyLen + cipherSuite->encKeyLen;
+      //Save encryption key
+      memcpy(encryptionEngine->encKey, p, cipherSuite->encKeyLen);
+
+      //Advance current position in the key block
+      p += cipherSuite->encKeyLen + cipherSuite->fixedIvLen;
+      //Save initialization vector
+      memcpy(encryptionEngine->iv, p, cipherSuite->fixedIvLen);
+   }
+
+   //Set cipher and hash algorithms
+   encryptionEngine->cipherAlgo = cipherSuite->cipherAlgo;
+   encryptionEngine->cipherMode = cipherSuite->cipherMode;
+   encryptionEngine->hashAlgo = cipherSuite->hashAlgo;
+
+   //Set HMAC context
+   encryptionEngine->hmacContext = &context->hmacContext;
 
    //Check cipher mode of operation
-   if(context->cipherMode == CIPHER_MODE_STREAM ||
-      context->cipherMode == CIPHER_MODE_CBC ||
-      context->cipherMode == CIPHER_MODE_CCM ||
-      context->cipherMode == CIPHER_MODE_GCM)
+   if(encryptionEngine->cipherMode == CIPHER_MODE_STREAM ||
+      encryptionEngine->cipherMode == CIPHER_MODE_CBC ||
+      encryptionEngine->cipherMode == CIPHER_MODE_CCM ||
+      encryptionEngine->cipherMode == CIPHER_MODE_GCM)
    {
-      //Sanity check
-      if(context->cipherAlgo != NULL)
-      {
-         //Allocate a memory buffer to hold the encryption context
-         context->writeCipherContext = tlsAllocMem(context->cipherAlgo->contextSize);
+      //Allocate a memory buffer to hold the encryption context
+      encryptionEngine->cipherContext = tlsAllocMem(encryptionEngine->cipherAlgo->contextSize);
 
-         //Successful memory allocation?
-         if(context->writeCipherContext != NULL)
-         {
-            //Configure the encryption engine with the write key
-            error = context->cipherAlgo->init(context->writeCipherContext,
-               context->writeEncKey, context->encKeyLen);
-         }
-         else
-         {
-            //Failed to allocate memory
-            error = ERROR_OUT_OF_MEMORY;
-         }
+      //Successful memory allocation?
+      if(encryptionEngine->cipherContext != NULL)
+      {
+         //Configure the encryption engine with the write key
+         error = encryptionEngine->cipherAlgo->init(encryptionEngine->cipherContext,
+            encryptionEngine->encKey, encryptionEngine->encKeyLen);
       }
       else
       {
-         //Report an error
-         error = ERROR_FAILURE;
+         //Failed to allocate memory
+         error = ERROR_OUT_OF_MEMORY;
       }
 
 #if (TLS_GCM_CIPHER_SUPPORT == ENABLED)
       //GCM AEAD cipher?
-      if(context->cipherMode == CIPHER_MODE_GCM)
+      if(encryptionEngine->cipherMode == CIPHER_MODE_GCM)
       {
          //Check status code
          if(!error)
          {
             //Allocate a memory buffer to hold the GCM context
-            context->writeGcmContext = tlsAllocMem(sizeof(GcmContext));
+            encryptionEngine->gcmContext = tlsAllocMem(sizeof(GcmContext));
 
             //Successful memory allocation?
-            if(context->writeGcmContext != NULL)
+            if(encryptionEngine->gcmContext != NULL)
             {
                //Initialize GCM context
-               error = gcmInit(context->writeGcmContext,
-                  context->cipherAlgo, context->writeCipherContext);
+               error = gcmInit(encryptionEngine->gcmContext,
+                  encryptionEngine->cipherAlgo, encryptionEngine->cipherContext);
             }
             else
             {
@@ -886,7 +999,7 @@ error_t tlsInitEncryptionEngine(TlsContext *context)
       }
 #endif
    }
-   else if(context->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
+   else if(encryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
    {
       //We are done
       error = NO_ERROR;
@@ -903,85 +1016,27 @@ error_t tlsInitEncryptionEngine(TlsContext *context)
 
 
 /**
- * @brief Initialize decryption engine
- * @param[in] context Pointer to the TLS context
- * @return Error code
+ * @brief Release encryption engine
+ * @param[in] encryptionEngine Pointer to the encryption/decryption engine
  **/
 
-error_t tlsInitDecryptionEngine(TlsContext *context)
+void tlsFreeEncryptionEngine(TlsEncryptionEngine *encryptionEngine)
 {
-   error_t error;
-
-   //Check cipher mode of operation
-   if(context->cipherMode == CIPHER_MODE_STREAM ||
-      context->cipherMode == CIPHER_MODE_CBC ||
-      context->cipherMode == CIPHER_MODE_CCM ||
-      context->cipherMode == CIPHER_MODE_GCM)
+   //Release cipher context
+   if(encryptionEngine->cipherContext != NULL)
    {
-      //Sanity check
-      if(context->cipherAlgo != NULL)
-      {
-         //Allocate a memory buffer to hold the decryption context
-         context->readCipherContext = tlsAllocMem(context->cipherAlgo->contextSize);
-
-         //Successful memory allocation?
-         if(context->readCipherContext != NULL)
-         {
-            //Configure the decryption engine with the read key
-            error = context->cipherAlgo->init(context->readCipherContext,
-               context->readEncKey, context->encKeyLen);
-         }
-         else
-         {
-            //Failed to allocate memory
-            error = ERROR_OUT_OF_MEMORY;
-         }
-      }
-      else
-      {
-         //Report an error
-         error = ERROR_FAILURE;
-      }
+      tlsFreeMem(encryptionEngine->cipherContext);
+      encryptionEngine->cipherContext = NULL;
+   }
 
 #if (TLS_GCM_CIPHER_SUPPORT == ENABLED)
-      //GCM AEAD cipher?
-      if(context->cipherMode == CIPHER_MODE_GCM)
-      {
-         //Check status code
-         if(!error)
-         {
-            //Allocate a memory buffer to hold the GCM context
-            context->readGcmContext = tlsAllocMem(sizeof(GcmContext));
-
-            //Successful memory allocation?
-            if(context->readGcmContext != NULL)
-            {
-               //Initialize GCM context
-               error = gcmInit(context->readGcmContext,
-                  context->cipherAlgo, context->readCipherContext);
-            }
-            else
-            {
-               //Failed to allocate memory
-               error = ERROR_OUT_OF_MEMORY;
-            }
-         }
-      }
+   //Release GCM context
+   if(encryptionEngine->gcmContext != NULL)
+   {
+      tlsFreeMem(encryptionEngine->gcmContext);
+      encryptionEngine->gcmContext = NULL;
+   }
 #endif
-   }
-   else if(context->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
-   {
-      //We are done
-      error = NO_ERROR;
-   }
-   else
-   {
-      //Unsupported mode of operation
-      error = ERROR_FAILURE;
-   }
-
-   //Return status code
-   return error;
 }
 
 
@@ -1742,9 +1797,14 @@ error_t tlsGenerateKeys(TlsContext *context)
    size_t i;
    size_t n;
    uint8_t temp;
+   TlsCipherSuiteInfo *cipherSuite;
+
+   //Point to the negotiated cipher suite
+   cipherSuite = &context->cipherSuite;
 
    //Length of necessary key material
-   n = 2 * (context->macKeyLen + context->encKeyLen + context->fixedIvLen);
+   n = 2 * (cipherSuite->macKeyLen + cipherSuite->encKeyLen +
+      cipherSuite->fixedIvLen);
 
    //Make sure that the key block is large enough
    if(n > sizeof(context->keyBlock))
@@ -1757,8 +1817,8 @@ error_t tlsGenerateKeys(TlsContext *context)
    TRACE_DEBUG("  Server random bytes:\r\n");
    TRACE_DEBUG_ARRAY("    ", &context->serverRandom, 32);
 
-   //If a full handshake is being performed, the premaster secret
-   //shall be first converted to the master secret
+   //If a full handshake is being performed, the premaster secret shall be
+   //first converted to the master secret
    if(!context->resume)
    {
       //Debug message
@@ -1780,19 +1840,19 @@ error_t tlsGenerateKeys(TlsContext *context)
       }
       else
       {
-         //TLS 1.2 PRF uses SHA-256 or a stronger hash algorithm
-         //as the core function in its construction
-         error = tlsPrf2(context->prfHashAlgo, context->premasterSecret,
-            context->premasterSecretLen, "master secret",
-            context->random, 64, context->masterSecret, 48);
+         //TLS 1.2 PRF uses SHA-256 or a stronger hash algorithm as the core
+         //function in its construction
+         error = tlsPrf2(context->cipherSuite.prfHashAlgo,
+            context->premasterSecret, context->premasterSecretLen,
+            "master secret", context->random, 64, context->masterSecret, 48);
       }
 
       //Check the return status
       if(error)
          return error;
 
-      //The premaster secret should be deleted from memory
-      //once the master secret has been computed
+      //The premaster secret should be deleted from memory once the master
+      //secret has been computed
       memset(context->premasterSecret, 0, 48);
    }
 
@@ -1826,8 +1886,8 @@ error_t tlsGenerateKeys(TlsContext *context)
    {
       //TLS 1.2 PRF uses SHA-256 or a stronger hash algorithm
       //as the core function in its construction
-      error = tlsPrf2(context->prfHashAlgo, context->masterSecret, 48,
-         "key expansion", context->random, 64, context->keyBlock, n);
+      error = tlsPrf2(context->cipherSuite.prfHashAlgo, context->masterSecret,
+         48, "key expansion", context->random, 64, context->keyBlock, n);
    }
 
    //Exchange client and server random bytes
@@ -1839,67 +1899,16 @@ error_t tlsGenerateKeys(TlsContext *context)
       context->random[i + 32] = temp;
    }
 
-   //Any error while performing key expansion?
-   if(error)
-      return error;
-
-   //Debug message
-   TRACE_DEBUG("  Key block:\r\n");
-   TRACE_DEBUG_ARRAY("    ", context->keyBlock, n);
-
-   //TLS operates as a client?
-   if(context->entity == TLS_CONNECTION_END_CLIENT)
+   //Successful key expansion?
+   if(!error)
    {
-      //MAC keys
-      context->writeMacKey = context->keyBlock;
-      context->readMacKey = context->writeMacKey + context->macKeyLen;
-      //Encryption keys
-      context->writeEncKey = context->readMacKey + context->macKeyLen;
-      context->readEncKey = context->writeEncKey + context->encKeyLen;
-      //Initialization vectors
-      context->writeIv = context->readEncKey + context->encKeyLen;
-      context->readIv = context->writeIv + context->fixedIvLen;
-   }
-   //TLS operates as a server?
-   else
-   {
-      //MAC keys
-      context->readMacKey = context->keyBlock;
-      context->writeMacKey = context->readMacKey + context->macKeyLen;
-      //Encryption keys
-      context->readEncKey = context->writeMacKey + context->macKeyLen;
-      context->writeEncKey = context->readEncKey + context->encKeyLen;
-      //Initialization vectors
-      context->readIv = context->writeEncKey + context->encKeyLen;
-      context->writeIv = context->readIv + context->fixedIvLen;
+      //Debug message
+      TRACE_DEBUG("  Key block:\r\n");
+      TRACE_DEBUG_ARRAY("    ", context->keyBlock, n);
    }
 
-   //Dump MAC keys for debugging purpose
-   if(context->macKeyLen > 0)
-   {
-      TRACE_DEBUG("  Write MAC key:\r\n");
-      TRACE_DEBUG_ARRAY("    ", context->writeMacKey, context->macKeyLen);
-      TRACE_DEBUG("  Read MAC key:\r\n");
-      TRACE_DEBUG_ARRAY("    ", context->readMacKey, context->macKeyLen);
-   }
-
-   //Dump encryption keys for debugging purpose
-   TRACE_DEBUG("  Write encryption key:\r\n");
-   TRACE_DEBUG_ARRAY("    ", context->writeEncKey, context->encKeyLen);
-   TRACE_DEBUG("  Read encryption key:\r\n");
-   TRACE_DEBUG_ARRAY("    ", context->readEncKey, context->encKeyLen);
-
-   //Dump initialization vectors for debugging purpose
-   if(context->fixedIvLen > 0)
-   {
-      TRACE_DEBUG("  Write IV:\r\n");
-      TRACE_DEBUG_ARRAY("    ", context->writeIv, context->fixedIvLen);
-      TRACE_DEBUG("  Read IV:\r\n");
-      TRACE_DEBUG_ARRAY("    ", context->readIv, context->fixedIvLen);
-   }
-
-   //Key generation is successful
-   return NO_ERROR;
+   //Return status code
+   return error;
 }
 
 
@@ -2517,7 +2526,14 @@ const TlsExtension *tlsGetExtension(const uint8_t *data, size_t length, uint16_t
 const char_t *tlsGetVersionName(uint16_t version)
 {
    //TLS versions
-   static const char_t *label[] = {"SSL 3.0", "TLS 1.0", "TLS 1.1", "TLS 1.2", "Unknown"};
+   static const char_t *label[] =
+   {
+      "SSL 3.0",
+      "TLS 1.0",
+      "TLS 1.1",
+      "TLS 1.2",
+      "Unknown"
+   };
 
    //Check current version
    if(version == SSL_VERSION_3_0)
