@@ -1,6 +1,6 @@
 /**
- * @file ssl_common.h
- * @brief Functions common to SSL 3.0 client and server
+ * @file tls_handshake.h
+ * @brief TLS handshake protocol
  *
  * @section License
  *
@@ -23,14 +23,13 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.7.8
+ * @version 1.8.0
  **/
 
-#ifndef _SSL_COMMON_H
-#define _SSL_COMMON_H
+#ifndef _TLS_HANDSHAKE_H
+#define _TLS_HANDSHAKE_H
 
 //Dependencies
-#include "crypto.h"
 #include "tls.h"
 
 //C++ guard
@@ -38,16 +37,14 @@
    extern "C" {
 #endif
 
-//SSL 3.0 related constants
-extern const uint8_t sslPad1[48];
-extern const uint8_t sslPad2[48];
+//TLS related functions
+error_t tlsHandshake(TlsContext *context);
 
-//SSL 3.0 related functions
-error_t sslExpandKey(const uint8_t *secret, size_t secretLength,
-   const uint8_t *random, size_t randomLength, uint8_t *output, size_t outputLength);
+error_t tlsClientHandshake(TlsContext *context);
+error_t tlsServerHandshake(TlsContext *context);
 
-error_t sslComputeMac(TlsEncryptionEngine *encryptionEngine,
-   const TlsRecord *record, const uint8_t *data, size_t dataLength, uint8_t *mac);
+error_t tlsParseClientMessage(TlsContext *context);
+error_t tlsParseServerMessage(TlsContext *context);
 
 //C++ guard
 #ifdef __cplusplus

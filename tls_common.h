@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.7.8
+ * @version 1.8.0
  **/
 
 #ifndef _TLS_COMMON_H
@@ -38,11 +38,6 @@
 #endif
 
 //TLS related functions
-error_t tlsHandshake(TlsContext *context);
-
-error_t tlsSendHandshakeMessage(TlsContext *context,
-   const void *data, size_t length, TlsMessageType type);
-
 error_t tlsSendCertificate(TlsContext *context);
 error_t tlsSendChangeCipherSpec(TlsContext *context);
 error_t tlsSendFinished(TlsContext *context);

@@ -1,6 +1,6 @@
 /**
- * @file tls_cache.h
- * @brief Session cache management
+ * @file tls_certificate.h
+ * @brief Certificate handling
  *
  * @section License
  *
@@ -26,23 +26,36 @@
  * @version 1.8.0
  **/
 
-#ifndef _TLS_CACHE_H
-#define _TLS_CACHE_H
+#ifndef _TLS_CERTIFICATE_H
+#define _TLS_CERTIFICATE_H
 
 //Dependencies
 #include "tls.h"
+#include "certificate/x509_common.h"
 
 //C++ guard
 #ifdef __cplusplus
    extern "C" {
 #endif
 
-//Session cache management
-TlsCache *tlsInitCache(uint_t size);
-TlsSession *tlsFindCache(TlsCache *cache, const uint8_t *id, size_t length);
-error_t tlsSaveToCache(TlsContext *context);
-error_t tlsRemoveFromCache(TlsContext *context);
-void tlsFreeCache(TlsCache *cache);
+//TLS related functions
+bool_t tlsIsCertificateAcceptable(const TlsCertDesc *cert,
+   const uint8_t *certTypes, size_t numCertTypes, const TlsSignHashAlgos *signHashAlgos,
+   const TlsEllipticCurveList *curveList, const TlsCertAuthorities *certAuthorities);
+
+bool_t tlsIsCertificateValid(const X509CertificateInfo *certInfo,
+   const char_t *trustedCaList, size_t trustedCaListLen,
+   uint_t pathLength, const char_t *subjectName);
+
+error_t tlsGetCertificateType(const X509CertificateInfo *certInfo,
+   TlsCertificateType *certType, TlsSignatureAlgo *certSignAlgo,
+   TlsHashAlgo *certHashAlgo, TlsEcNamedCurve *namedCurve);
+
+error_t tlsReadSubjectPublicKey(TlsContext *context,
+   const X509CertificateInfo *certInfo);
+
+error_t tlsCheckKeyUsage(const X509CertificateInfo *certInfo,
+   TlsConnectionEnd entity, TlsKeyExchMethod keyExchMethod);
 
 //C++ guard
 #ifdef __cplusplus

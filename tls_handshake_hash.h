@@ -1,6 +1,6 @@
 /**
- * @file tls_cache.h
- * @brief Session cache management
+ * @file tls_handshake_hash.h
+ * @brief Handshake hash calculation/verification
  *
  * @section License
  *
@@ -26,8 +26,8 @@
  * @version 1.8.0
  **/
 
-#ifndef _TLS_CACHE_H
-#define _TLS_CACHE_H
+#ifndef _TLS_HANDSHAKE_HASH_H
+#define _TLS_HANDSHAKE_HASH_H
 
 //Dependencies
 #include "tls.h"
@@ -37,12 +37,17 @@
    extern "C" {
 #endif
 
-//Session cache management
-TlsCache *tlsInitCache(uint_t size);
-TlsSession *tlsFindCache(TlsCache *cache, const uint8_t *id, size_t length);
-error_t tlsSaveToCache(TlsContext *context);
-error_t tlsRemoveFromCache(TlsContext *context);
-void tlsFreeCache(TlsCache *cache);
+//TLS related functions
+error_t tlsInitHandshakeHash(TlsContext *context);
+
+void tlsUpdateHandshakeHash(TlsContext *context, const void *data,
+   size_t length);
+
+error_t tlsFinalizeHandshakeHash(TlsContext *context, const HashAlgo *hash,
+   const void *hashContext, const char_t *label, uint8_t *output);
+
+error_t tlsComputeVerifyData(TlsContext *context, TlsConnectionEnd entity,
+   uint8_t *verifyData, size_t *verifyDataLen);
 
 //C++ guard
 #ifdef __cplusplus

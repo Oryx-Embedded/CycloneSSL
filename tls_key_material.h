@@ -1,6 +1,6 @@
 /**
- * @file tls_cache.h
- * @brief Session cache management
+ * @file tls_key_material.h
+ * @brief Key meterial generation
  *
  * @section License
  *
@@ -26,8 +26,8 @@
  * @version 1.8.0
  **/
 
-#ifndef _TLS_CACHE_H
-#define _TLS_CACHE_H
+#ifndef _TLS_KEY_MATERIAL_H
+#define _TLS_KEY_MATERIAL_H
 
 //Dependencies
 #include "tls.h"
@@ -37,12 +37,23 @@
    extern "C" {
 #endif
 
-//Session cache management
-TlsCache *tlsInitCache(uint_t size);
-TlsSession *tlsFindCache(TlsCache *cache, const uint8_t *id, size_t length);
-error_t tlsSaveToCache(TlsContext *context);
-error_t tlsRemoveFromCache(TlsContext *context);
-void tlsFreeCache(TlsCache *cache);
+//TLS related functions
+error_t tlsGenerateSessionKeys(TlsContext *context);
+error_t tlsGenerateMasterSecret(TlsContext *context);
+error_t tlsGenerateExtendedMasterSecret(TlsContext *context);
+error_t tlsGeneratePskPremasterSecret(TlsContext *context);
+error_t tlsGenerateKeyBlock(TlsContext *context, size_t keyBlockLen);
+
+error_t tlsExportKeyingMaterial(TlsContext *context, const char_t *label,
+   bool_t useContextValue, const uint8_t *contextValue,
+   size_t contextValueLen, uint8_t *output, size_t outputLen);
+
+error_t tlsPrf(const uint8_t *secret, size_t secretLen, const char_t *label,
+   const uint8_t *seed, size_t seedLen, uint8_t *output, size_t outputLen);
+
+error_t tlsPrf2(const HashAlgo *hash, const uint8_t *secret,
+   size_t secretLen, const char_t *label, const uint8_t *seed,
+   size_t seedLen, uint8_t *output, size_t outputLen);
 
 //C++ guard
 #ifdef __cplusplus

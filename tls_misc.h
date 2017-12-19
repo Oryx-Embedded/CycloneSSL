@@ -1,6 +1,6 @@
 /**
  * @file tls_misc.h
- * @brief Helper functions (TLS client and server)
+ * @brief TLS helper functions
  *
  * @section License
  *
@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.7.8
+ * @version 1.8.0
  **/
 
 #ifndef _TLS_MISC_H
@@ -31,7 +31,6 @@
 
 //Dependencies
 #include "tls.h"
-#include "x509.h"
 
 //C++ guard
 #ifdef __cplusplus
@@ -43,24 +42,12 @@ void tlsProcessError(TlsContext *context, error_t errorCode);
 
 error_t tlsGenerateRandomValue(TlsContext *context, TlsRandom *random);
 
-error_t tlsSetVersion(TlsContext *context, uint16_t version);
-error_t tlsSetCipherSuite(TlsContext *context, uint16_t identifier);
-error_t tlsSetCompressionMethod(TlsContext *context, uint8_t identifier);
-
-error_t tlsSelectSignHashAlgo(TlsContext *context,
-   TlsSignatureAlgo signAlgo, const TlsSignHashAlgos *supportedSignAlgos);
+error_t tlsSelectVersion(TlsContext *context, uint16_t version);
+error_t tlsSelectCipherSuite(TlsContext *context, uint16_t identifier);
+error_t tlsSelectCompressMethod(TlsContext *context, uint8_t identifier);
 
 error_t tlsSelectNamedCurve(TlsContext *context,
    const TlsEllipticCurveList *curveList);
-
-error_t tlsInitHandshakeHash(TlsContext *context);
-void tlsUpdateHandshakeHash(TlsContext *context, const void *data, size_t length);
-
-error_t tlsFinalizeHandshakeHash(TlsContext *context, const HashAlgo *hash,
-   const void *hashContext, const char_t *label, uint8_t *output);
-
-error_t tlsComputeVerifyData(TlsContext *context, TlsConnectionEnd entity,
-   uint8_t *verifyData, size_t *verifyDataLength);
 
 error_t tlsInitEncryptionEngine(TlsContext *context,
    TlsEncryptionEngine *encryptionEngine, TlsConnectionEnd entity);
@@ -76,45 +63,13 @@ error_t tlsWriteEcPoint(const EcDomainParameters *params,
 error_t tlsReadEcPoint(const EcDomainParameters *params,
    EcPoint *a, const uint8_t *data, size_t size, size_t *length);
 
-error_t tlsGenerateRsaSignature(const RsaPrivateKey *key,
-   const uint8_t *digest, uint8_t *signature, size_t *signatureLength);
-
-error_t tlsVerifyRsaSignature(const RsaPublicKey *key,
-   const uint8_t *digest, const uint8_t *signature, size_t signatureLength);
-
-error_t tlsGenerateDsaSignature(TlsContext *context, const uint8_t *digest,
-   size_t digestLength, uint8_t *signature, size_t *signatureLength);
-
-error_t tlsVerifyDsaSignature(TlsContext *context, const uint8_t *digest,
-   size_t digestLength, const uint8_t *signature, size_t signatureLength);
-
-error_t tlsGenerateEcdsaSignature(TlsContext *context, const uint8_t *digest,
-   size_t digestLength, uint8_t *signature, size_t *signatureLength);
-
-error_t tlsVerifyEcdsaSignature(TlsContext *context, const uint8_t *digest,
-   size_t digestLength, const uint8_t *signature, size_t signatureLength);
-
-error_t tlsGeneratePskPremasterSecret(TlsContext *context);
-error_t tlsGenerateKeys(TlsContext *context);
-
-error_t tlsPrf(const uint8_t *secret, size_t secretLength, const char_t *label,
-   const uint8_t *seed, size_t seedLength, uint8_t *output, size_t outputLength);
-
-error_t tlsPrf2(const HashAlgo *hash, const uint8_t *secret, size_t secretLength,
-   const char_t *label, const uint8_t *seed, size_t seedLength, uint8_t *output, size_t outputLength);
-
-bool_t tlsIsCertificateAcceptable(const TlsCertDesc *cert,
-   const uint8_t *certTypes, size_t numCertTypes, const TlsSignHashAlgos *signHashAlgos,
-   const TlsEllipticCurveList *curveList, const TlsCertAuthorities *certAuthorities);
-
-error_t tlsGetCertificateType(const X509CertificateInfo *certInfo, TlsCertificateType *certType,
-   TlsSignatureAlgo *certSignAlgo, TlsHashAlgo *certHashAlgo, TlsEcNamedCurve *namedCurve);
-
-const TlsExtension *tlsGetExtension(const uint8_t *data, size_t length, uint16_t type);
 const char_t *tlsGetVersionName(uint16_t version);
 const HashAlgo *tlsGetHashAlgo(uint8_t hashAlgoId);
 const EcCurveInfo *tlsGetCurveInfo(uint16_t namedCurve);
 TlsEcNamedCurve tlsGetNamedCurve(const uint8_t *oid, size_t length);
+
+size_t tlsComputeEncryptionOverhead(TlsEncryptionEngine *encryptionEngine,
+   size_t payloadLen);
 
 //C++ guard
 #ifdef __cplusplus

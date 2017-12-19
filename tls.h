@@ -23,23 +23,29 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.7.8
+ * @version 1.8.0
  **/
 
 #ifndef _TLS_H
 #define _TLS_H
 
+//Forward declaration of TlsContext structure
+struct _TlsContext;
+#define TlsContext struct _TlsContext
+
 //Dependencies
 #include "os_port.h"
-#include "crypto.h"
+#include "core/crypto.h"
 #include "tls_config.h"
-#include "hmac.h"
-#include "rsa.h"
-#include "dsa.h"
-#include "ecdsa.h"
-#include "dh.h"
-#include "ecdh.h"
-#include "cipher_mode_gcm.h"
+#include "tls_legacy.h"
+#include "dtls_misc.h"
+#include "mac/hmac.h"
+#include "pkc/rsa.h"
+#include "pkc/dsa.h"
+#include "ecc/ecdsa.h"
+#include "pkc/dh.h"
+#include "ecc/ecdh.h"
+#include "aead/gcm.h"
 
 //TLS version numbers
 #define SSL_VERSION_3_0 0x0300
@@ -96,11 +102,32 @@
    #error TLS_SESSION_CACHE_LIFETIME parameter is not valid
 #endif
 
-//ECC callback functions
-#ifndef TLS_ECC_CALLBACK_SUPPORT
-   #define TLS_ECC_CALLBACK_SUPPORT DISABLED
-#elif (TLS_ECC_CALLBACK_SUPPORT != ENABLED && TLS_ECC_CALLBACK_SUPPORT != DISABLED)
-   #error TLS_ECC_CALLBACK_SUPPORT parameter is not valid
+//SNI (Server Name Indication) extension
+#ifndef TLS_SNI_SUPPORT
+   #define TLS_SNI_SUPPORT ENABLED
+#elif (TLS_SNI_SUPPORT != ENABLED && TLS_SNI_SUPPORT != DISABLED)
+   #error TLS_SNI_SUPPORT parameter is not valid
+#endif
+
+//Maximum fragment length extension
+#ifndef TLS_MAX_FRAG_LEN_SUPPORT
+   #define TLS_MAX_FRAG_LEN_SUPPORT DISABLED
+#elif (TLS_MAX_FRAG_LEN_SUPPORT != ENABLED && TLS_MAX_FRAG_LEN_SUPPORT != DISABLED)
+   #error TLS_MAX_FRAG_LEN_SUPPORT parameter is not valid
+#endif
+
+//ALPN (Application-Layer Protocol Negotiation) extension
+#ifndef TLS_ALPN_SUPPORT
+   #define TLS_ALPN_SUPPORT DISABLED
+#elif (TLS_ALPN_SUPPORT != ENABLED && TLS_ALPN_SUPPORT != DISABLED)
+   #error TLS_ALPN_SUPPORT parameter is not valid
+#endif
+
+//Extended master secret extension
+#ifndef TLS_EXT_MASTER_SECRET_SUPPORT
+   #define TLS_EXT_MASTER_SECRET_SUPPORT DISABLED
+#elif (TLS_EXT_MASTER_SECRET_SUPPORT != ENABLED && TLS_EXT_MASTER_SECRET_SUPPORT != DISABLED)
+   #error TLS_EXT_MASTER_SECRET_SUPPORT parameter is not valid
 #endif
 
 //Secure renegotiation
@@ -110,18 +137,18 @@
    #error TLS_SECURE_RENEGOTIATION_SUPPORT parameter is not valid
 #endif
 
-//SNI (Server Name Indication) extension
-#ifndef TLS_SNI_SUPPORT
-   #define TLS_SNI_SUPPORT ENABLED
-#elif (TLS_SNI_SUPPORT != ENABLED && TLS_SNI_SUPPORT != DISABLED)
-   #error TLS_SNI_SUPPORT parameter is not valid
+//Fallback SCSV support
+#ifndef TLS_FALLBACK_SCSV_SUPPORT
+   #define TLS_FALLBACK_SCSV_SUPPORT DISABLED
+#elif (TLS_FALLBACK_SCSV_SUPPORT != ENABLED && TLS_FALLBACK_SCSV_SUPPORT != DISABLED)
+   #error TLS_FALLBACK_SCSV_SUPPORT parameter is not valid
 #endif
 
-//ALPN (Application-Layer Protocol Negotiation) extension
-#ifndef TLS_ALPN_SUPPORT
-   #define TLS_ALPN_SUPPORT DISABLED
-#elif (TLS_ALPN_SUPPORT != ENABLED && TLS_ALPN_SUPPORT != DISABLED)
-   #error TLS_ALPN_SUPPORT parameter is not valid
+//ECC callback functions
+#ifndef TLS_ECC_CALLBACK_SUPPORT
+   #define TLS_ECC_CALLBACK_SUPPORT DISABLED
+#elif (TLS_ECC_CALLBACK_SUPPORT != ENABLED && TLS_ECC_CALLBACK_SUPPORT != DISABLED)
+   #error TLS_ECC_CALLBACK_SUPPORT parameter is not valid
 #endif
 
 //Maximum number of certificates the end entity can load
@@ -152,7 +179,7 @@
    #error TLS_DHE_DSS_SUPPORT parameter is not valid
 #endif
 
-//DH_anon key exchange support
+//DH_anon key exchange support (insecure)
 #ifndef TLS_DH_ANON_SUPPORT
    #define TLS_DH_ANON_SUPPORT DISABLED
 #elif (TLS_DH_ANON_SUPPORT != ENABLED && TLS_DH_ANON_SUPPORT != DISABLED)
@@ -173,7 +200,7 @@
    #error TLS_ECDHE_ECDSA_SUPPORT parameter is not valid
 #endif
 
-//ECDH_anon key exchange support
+//ECDH_anon key exchange support (insecure)
 #ifndef TLS_ECDH_ANON_SUPPORT
    #define TLS_ECDH_ANON_SUPPORT DISABLED
 #elif (TLS_ECDH_ANON_SUPPORT != ENABLED && TLS_ECDH_ANON_SUPPORT != DISABLED)
@@ -229,9 +256,16 @@
    #error TLS_ECDSA_SIGN_SUPPORT parameter is not valid
 #endif
 
+//NULL cipher support (insecure)
+#ifndef TLS_NULL_CIPHER_SUPPORT
+   #define TLS_NULL_CIPHER_SUPPORT DISABLED
+#elif (TLS_NULL_CIPHER_SUPPORT != ENABLED && TLS_NULL_CIPHER_SUPPORT != DISABLED)
+   #error TLS_NULL_CIPHER_SUPPORT parameter is not valid
+#endif
+
 //Stream cipher support
 #ifndef TLS_STREAM_CIPHER_SUPPORT
-   #define TLS_STREAM_CIPHER_SUPPORT ENABLED
+   #define TLS_STREAM_CIPHER_SUPPORT DISABLED
 #elif (TLS_STREAM_CIPHER_SUPPORT != ENABLED && TLS_STREAM_CIPHER_SUPPORT != DISABLED)
    #error TLS_STREAM_CIPHER_SUPPORT parameter is not valid
 #endif
@@ -271,28 +305,28 @@
    #error TLS_CHACHA20_POLY1305_SUPPORT parameter is not valid
 #endif
 
-//RC4 cipher support
+//RC4 cipher support (insecure)
 #ifndef TLS_RC4_SUPPORT
    #define TLS_RC4_SUPPORT DISABLED
 #elif (TLS_RC4_SUPPORT != ENABLED && TLS_RC4_SUPPORT != DISABLED)
    #error TLS_RC4_SUPPORT parameter is not valid
 #endif
 
-//IDEA cipher support
+//IDEA cipher support (insecure)
 #ifndef TLS_IDEA_SUPPORT
    #define TLS_IDEA_SUPPORT DISABLED
 #elif (TLS_IDEA_SUPPORT != ENABLED && TLS_IDEA_SUPPORT != DISABLED)
    #error TLS_IDEA_SUPPORT parameter is not valid
 #endif
 
-//DES cipher support
+//DES cipher support (insecure)
 #ifndef TLS_DES_SUPPORT
    #define TLS_DES_SUPPORT DISABLED
 #elif (TLS_DES_SUPPORT != ENABLED && TLS_DES_SUPPORT != DISABLED)
    #error TLS_DES_SUPPORT parameter is not valid
 #endif
 
-//Triple DES cipher support
+//Triple DES cipher support (weak)
 #ifndef TLS_3DES_SUPPORT
    #define TLS_3DES_SUPPORT ENABLED
 #elif (TLS_3DES_SUPPORT != ENABLED && TLS_3DES_SUPPORT != DISABLED)
@@ -327,14 +361,14 @@
    #error TLS_ARIA_SUPPORT parameter is not valid
 #endif
 
-//MD5 hash support
+//MD5 hash support (insecure)
 #ifndef TLS_MD5_SUPPORT
    #define TLS_MD5_SUPPORT DISABLED
 #elif (TLS_MD5_SUPPORT != ENABLED && TLS_MD5_SUPPORT != DISABLED)
    #error TLS_MD5_SUPPORT parameter is not valid
 #endif
 
-//SHA-1 hash support
+//SHA-1 hash support (weak)
 #ifndef TLS_SHA1_SUPPORT
    #define TLS_SHA1_SUPPORT ENABLED
 #elif (TLS_SHA1_SUPPORT != ENABLED && TLS_SHA1_SUPPORT != DISABLED)
@@ -369,21 +403,21 @@
    #error TLS_SHA512_SUPPORT parameter is not valid
 #endif
 
-//secp160k1 elliptic curve support
+//secp160k1 elliptic curve support (weak)
 #ifndef TLS_SECP160K1_SUPPORT
    #define TLS_SECP160K1_SUPPORT DISABLED
 #elif (TLS_SECP160K1_SUPPORT != ENABLED && TLS_SECP160K1_SUPPORT != DISABLED)
    #error TLS_SECP160K1_SUPPORT parameter is not valid
 #endif
 
-//secp160r1 elliptic curve support
+//secp160r1 elliptic curve support (weak)
 #ifndef TLS_SECP160R1_SUPPORT
    #define TLS_SECP160R1_SUPPORT DISABLED
 #elif (TLS_SECP160R1_SUPPORT != ENABLED && TLS_SECP160R1_SUPPORT != DISABLED)
    #error TLS_SECP160R1_SUPPORT parameter is not valid
 #endif
 
-//secp160r2 elliptic curve support
+//secp160r2 elliptic curve support (weak)
 #ifndef TLS_SECP160R2_SUPPORT
    #define TLS_SECP160R2_SUPPORT DISABLED
 #elif (TLS_SECP160R2_SUPPORT != ENABLED && TLS_SECP160R2_SUPPORT != DISABLED)
@@ -467,6 +501,20 @@
    #error TLS_BRAINPOOLP512R1_SUPPORT parameter is not valid
 #endif
 
+//Certificate key usage verification
+#ifndef TLS_CERT_KEY_USAGE_SUPPORT
+   #define TLS_CERT_KEY_USAGE_SUPPORT ENABLED
+#elif (TLS_CERT_KEY_USAGE_SUPPORT != ENABLED && TLS_CERT_KEY_USAGE_SUPPORT != DISABLED)
+   #error TLS_CERT_KEY_USAGE_SUPPORT parameter is not valid
+#endif
+
+//Maximum acceptable length for server names
+#ifndef TLS_MAX_SERVER_NAME_LEN
+   #define TLS_MAX_SERVER_NAME_LEN 255
+#elif (TLS_MAX_SERVER_NAME_LEN < 1)
+   #error TLS_MAX_SERVER_NAME_LEN parameter is not valid
+#endif
+
 //Minimum acceptable size for Diffie-Hellman prime modulus
 #ifndef TLS_MIN_DH_MODULUS_SIZE
    #define TLS_MIN_DH_MODULUS_SIZE 1024
@@ -510,10 +558,24 @@
 #endif
 
 //Maximum size for premaster secret
-#ifndef TLS_MAX_PREMASTER_SECRET_SIZE
-   #define TLS_MAX_PREMASTER_SECRET_SIZE 256
-#elif (TLS_MAX_PREMASTER_SECRET_SIZE < 48)
-   #error TLS_MAX_PREMASTER_SECRET_SIZE parameter is not valid
+#ifndef TLS_PREMASTER_SECRET_SIZE
+   #define TLS_PREMASTER_SECRET_SIZE 256
+#elif (TLS_PREMASTER_SECRET_SIZE < 48)
+   #error TLS_PREMASTER_SECRET_SIZE parameter is not valid
+#endif
+
+//Maximum number of consecutive warning alerts
+#ifndef TLS_MAX_WARNING_ALERTS
+   #define TLS_MAX_WARNING_ALERTS 0
+#elif (TLS_MAX_WARNING_ALERTS < 0)
+   #error TLS_MAX_WARNING_ALERTS parameter is not valid
+#endif
+
+//Maximum number of consecutive empty records
+#ifndef TLS_MAX_EMPTY_RECORDS
+   #define TLS_MAX_EMPTY_RECORDS 0
+#elif (TLS_MAX_EMPTY_RECORDS < 0)
+   #error TLS_MAX_EMPTY_RECORDS parameter is not valid
 #endif
 
 //Memory allocation
@@ -527,17 +589,16 @@
 #endif
 
 //Bind TLS to a particular socket
-#define tlsSetSocket(context, socket) tlsSetIoCallbacks(context, (TlsIoHandle) socket, \
-   (TlsIoSendCallback) socketSend, (TlsIoReceiveCallback) socketReceive)
+#define tlsSetSocket(context, socket) tlsSetSocketCallbacks(context, \
+   (TlsSocketSendCallback) socketSend, (TlsSocketReceiveCallback) socketReceive, \
+   (TlsSocketHandle) socket)
 
 //Maximum plaintext record length
 #define TLS_MAX_RECORD_LENGTH 16384
 //Data overhead caused by record encryption
 #define TLS_MAX_RECORD_OVERHEAD 512
-
-//Forward declaration of TlsContext structure
-struct _TlsContext;
-#define TlsContext struct _TlsContext
+//Master secret size
+#define TLS_MASTER_SECRET_SIZE 48
 
 //C++ guard
 #ifdef __cplusplus
@@ -585,6 +646,7 @@ typedef enum
 
 typedef enum
 {
+   TLS_FLAG_PEEK       = 0x0200,
    TLS_FLAG_WAIT_ALL   = 0x0800,
    TLS_FLAG_BREAK_CHAR = 0x1000,
    TLS_FLAG_BREAK_CRLF = 0x100A,
@@ -685,7 +747,8 @@ typedef enum
    TLS_ALERT_UNRECOGNIZED_NAME               = 112,
    TLS_ALERT_BAD_CERTIFICATE_STATUS_RESPONSE = 113,
    TLS_ALERT_BAD_CERTIFICATE_HASH_VALUE      = 114,
-   TLS_ALERT_UNKNOWN_PSK_IDENTITY            = 115
+   TLS_ALERT_UNKNOWN_PSK_IDENTITY            = 115,
+   TLS_ALERT_NO_APPLICATION_PROTOCOL         = 120
 } TlsAlertDescription;
 
 
@@ -697,7 +760,7 @@ typedef enum
 {
    TLS_COMPRESSION_METHOD_NULL    = 0,
    TLS_COMPRESSION_METHOD_DEFLATE = 1
-} TlsCompressionMethodList;
+} TlsCompressMethodList;
 
 
 /**
@@ -800,6 +863,7 @@ typedef enum
    TLS_EXT_USE_SRTP               = 14,
    TLS_EXT_HEARTBEAT              = 15,
    TLS_EXT_ALPN                   = 16,
+   TLS_EXT_EXTENDED_MASTER_SECRET = 23,
    TLS_EXT_SESSION_TICKET         = 35,
    TLS_EXT_RENEGOTIATION_INFO     = 65281
 } TlsExtensionType;
@@ -813,6 +877,19 @@ typedef enum
 {
    TLS_NAME_TYPE_HOSTNAME = 0
 } TlsNameType;
+
+
+/**
+ * @brief Maximum fragment length
+ **/
+
+typedef enum
+{
+   TLS_MAX_FRAGMENT_LENGHT_512  = 1,
+   TLS_MAX_FRAGMENT_LENGHT_1024 = 2,
+   TLS_MAX_FRAGMENT_LENGHT_2048 = 3,
+   TLS_MAX_FRAGMENT_LENGHT_4096 = 4
+} TlsMaxFragmentLength;
 
 
 /**
@@ -894,21 +971,22 @@ typedef enum
 {
    TLS_STATE_INIT                      = 0,
    TLS_STATE_CLIENT_HELLO              = 1,
-   TLS_STATE_SERVER_HELLO              = 2,
-   TLS_STATE_SERVER_CERTIFICATE        = 3,
-   TLS_STATE_SERVER_KEY_EXCHANGE       = 4,
-   TLS_STATE_CERTIFICATE_REQUEST       = 5,
-   TLS_STATE_SERVER_HELLO_DONE         = 6,
-   TLS_STATE_CLIENT_CERTIFICATE        = 7,
-   TLS_STATE_CLIENT_KEY_EXCHANGE       = 8,
-   TLS_STATE_CERTIFICATE_VERIFY        = 9,
-   TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC = 10,
-   TLS_STATE_CLIENT_FINISHED           = 11,
-   TLS_STATE_SERVER_CHANGE_CIPHER_SPEC = 12,
-   TLS_STATE_SERVER_FINISHED           = 13,
-   TLS_STATE_APPLICATION_DATA          = 14,
-   TLS_STATE_CLOSING                   = 15,
-   TLS_STATE_CLOSED                    = 16
+   TLS_STATE_HELLO_VERIFY_REQUEST      = 2,
+   TLS_STATE_SERVER_HELLO              = 3,
+   TLS_STATE_SERVER_CERTIFICATE        = 4,
+   TLS_STATE_SERVER_KEY_EXCHANGE       = 5,
+   TLS_STATE_CERTIFICATE_REQUEST       = 6,
+   TLS_STATE_SERVER_HELLO_DONE         = 7,
+   TLS_STATE_CLIENT_CERTIFICATE        = 8,
+   TLS_STATE_CLIENT_KEY_EXCHANGE       = 9,
+   TLS_STATE_CERTIFICATE_VERIFY        = 10,
+   TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC = 11,
+   TLS_STATE_CLIENT_FINISHED           = 12,
+   TLS_STATE_SERVER_CHANGE_CIPHER_SPEC = 13,
+   TLS_STATE_SERVER_FINISHED           = 14,
+   TLS_STATE_APPLICATION_DATA          = 15,
+   TLS_STATE_CLOSING                   = 16,
+   TLS_STATE_CLOSED                    = 17
 } TlsState;
 
 
@@ -916,6 +994,16 @@ typedef enum
 #if defined(__CWCC__) || defined(_WIN32)
    #pragma pack(push, 1)
 #endif
+
+
+/**
+ * @brief Sequence number
+ **/
+
+typedef __start_packed struct
+{
+   uint8_t b[8];
+} TlsSequenceNumber;
 
 
 /**
@@ -951,7 +1039,7 @@ typedef __start_packed struct
  * @brief Compression method
  **/
 
-typedef uint8_t TlsCompressionMethod;
+typedef uint8_t TlsCompressMethod;
 
 
 /**
@@ -962,7 +1050,7 @@ typedef __start_packed struct
 {
    uint8_t length;  //0
    uint8_t value[]; //1
-} __end_packed TlsCompressionMethods;
+} __end_packed TlsCompressMethods;
 
 
 /**
@@ -1018,7 +1106,7 @@ typedef __start_packed struct
 {
    uint16_t length; //0-1
    uint8_t value[]; //2
-} __end_packed TlsExtensions;
+} __end_packed TlsExtensionList;
 
 
 /**
@@ -1096,7 +1184,7 @@ typedef __start_packed struct
 {
    uint8_t length;  //0
    uint8_t value[]; //1
-} __end_packed TlsRenegoConnection;
+} __end_packed TlsRenegoInfo;
 
 
 /**
@@ -1182,10 +1270,10 @@ typedef void TlsHelloRequest;
 
 typedef __start_packed struct
 {
-   uint16_t clientVersion;  //0-1
-   TlsRandom random;        //2-33
-   uint8_t sessionIdLength; //34
-   uint8_t sessionId[];     //35
+   uint16_t clientVersion; //0-1
+   TlsRandom random;       //2-33
+   uint8_t sessionIdLen;   //34
+   uint8_t sessionId[];    //35
 } __end_packed TlsClientHello;
 
 
@@ -1195,10 +1283,10 @@ typedef __start_packed struct
 
 typedef __start_packed struct
 {
-   uint16_t serverVersion;  //0-1
-   TlsRandom random;        //2-33
-   uint8_t sessionIdLength; //34
-   uint8_t sessionId[];     //35
+   uint16_t serverVersion; //0-1
+   TlsRandom random;       //2-33
+   uint8_t sessionIdLen;   //34
+   uint8_t sessionId[];    //35
 } __end_packed TlsServerHello;
 
 
@@ -1287,32 +1375,25 @@ typedef __start_packed struct
 
 
 /**
- * @brief Sequence number
+ * @brief Socket handle
  **/
 
-typedef uint8_t TlsSequenceNumber[8];
+typedef void *TlsSocketHandle;
 
 
 /**
- * @brief Handle for I/O operations
+ * @brief Socket send callback function
  **/
 
-typedef void *TlsIoHandle;
-
-
-/**
- * @brief Send callback function
- **/
-
-typedef error_t (*TlsIoSendCallback)(TlsIoHandle handle,
+typedef error_t (*TlsSocketSendCallback)(TlsSocketHandle handle,
    const void *data, size_t length, size_t *written, uint_t flags);
 
 
 /**
- * @brief Receive callback function
+ * @brief Socket receive callback function
  **/
 
-typedef error_t (*TlsIoReceiveCallback)(TlsIoHandle handle,
+typedef error_t (*TlsSocketReceiveCallback)(TlsSocketHandle handle,
    void *data, size_t size, size_t *received, uint_t flags);
 
 
@@ -1336,7 +1417,7 @@ typedef error_t (*TlsEcdhCallback)(TlsContext *context);
  **/
 
 typedef error_t (*TlsEcdsaSignCallback)(TlsContext *context,
-   const uint8_t *digest, size_t digestLength, EcdsaSignature *signature);
+   const uint8_t *digest, size_t digestLen, EcdsaSignature *signature);
 
 
 /**
@@ -1344,7 +1425,7 @@ typedef error_t (*TlsEcdsaSignCallback)(TlsContext *context,
  **/
 
 typedef error_t (*TlsEcdsaVerifyCallback)(TlsContext *context,
-   const uint8_t *digest, size_t digestLength, EcdsaSignature *signature);
+   const uint8_t *digest, size_t digestLen, EcdsaSignature *signature);
 
 
 /**
@@ -1375,12 +1456,16 @@ typedef struct
 
 typedef struct
 {
-   uint8_t id[32];            ///<Session identifier
-   size_t idLength;           ///<Length of the session identifier
-   systime_t timestamp;       ///<Time stamp to manage entry lifetime
-   uint16_t cipherSuite;      ///<Cipher suite identifier
-   uint8_t compressionMethod; ///<Compression method
-   uint8_t masterSecret[48];  ///<Master secret
+   uint8_t id[32];                               ///<Session identifier
+   size_t idLength;                              ///<Length of the session identifier
+   systime_t timestamp;                          ///<Time stamp to manage entry lifetime
+   uint16_t version;                             ///<TLS protocol version
+   uint16_t cipherSuite;                         ///<Cipher suite identifier
+   uint8_t compressMethod;                       ///<Compression method
+   uint8_t masterSecret[TLS_MASTER_SECRET_SIZE]; ///<Master secret
+#if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
+   bool_t extendedMasterSecret;                  ///<Extended master secret computation
+#endif
 } TlsSession;
 
 
@@ -1403,9 +1488,9 @@ typedef struct
 typedef struct
 {
    const char_t *certChain;    ///<End entity certificate chain (PEM format)
-   size_t certChainLength;     ///<Length of the certificate chain
+   size_t certChainLen;        ///<Length of the certificate chain
    const char_t *privateKey;   ///<Private key (PEM format)
-   size_t privateKeyLength;    ///<Length of the private key
+   size_t privateKeyLen;       ///<Length of the private key
    TlsCertificateType type;    ///<End entity certificate type
    TlsSignatureAlgo signAlgo;  ///<Signature algorithm used to sign the end entity certificate
    TlsHashAlgo hashAlgo;       ///<Hash algorithm used to sign the end entity certificate
@@ -1414,37 +1499,57 @@ typedef struct
 
 
 /**
+ * @brief Hello extensions
+ **/
+
+typedef struct
+{
+   const TlsServerNameList *serverNameList;       ///<ServerName extension
+   const uint8_t *maxFragLen;                     ///<MaxFragmentLength extension
+   const TlsEllipticCurveList *ellipticCurveList; ///<EllipticCurves extension
+   const TlsEcPointFormatList *ecPointFormatList; ///<EcPointFormats extension
+   const TlsSignHashAlgos *signAlgoList;          ///<SignatureAlgorithms extension
+#if (TLS_ALPN_SUPPORT == ENABLED)
+   const TlsProtocolNameList *protocolNameList;   ///<ALPN extension
+#endif
+#if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
+   const uint8_t *extendedMasterSecret;           ///<ExtendedMasterSecret extension
+#endif
+#if (TLS_SECURE_RENEGOTIATION_SUPPORT == ENABLED)
+   const TlsRenegoInfo *renegoInfo;               ///<RenegotiationInfo extension
+#endif
+} TlsHelloExtensions;
+
+
+/**
  * @brief Encryption engine
  **/
 
 typedef struct
 {
-   uint16_t version;             ///<Negotiated TLS version
-   uint8_t macKey[48];           ///<MAC key
-   size_t macKeyLen;             ///<Length of the MAC key
-   uint8_t encKey[32];           ///<Encryption key
-   size_t encKeyLen;             ///<Length of the encryption key
-   uint8_t iv[16];               ///<Initialization vector
-   size_t fixedIvLen;            ///<Length of the fixed part of the IV
-   size_t recordIvLen;           ///<Length of the IV
-   size_t authTagLen;            ///<Length of the authentication tag
-   const CipherAlgo *cipherAlgo; ///<Cipher algorithm
-   void *cipherContext;          ///<Cipher context
-   CipherMode cipherMode;        ///<Cipher mode of operation
-   const HashAlgo *hashAlgo;     ///<Hash algorithm for MAC operations
-   HmacContext *hmacContext;     ///<HMAC context
+   uint16_t version;              ///<Negotiated TLS version
+   uint8_t macKey[48];            ///<MAC key
+   size_t macKeyLen;              ///<Length of the MAC key
+   uint8_t encKey[32];            ///<Encryption key
+   size_t encKeyLen;              ///<Length of the encryption key
+   uint8_t iv[16];                ///<Initialization vector
+   size_t fixedIvLen;             ///<Length of the fixed part of the IV
+   size_t recordIvLen;            ///<Length of the IV
+   size_t authTagLen;             ///<Length of the authentication tag
+   const CipherAlgo *cipherAlgo;  ///<Cipher algorithm
+   void *cipherContext;           ///<Cipher context
+   CipherMode cipherMode;         ///<Cipher mode of operation
+   const HashAlgo *hashAlgo;      ///<Hash algorithm for MAC operations
+   HmacContext *hmacContext;      ///<HMAC context
 #if (TLS_GCM_CIPHER_SUPPORT == ENABLED)
-   GcmContext *gcmContext;       ///<GCM context
+   GcmContext *gcmContext;        ///<GCM context
 #endif
-   TlsSequenceNumber seqNum;     ///<Sequence number
+   TlsSequenceNumber seqNum;      ///<TLS sequence number
+#if (DTLS_SUPPORT == ENABLED)
+   uint16_t epoch;                ///<Counter value incremented on every cipher state change
+   DtlsSequenceNumber dtlsSeqNum; ///<Record sequence number
+#endif
 } TlsEncryptionEngine;
-
-
-/**
- * @brief Decryption engine
- **/
-
-typedef TlsEncryptionEngine TlsDecryptionEngine;
 
 
 /**
@@ -1460,9 +1565,10 @@ struct _TlsContext
    TlsTransportProtocol transportProtocol;  ///<Transport protocol (stream or datagram)
    TlsConnectionEnd entity;                 ///<Client or server operation
 
-   TlsIoHandle handle;                      ///<Handle for I/O operations
-   TlsIoSendCallback sendCallback;          ///<Send callback function
-   TlsIoReceiveCallback receiveCallback;    ///<Receive callback function
+   TlsSocketHandle socketHandle;            ///<Socket handle
+   TlsSocketSendCallback socketSendCallback;       ///<Socket send callback function
+   TlsSocketReceiveCallback socketReceiveCallback; ///<Socket receive callback function
+
    const PrngAlgo *prngAlgo;                ///<Pseudo-random number generator to be used
    void *prngContext;                       ///<Pseudo-random number generator context
 
@@ -1477,51 +1583,12 @@ struct _TlsContext
    TlsEcdsaVerifyCallback ecdsaVerifyCallback;
 #endif
 
-#if (TLS_ALPN_SUPPORT == ENABLED)
-   char_t *protocolList;                    ///<List of supported ALPN protocols
-#endif
-
-#if (TLS_PSK_SUPPORT == ENABLED || TLS_RSA_PSK_SUPPORT == ENABLED || \
-   TLS_DHE_PSK_SUPPORT == ENABLED || TLS_ECDHE_PSK_SUPPORT == ENABLED)
-   char_t *psk;                             ///<Pre-shared key
-   size_t pskLen;                           ///<Length of the pre-shared key, in bytes
-   char_t *pskIdentity;                     ///<PSK identity
-   char_t *pskIdentityHint;                 ///<PSK identity hint
-   TlsPskCallback pskCallback;              ///<PSK callback function
-#endif
-
-#if (TLS_DH_ANON_SUPPORT == ENABLED || TLS_DHE_RSA_SUPPORT == ENABLED || \
-   TLS_DHE_DSS_SUPPORT == ENABLED || TLS_DHE_PSK_SUPPORT == ENABLED)
-   DhContext dhContext;                     ///<Diffie-Hellman context
-#endif
-
-#if (TLS_ECDH_ANON_SUPPORT == ENABLED || TLS_ECDHE_RSA_SUPPORT == ENABLED || \
-   TLS_ECDHE_ECDSA_SUPPORT == ENABLED || TLS_ECDHE_PSK_SUPPORT == ENABLED)
-   EcdhContext ecdhContext;                 ///<ECDH context
-#endif
-
    TlsCertDesc certs[TLS_MAX_CERTIFICATES]; //End entity certificates
    uint_t numCerts;                         //Number of certificates available
    TlsCertDesc *cert;                       //Pointer to the currently selected certificate
 
    const char_t *trustedCaList;             ///<List of trusted CA (PEM format)
    size_t trustedCaListLen;                 ///<Number of trusted CA in the list
-
-   TlsCertificateType peerCertType;         ///<Peer's certificate type
-
-#if (TLS_RSA_SIGN_SUPPORT == ENABLED || TLS_RSA_SUPPORT == ENABLED || \
-   TLS_DHE_RSA_SUPPORT == ENABLED || TLS_ECDHE_RSA_SUPPORT == ENABLED)
-   RsaPublicKey peerRsaPublicKey;           ///<Peer's RSA public key
-#endif
-
-#if (TLS_DSA_SIGN_SUPPORT == ENABLED || TLS_DHE_DSS_SUPPORT == ENABLED)
-   DsaPublicKey peerDsaPublicKey;           ///<Peer's DSA public key
-#endif
-
-#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED || TLS_ECDHE_ECDSA_SUPPORT == ENABLED)
-   EcDomainParameters peerEcParams;         ///<Peer's EC domain parameters
-   EcPoint peerEcPublicKey;                 ///<Peer's EC public key
-#endif
 
    TlsCache *cache;                         ///<TLS session cache
 
@@ -1530,20 +1597,16 @@ struct _TlsContext
 
    uint16_t clientVersion;                  ///<Latest version supported by the client
    uint16_t version;                        ///<Negotiated TLS version
-   uint8_t compressionMethod;               ///<Negotiated compression algorithm
-   uint16_t namedCurve;                     ///<Named curve
+   uint16_t versionMin;                     ///<Minimum version accepted by the implementation
+   uint16_t versionMax;                     ///<Maximum version accepted by the implementation
 
+   uint8_t compressMethod;                  ///<Negotiated compression algorithm
    TlsCipherSuiteInfo cipherSuite;          ///<Negotiated cipher suite
    TlsKeyExchMethod keyExchMethod;          ///<Key exchange method
    TlsHashAlgo signHashAlgo;                ///<Hash algorithm used for signing
+   uint16_t namedCurve;                     ///<Named curve
 
-   Md5Context *handshakeMd5Context;         ///<MD5 context used to compute verify data
-   Sha1Context *handshakeSha1Context;       ///<SHA-1 context used to compute verify data
-   HashContext *handshakeHashContext;       ///<Hash context used to compute verify data (TLS 1.2)
-   HmacContext hmacContext;                 ///<HMAC context
-
-   bool_t ecPointFormatExtFound;            ///<The EcPointFormats extension has been received
-
+   TlsCertificateType peerCertType;         ///<Peer's certificate type
    TlsClientAuthMode clientAuthMode;        ///<Client authentication mode
    bool_t clientCertRequested;              ///<This flag tells whether the client certificate is requested
 
@@ -1555,17 +1618,14 @@ struct _TlsContext
    bool_t closeNotifySent;                  ///<A closure alert has been sent
    bool_t closeNotifyReceived;              ///<A closure alert has been received from the peer
 
-#if (TLS_SECURE_RENEGOTIATION_SUPPORT == ENABLED)
-   bool_t secureRenegoEnabled;              ///<Secure renegociation enabled
-   bool_t secureRenegoFlag;                 ///<Secure renegociation flag
-#endif
+   size_t maxFragLen;                       ///<Maximum plaintext fragment length
 
    uint8_t *txBuffer;                       ///<TX buffer
    size_t txBufferSize;                     ///<TX buffer size
+   size_t txBufferMaxLen;                   ///<Maximum number of plaintext data the TX buffer can hold
    TlsContentType txBufferType;             ///<Type of data that resides in the TX buffer
    size_t txBufferLen;                      ///<Number of bytes that are pending to be sent
    size_t txBufferPos;                      ///<Current position in TX buffer
-   size_t txRecordMaxLen;                   ///<Maximum plaintext fragment length
    size_t txRecordLen;                      ///<Length of the TLS record
    size_t txRecordPos;                      ///<Current position in the TLS record
 
@@ -1574,7 +1634,6 @@ struct _TlsContext
    TlsContentType rxBufferType;             ///<Type of data that resides in the RX buffer
    size_t rxBufferLen;                      ///<Number of bytes available for reading
    size_t rxBufferPos;                      ///<Current position in RX buffer
-   size_t rxRecordMaxLen;                   ///<Maximum plaintext fragment length
    size_t rxRecordLen;                      ///<Length of the TLS record
    size_t rxRecordPos;                      ///<Current position in the TLS record
 
@@ -1588,9 +1647,9 @@ struct _TlsContext
       uint8_t random[64];
    };
 
-   uint8_t premasterSecret[TLS_MAX_PREMASTER_SECRET_SIZE]; ///<Premaster secret
+   uint8_t premasterSecret[TLS_PREMASTER_SECRET_SIZE]; ///<Premaster secret
    size_t premasterSecretLen;               ///<Length of the premaster secret
-   uint8_t masterSecret[48];                ///<Master secret
+   uint8_t masterSecret[TLS_MASTER_SECRET_SIZE]; ///<Master secret
    uint8_t keyBlock[192];                   ///<Key material
    uint8_t clientVerifyData[64];            ///<Client verify data
    size_t clientVerifyDataLen;              ///<Length of the client verify data
@@ -1598,27 +1657,144 @@ struct _TlsContext
    size_t serverVerifyDataLen;              ///<Length of the server verify data
 
    TlsEncryptionEngine encryptionEngine;    ///<Encryption engine
-   TlsDecryptionEngine decryptionEngine;    ///<Decryption engine
+   TlsEncryptionEngine decryptionEngine;    ///<Decryption engine
+
+   HmacContext hmacContext;                 ///<HMAC context
+   Sha1Context *handshakeSha1Context;       ///<SHA-1 context used to compute verify data
+
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
+   Md5Context *handshakeMd5Context;         ///<MD5 context used to compute verify data
+#endif
+
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   HashContext *handshakeHashContext;       ///<Hash context used to compute verify data (TLS 1.2)
+#endif
+
+#if (TLS_DH_ANON_SUPPORT == ENABLED || TLS_DHE_RSA_SUPPORT == ENABLED || \
+   TLS_DHE_DSS_SUPPORT == ENABLED || TLS_DHE_PSK_SUPPORT == ENABLED)
+   DhContext dhContext;                     ///<Diffie-Hellman context
+#endif
+
+#if (TLS_ECDH_ANON_SUPPORT == ENABLED || TLS_ECDHE_RSA_SUPPORT == ENABLED || \
+   TLS_ECDHE_ECDSA_SUPPORT == ENABLED || TLS_ECDHE_PSK_SUPPORT == ENABLED)
+   EcdhContext ecdhContext;                 ///<ECDH context
+   bool_t ecPointFormatsExtReceived;        ///<The EcPointFormats extension has been received
+#endif
+
+#if (TLS_RSA_SIGN_SUPPORT == ENABLED || TLS_RSA_SUPPORT == ENABLED || \
+   TLS_DHE_RSA_SUPPORT == ENABLED || TLS_ECDHE_RSA_SUPPORT == ENABLED || \
+   TLS_RSA_PSK_SUPPORT == ENABLED)
+   RsaPublicKey peerRsaPublicKey;           ///<Peer's RSA public key
+#endif
+
+#if (TLS_DSA_SIGN_SUPPORT == ENABLED || TLS_DHE_DSS_SUPPORT == ENABLED)
+   DsaPublicKey peerDsaPublicKey;           ///<Peer's DSA public key
+#endif
+
+#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED || TLS_ECDHE_ECDSA_SUPPORT == ENABLED)
+   EcDomainParameters peerEcParams;         ///<Peer's EC domain parameters
+   EcPoint peerEcPublicKey;                 ///<Peer's EC public key
+#endif
+
+#if (TLS_PSK_SUPPORT == ENABLED || TLS_RSA_PSK_SUPPORT == ENABLED || \
+   TLS_DHE_PSK_SUPPORT == ENABLED || TLS_ECDHE_PSK_SUPPORT == ENABLED)
+   char_t *psk;                             ///<Pre-shared key
+   size_t pskLen;                           ///<Length of the pre-shared key, in bytes
+   char_t *pskIdentity;                     ///<PSK identity
+   char_t *pskIdentityHint;                 ///<PSK identity hint
+   TlsPskCallback pskCallback;              ///<PSK callback function
+#endif
+
+#if (TLS_MAX_FRAG_LEN_SUPPORT == ENABLED)
+   bool_t maxFragLenExtReceived;            ///<The MaxFragmentLength extension has been received
+#endif
+
+#if (TLS_ALPN_SUPPORT == ENABLED)
+   bool_t unknownProtocolsAllowed;          ///<Unknown ALPN protocols allowed
+   char_t *protocolList;                    ///<List of supported ALPN protocols
+   char_t *selectedProtocol;                ///<Selected ALPN protocol
+#endif
+
+#if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
+   bool_t extendedMasterSecretExtReceived;  ///<The ExtendedMasterSecret extension has been received
+#endif
+
+#if (TLS_SECURE_RENEGOTIATION_SUPPORT == ENABLED)
+   bool_t secureRenegoEnabled;              ///<Secure renegociation enabled
+   bool_t secureRenegoFlag;                 ///<Secure renegociation flag
+#endif
+
+#if (TLS_FALLBACK_SCSV_SUPPORT == ENABLED)
+   bool_t fallbackScsvEnabled;              ///<Support for FALLBACK_SCSV
+#endif
+
+#if (TLS_MAX_WARNING_ALERTS > 0)
+   uint_t alertCount;                       ///<Count of consecutive warning alerts
+#endif
+
+#if (TLS_MAX_EMPTY_RECORDS > 0)
+   uint_t emptyRecordCount;                 ///<Count of consecutive empty records
+#endif
+
+#if (DTLS_SUPPORT == ENABLED)
+   size_t pmtu;                             ///<PMTU value
+   systime_t timeout;                       ///<Timeout for blocking calls
+   systime_t startTime;
+
+   uint8_t cookie[DTLS_MAX_COOKIE_SIZE];    ///<Cookie
+   size_t cookieLen;                        ///<Length of the cookie
+   DtlsCookieHandle cookieHandle;           ///<Opaque pointer passed to the cookie callbacks
+   DtlsCookieGenerateCallback cookieGenerateCallback; ///<Cookie generation callback function
+   DtlsCookieVerifyCallback cookieVerifyCallback;     ///<Cookie verification callback function
+
+   uint_t retransmitCount;                  ///<Retransmission counter
+   systime_t retransmitTimestamp;           ///<Time at which the datagram was sent
+   systime_t retransmitTimeout;             ///<Retransmission timeout
+
+   uint16_t txMsgSeq;                       ///<Send sequence number
+   size_t txDatagramLen;                    ///<Length of the outgoing datagram, in bytes
+
+   uint16_t rxMsgSeq;                       ///<Next receive sequence number
+   size_t rxFragQueueLen;                   ///<Length of the reassembly queue
+   size_t rxDatagramLen;                    ///<Length of the incoming datagram, in bytes
+   size_t rxDatagramPos;
+
+#if (DTLS_REPLAY_DETECTION_SUPPORT == ENABLED)
+   bool_t replayDetectionEnabled;           ///<Anti-replay mechanism enabled
+   uint32_t replayWindow[(DTLS_REPLAY_WINDOW_SIZE + 31) / 32];
+#endif
+
+   TlsEncryptionEngine prevEncryptionEngine;
+#endif
 };
 
 
 //TLS application programming interface (API)
 TlsContext *tlsInit(void);
 
-error_t tlsSetIoCallbacks(TlsContext *context, TlsIoHandle handle,
-   TlsIoSendCallback sendCallback, TlsIoReceiveCallback receiveCallback);
+error_t tlsSetSocketCallbacks(TlsContext *context,
+   TlsSocketSendCallback socketSendCallback,
+   TlsSocketReceiveCallback socketReceiveCallback, TlsSocketHandle handle);
+
+error_t tlsSetVersion(TlsContext *context, uint16_t versionMin,
+   uint16_t versionMax);
 
 error_t tlsSetTransportProtocol(TlsContext *context,
    TlsTransportProtocol transportProtocol);
 
 error_t tlsSetConnectionEnd(TlsContext *context, TlsConnectionEnd entity);
 error_t tlsSetPrng(TlsContext *context, const PrngAlgo *prngAlgo, void *prngContext);
+
 error_t tlsSetServerName(TlsContext *context, const char_t *serverName);
+const char_t *tlsGetServerName(TlsContext *context);
+
 error_t tlsSetCache(TlsContext *context, TlsCache *cache);
 error_t tlsSetClientAuthMode(TlsContext *context, TlsClientAuthMode mode);
 
 error_t tlsSetBufferSize(TlsContext *context,
    size_t txBufferSize, size_t rxBufferSize);
+
+error_t tlsSetMaxFragmentLength(TlsContext *context, size_t maxFragLen);
 
 error_t tlsSetCipherSuites(TlsContext *context,
    const uint16_t *cipherSuites, uint_t length);
@@ -1634,10 +1810,11 @@ error_t tlsSetEcdsaSignCallback(TlsContext *context,
 error_t tlsSetEcdsaVerifyCallback(TlsContext *context,
    TlsEcdsaVerifyCallback ecdsaVerifyCallback);
 
+error_t tlsAllowUnknownAlpnProtocols(TlsContext *context, bool_t allowed);
 error_t tlsSetAlpnProtocolList(TlsContext *context, const char_t *protocolList);
 const char_t *tlsGetAlpnProtocol(TlsContext *context);
 
-error_t tlsSetPsk(TlsContext *context, const uint8_t *psk, size_t pskLength);
+error_t tlsSetPsk(TlsContext *context, const uint8_t *psk, size_t length);
 error_t tlsSetPskIdentity(TlsContext *context, const char_t *pskIdentity);
 error_t tlsSetPskIdentityHint(TlsContext *context, const char_t *pskIdentityHint);
 error_t tlsSetPskCallback(TlsContext *context, TlsPskCallback pskCallback);
@@ -1646,9 +1823,19 @@ error_t tlsSetTrustedCaList(TlsContext *context,
    const char_t *trustedCaList, size_t length);
 
 error_t tlsAddCertificate(TlsContext *context, const char_t *certChain,
-   size_t certChainLength, const char_t *privateKey, size_t privateKeyLength);
+   size_t certChainLen, const char_t *privateKey, size_t privateKeyLen);
 
-error_t tlsEnableSecureRenegotiation(TlsContext *context, bool_t enable);
+error_t tlsEnableSecureRenegotiation(TlsContext *context, bool_t enabled);
+error_t tlsEnableFallbackScsv(TlsContext *context, bool_t enabled);
+
+error_t tlsSetPmtu(TlsContext *context, size_t pmtu);
+error_t tlsSetTimeout(TlsContext *context, systime_t timeout);
+
+error_t tlsSetCookieCallbacks(TlsContext *context,
+   DtlsCookieGenerateCallback cookieGenerateCallback,
+   DtlsCookieVerifyCallback cookieVerifyCallback, DtlsCookieHandle handle);
+
+error_t tlsEnableReplayDetection(TlsContext *context, bool_t enabled);
 
 error_t tlsConnect(TlsContext *context);
 

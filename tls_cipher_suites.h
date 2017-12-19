@@ -23,14 +23,14 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.7.8
+ * @version 1.8.0
  **/
 
 #ifndef _TLS_CIPHER_SUITES_H
 #define _TLS_CIPHER_SUITES_H
 
 //Dependencies
-#include "crypto.h"
+#include "core/crypto.h"
 #include "tls.h"
 
 //Macro for defining a cipher suite
@@ -401,7 +401,8 @@ typedef enum
    TLS_SRP_SHA_DSS_WITH_AES_128_CBC_SHA          = 0xC01F, //RFC 5054
    TLS_SRP_SHA_DSS_WITH_AES_256_CBC_SHA          = 0xC022, //RFC 5054
 
-   TLS_EMPTY_RENEGOTIATION_INFO_SCSV             = 0x00FF  //RFC 5746
+   TLS_EMPTY_RENEGOTIATION_INFO_SCSV             = 0x00FF, //RFC 5746
+   TLS_FALLBACK_SCSV                             = 0x5600  //RFC 7507
 } TlsCipherSuiteList;
 
 
@@ -411,7 +412,10 @@ extern const TlsCipherSuiteInfo tlsSupportedCipherSuites[];
 //TLS related functions
 uint_t tlsGetNumSupportedCipherSuites(void);
 const char_t *tlsGetCipherSuiteName(uint16_t identifier);
-bool_t tlsIsCipherSuiteSupported(uint16_t identifier);
+
+bool_t tlsIsCipherSuiteSupported(uint16_t identifier, uint16_t version,
+   TlsTransportProtocol transportProtocol);
+
 bool_t tlsIsEccCipherSuite(uint16_t identifier);
 
 //C++ guard

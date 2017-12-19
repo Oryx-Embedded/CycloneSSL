@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.7.8
+ * @version 1.8.0
  **/
 
 //Switch to the appropriate trace level
@@ -31,105 +31,27 @@
 
 //Dependencies
 #include <string.h>
-#include <ctype.h>
 #include "tls.h"
 #include "tls_cipher_suites.h"
+#include "tls_handshake_hash.h"
+#include "tls_handshake_misc.h"
 #include "tls_client.h"
 #include "tls_server.h"
 #include "tls_common.h"
 #include "tls_record.h"
+#include "tls_certificate.h"
 #include "tls_cache.h"
 #include "tls_misc.h"
-#include "asn1.h"
-#include "oid.h"
-#include "x509.h"
-#include "pem.h"
+#include "dtls_record.h"
+#include "encoding/asn1.h"
+#include "encoding/oid.h"
+#include "certificate/pem_import.h"
+#include "certificate/x509_cert_parse.h"
+#include "certificate/x509_cert_validate.h"
 #include "debug.h"
 
 //Check SSL library configuration
 #if (TLS_SUPPORT == ENABLED)
-
-
-/**
- * @brief Perform TLS handshake
- * @param[in] context Pointer to the TLS context
- * @return Error code
- **/
-
-error_t tlsHandshake(TlsContext *context)
-{
-   error_t error;
-
-#if (TLS_CLIENT_SUPPORT == ENABLED)
-   //TLS operates as a client?
-   if(context->entity == TLS_CONNECTION_END_CLIENT)
-   {
-      //Initiate TLS handshake with the remote server
-      error = tlsClientHandshake(context);
-   }
-   else
-#endif
-#if (TLS_SERVER_SUPPORT == ENABLED)
-   //TLS operates as a server?
-   if(context->entity == TLS_CONNECTION_END_SERVER)
-   {
-      //Initiate TLS handshake with the remote client
-      error = tlsServerHandshake(context);
-   }
-   else
-#endif
-   //Unsupported mode of operation?
-   {
-      //Cannot establish a secure session between the server and the client
-      error = ERROR_INVALID_PARAMETER;
-   }
-
-   //Return status code
-   return error;
-}
-
-
-/**
- * @brief Send handshake message
- * @param[in] context Pointer to the TLS context
- * @param[in] data Pointer to the handshake message
- * @param[in] length Length of the handshake message
- * @param[in] type Handshake message type
- * @return Error code
- **/
-
-error_t tlsSendHandshakeMessage(TlsContext *context,
-   const void *data, size_t length, TlsMessageType type)
-{
-   error_t error;
-   TlsHandshake *message;
-
-   //Point to the handshake message header
-   message = (TlsHandshake *) data;
-
-   //Make room for the handshake message header
-   memmove(message->data, data, length);
-
-   //Handshake message type
-   message->msgType = type;
-   //Number of bytes in the message
-   STORE24BE(length, message->length);
-
-   //Total length of the handshake message
-   length += sizeof(TlsHandshake);
-
-   //The HelloRequest message must not be included in the message hashes
-   //that are maintained throughout the handshake and used in the Finished
-   //messages and the CertificateVerify message
-   if(type != TLS_TYPE_HELLO_REQUEST)
-      tlsUpdateHandshakeHash(context, data, length);
-
-   //Send handshake message
-   error = tlsWriteProtocolData(context, data, length, TLS_TYPE_HANDSHAKE);
-
-   //Return status code
-   return error;
-}
 
 
 /**
@@ -162,19 +84,8 @@ error_t tlsSendCertificate(TlsContext *context)
          if(context->cert == NULL && context->version == SSL_VERSION_3_0)
          {
             //The client should send a no_certificate alert instead
-            error = tlsFormatAlert(context, TLS_ALERT_LEVEL_WARNING,
-               TLS_ALERT_NO_CERTIFICATE, message, &length);
-
-            //Check status code
-            if(!error)
-            {
-               //Debug message
-               TRACE_INFO("Sending Alert message (%" PRIuSIZE " bytes)...\r\n", length);
-               TRACE_INFO_ARRAY("  ", message, length);
-
-               //Send Alert message
-               error = tlsWriteProtocolData(context, message, length, TLS_TYPE_ALERT);
-            }
+            error = tlsSendAlert(context, TLS_ALERT_LEVEL_WARNING,
+               TLS_ALERT_NO_CERTIFICATE);
          }
          else
 #endif
@@ -275,14 +186,40 @@ error_t tlsSendChangeCipherSpec(TlsContext *context)
       TRACE_INFO("Sending ChangeCipherSpec message (%" PRIuSIZE " bytes)...\r\n", length);
       TRACE_DEBUG_ARRAY("  ", message, length);
 
-      //Send ChangeCipherSpec message
-      error = tlsWriteProtocolData(context, (uint8_t *) message,
-         length, TLS_TYPE_CHANGE_CIPHER_SPEC);
+#if (DTLS_SUPPORT == ENABLED)
+      //DTLS protocol?
+      if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_DATAGRAM)
+      {
+         //Send ChangeCipherSpec message
+         error = dtlsWriteProtocolData(context, (uint8_t *) message,
+            length, TLS_TYPE_CHANGE_CIPHER_SPEC);
+      }
+      else
+#endif
+      //TLS protocol?
+      {
+         //Send ChangeCipherSpec message
+         error = tlsWriteProtocolData(context, (uint8_t *) message,
+            length, TLS_TYPE_CHANGE_CIPHER_SPEC);
+      }
    }
 
    //Check status code
    if(error == NO_ERROR || error == ERROR_WOULD_BLOCK || error == ERROR_TIMEOUT)
    {
+#if (DTLS_SUPPORT == ENABLED)
+      //Release previous encryption engine first
+      tlsFreeEncryptionEngine(&context->prevEncryptionEngine);
+
+      //Save current encryption engine for later use
+      context->prevEncryptionEngine = context->encryptionEngine;
+      //Clear current encryption engine
+      memset(&context->encryptionEngine, 0, sizeof(TlsEncryptionEngine));
+#else
+      //Release encryption engine first
+      tlsFreeEncryptionEngine(&context->encryptionEngine);
+#endif
+
       //Initialize encryption engine
       error = tlsInitEncryptionEngine(context, &context->encryptionEngine,
          context->entity);
@@ -418,9 +355,22 @@ error_t tlsSendAlert(TlsContext *context, uint8_t level, uint8_t description)
       TRACE_INFO("Sending Alert message (%" PRIuSIZE " bytes)...\r\n", length);
       TRACE_INFO_ARRAY("  ", message, length);
 
-      //Send Alert message
-      error = tlsWriteProtocolData(context, (uint8_t *) message,
-         length, TLS_TYPE_ALERT);
+#if (DTLS_SUPPORT == ENABLED)
+      //DTLS protocol?
+      if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_DATAGRAM)
+      {
+         //Send Alert message
+         error = dtlsWriteProtocolData(context, (uint8_t *) message,
+            length, TLS_TYPE_ALERT);
+      }
+      else
+#endif
+      //TLS protocol?
+      {
+         //Send Alert message
+         error = tlsWriteProtocolData(context, (uint8_t *) message,
+            length, TLS_TYPE_ALERT);
+      }
    }
 
    //Alert messages convey the severity of the message
@@ -474,10 +424,10 @@ error_t tlsFormatCertificate(TlsContext *context,
    error_t error;
    uint8_t *p;
    const char_t *pemCert;
-   size_t pemCertLength;
+   size_t pemCertLen;
    uint8_t *derCert;
    size_t derCertSize;
-   size_t derCertLength;
+   size_t derCertLen;
 
    //Initialize status code
    error = NO_ERROR;
@@ -493,27 +443,27 @@ error_t tlsFormatCertificate(TlsContext *context,
       //Point to the certificate chain
       pemCert = context->cert->certChain;
       //Get the total length, in bytes, of the certificate chain
-      pemCertLength = context->cert->certChainLength;
+      pemCertLen = context->cert->certChainLen;
    }
    else
    {
       //If no suitable certificate is available, the message
       //contains an empty certificate list
       pemCert = NULL;
-      pemCertLength = 0;
+      pemCertLen = 0;
    }
 
    //DER encoded certificate
    derCert = NULL;
    derCertSize = 0;
-   derCertLength = 0;
+   derCertLen = 0;
 
    //Parse the certificate chain
-   while(pemCertLength > 0)
+   while(pemCertLen > 0)
    {
       //Decode PEM certificate
-      error = pemReadCertificate(&pemCert, &pemCertLength,
-         &derCert, &derCertSize, &derCertLength);
+      error = pemImportCertificate(&pemCert, &pemCertLen,
+         &derCert, &derCertSize, &derCertLen);
 
       //Any error to report?
       if(error)
@@ -524,10 +474,10 @@ error_t tlsFormatCertificate(TlsContext *context,
       }
 
       //Total length of the certificate list
-      *length += derCertLength + 3;
+      *length += derCertLen + 3;
 
       //Prevent the buffer from overflowing
-      if((*length + sizeof(TlsCertificate)) > context->txRecordMaxLen)
+      if((*length + sizeof(TlsCertificate)) > context->txBufferMaxLen)
       {
          //Report an error
          error = ERROR_MESSAGE_TOO_LONG;
@@ -535,12 +485,12 @@ error_t tlsFormatCertificate(TlsContext *context,
       }
 
       //Each certificate is preceded by a 3-byte length field
-      STORE24BE(derCertLength, p);
+      STORE24BE(derCertLen, p);
       //Copy the current certificate
-      memcpy(p + 3, derCert, derCertLength);
+      memcpy(p + 3, derCert, derCertLen);
 
       //Advance data pointer
-      p += derCertLength + 3;
+      p += derCertLen + 3;
    }
 
    //Free previously allocated memory
@@ -567,7 +517,7 @@ error_t tlsFormatCertificate(TlsContext *context,
 error_t tlsFormatChangeCipherSpec(TlsContext *context,
    TlsChangeCipherSpec *message, size_t *length)
 {
-   //The ChangeCipherSpec message consists of a single byte of value 1
+   //The message consists of a single byte of value 1
    message->type = 1;
 
    //Length of the ChangeCipherSpec message
@@ -648,17 +598,13 @@ error_t tlsParseCertificate(TlsContext *context,
    const TlsCertificate *message, size_t length)
 {
    error_t error;
-   const uint8_t *p;
+   uint_t i;
    size_t n;
-   const char_t *pemCert;
-   size_t pemCertLength;
-   uint8_t *derCert;
-   size_t derCertSize;
-   size_t derCertLength;
-
-   //X.509 certificates
-   X509CertificateInfo *certInfo = NULL;
-   X509CertificateInfo *issuerCertInfo = NULL;
+   bool_t validCertChain;
+   const uint8_t *p;
+   const char_t *subjectName;
+   X509CertificateInfo *certInfo;
+   X509CertificateInfo *issuerCertInfo;
 
    //Debug message
    TRACE_INFO("Certificate message received (%" PRIuSIZE " bytes)...\r\n", length);
@@ -688,14 +634,15 @@ error_t tlsParseCertificate(TlsContext *context,
    length -= sizeof(TlsCertificate);
 
    //Ensure that the chain of certificates is valid
-   if(n > length)
+   if(n != length)
       return ERROR_DECODING_FAILED;
-
-   //Compute the length of the certificate list
-   length = n;
 
    //The sender's certificate must come first in the list
    p = message->certificateList;
+
+   //Initialize X.509 certificates
+   certInfo = NULL;
+   issuerCertInfo = NULL;
 
    //Start of exception handling block
    do
@@ -740,7 +687,7 @@ error_t tlsParseCertificate(TlsContext *context,
          }
       }
 
-      //Each certificate is preceded by a 3-byte length field
+      //The end-user certificate is preceded by a 3-byte length field
       if(length < 3)
       {
          //Report an error
@@ -754,7 +701,7 @@ error_t tlsParseCertificate(TlsContext *context,
       p += 3;
       length -= 3;
 
-      //Make sure that the certificate is valid
+      //Malformed Certificate message?
       if(n > length)
       {
          //Report an error
@@ -768,9 +715,26 @@ error_t tlsParseCertificate(TlsContext *context,
       if(error)
          break;
 
-      //Parse X.509 certificate
+      //Parse end-user certificate
       error = x509ParseCertificate(p, n, certInfo);
       //Failed to parse the X.509 certificate?
+      if(error)
+      {
+         //Report an error
+         error = ERROR_DECODING_FAILED;
+         break;
+      }
+
+      //Check certificate key usage
+      error = tlsCheckKeyUsage(certInfo, context->entity,
+         context->keyExchMethod);
+      //Any error to report?
+      if(error)
+         break;
+
+      //Extract the public key from the end-user certificate
+      error = tlsReadSubjectPublicKey(context, certInfo);
+      //Any error to report?
       if(error)
          break;
 
@@ -778,163 +742,78 @@ error_t tlsParseCertificate(TlsContext *context,
       //TLS operates as a client?
       if(context->entity == TLS_CONNECTION_END_CLIENT)
       {
-         //Check if the hostname must be verified
-         if(context->serverName != NULL)
+         //Check key exchange method
+         if(context->keyExchMethod == TLS_KEY_EXCH_RSA ||
+            context->keyExchMethod == TLS_KEY_EXCH_DHE_RSA ||
+            context->keyExchMethod == TLS_KEY_EXCH_ECDHE_RSA ||
+            context->keyExchMethod == TLS_KEY_EXCH_RSA_PSK)
          {
-            int_t i;
-            int_t j;
-
-            //Point to the last character of the common name
-            i = certInfo->subject.commonNameLen - 1;
-            //Point to the last character of the hostname
-            j = strlen(context->serverName) - 1;
-
-            //Check the common name in the server certificate against
-            //the actual hostname that is being requested
-            while(i >= 0 && j >= 0)
-            {
-               //Wildcard certificate found?
-               if(certInfo->subject.commonName[i] == '*' && i == 0)
-               {
-                  //The CN is acceptable
-                  j = 0;
-               }
-               //Perform case insensitive character comparison
-               else if(tolower((uint8_t) certInfo->subject.commonName[i]) != context->serverName[j])
-               {
-                  break;
-               }
-
-               //Compare previous characters
-               i--;
-               j--;
-            }
-
-            //If the host names do not match, reject the certificate
-            if(i >= 0 || j >= 0)
-            {
-               //Debug message
-               TRACE_WARNING("Server name mismatch!\r\n");
-               //Report an error
-               error = ERROR_BAD_CERTIFICATE;
-               break;
-            }
+            //The client expects a valid RSA certificate whenever the agreed-upon
+            //key exchange method uses RSA certificates for authentication
+            if(context->peerCertType != TLS_CERT_RSA_SIGN)
+               error = ERROR_UNSUPPORTED_CERTIFICATE;
          }
-      }
-#endif
+         else if(context->keyExchMethod == TLS_KEY_EXCH_DHE_DSS)
+         {
+            //The client expects a valid DSA certificate whenever the agreed-upon
+            //key exchange method uses DSA certificates for authentication
+            if(context->peerCertType != TLS_CERT_DSS_SIGN)
+               error = ERROR_UNSUPPORTED_CERTIFICATE;
+         }
+         else if(context->keyExchMethod == TLS_KEY_EXCH_ECDHE_ECDSA)
+         {
+            //The client expects a valid ECDSA certificate whenever the agreed-upon
+            //key exchange method uses ECDSA certificates for authentication
+            if(context->peerCertType != TLS_CERT_ECDSA_SIGN)
+               error = ERROR_UNSUPPORTED_CERTIFICATE;
+         }
+         else
+         {
+            //Just for sanity
+            error = ERROR_UNSUPPORTED_CERTIFICATE;
+         }
 
-#if (TLS_RSA_SIGN_SUPPORT == ENABLED || TLS_RSA_SUPPORT == ENABLED || \
-   TLS_DHE_RSA_SUPPORT == ENABLED || TLS_ECDHE_RSA_SUPPORT == ENABLED)
-      //The certificate contains a valid RSA public key?
-      if(!oidComp(certInfo->subjectPublicKeyInfo.oid, certInfo->subjectPublicKeyInfo.oidLen,
-         RSA_ENCRYPTION_OID, sizeof(RSA_ENCRYPTION_OID)))
-      {
-         uint_t k;
-
-         //Retrieve the RSA public key
-         error = x509ReadRsaPublicKey(certInfo, &context->peerRsaPublicKey);
-         //Any error to report
+         //Invalid certificate received?
          if(error)
             break;
 
-         //Get the length of the modulus, in bits
-         k = mpiGetBitLength(&context->peerRsaPublicKey.n);
+         //Point to the subject name
+         subjectName = context->serverName;
 
-         //Make sure the modulus is acceptable
-         if(k < TLS_MIN_RSA_MODULUS_SIZE || k > TLS_MAX_RSA_MODULUS_SIZE)
-         {
-            //Report an error
-            error = ERROR_BAD_CERTIFICATE;
-            break;
-         }
-
-         //Save the certificate type
-         context->peerCertType = TLS_CERT_RSA_SIGN;
-      }
-      else
-#endif
-#if (TLS_DSA_SIGN_SUPPORT == ENABLED || TLS_DHE_DSS_SUPPORT == ENABLED)
-      //The certificate contains a valid DSA public key?
-      if(!oidComp(certInfo->subjectPublicKeyInfo.oid, certInfo->subjectPublicKeyInfo.oidLen,
-         DSA_OID, sizeof(DSA_OID)))
-      {
-         uint_t k;
-
-         //Retrieve the DSA public key
-         error = x509ReadDsaPublicKey(certInfo, &context->peerDsaPublicKey);
-         //Any error to report
-         if(error)
-            break;
-
-         //Get the length of the prime modulus, in bits
-         k = mpiGetBitLength(&context->peerDsaPublicKey.p);
-
-         //Make sure the prime modulus is acceptable
-         if(k < TLS_MIN_DSA_MODULUS_SIZE || k > TLS_MAX_DSA_MODULUS_SIZE)
-         {
-            //Report an error
-            error = ERROR_BAD_CERTIFICATE;
-            break;
-         }
-
-         //Save the certificate type
-         context->peerCertType = TLS_CERT_DSS_SIGN;
-      }
-      else
-#endif
-#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED || TLS_ECDHE_ECDSA_SUPPORT == ENABLED)
-      //The certificate contains a valid EC public key?
-      if(!oidComp(certInfo->subjectPublicKeyInfo.oid, certInfo->subjectPublicKeyInfo.oidLen,
-         EC_PUBLIC_KEY_OID, sizeof(EC_PUBLIC_KEY_OID)))
-      {
-         const EcCurveInfo *curveInfo;
-
-         //Retrieve EC domain parameters
-         curveInfo = ecGetCurveInfo(certInfo->subjectPublicKeyInfo.ecParams.namedCurve,
-            certInfo->subjectPublicKeyInfo.ecParams.namedCurveLen);
-
-         //Make sure the specified elliptic curve is supported
-         if(curveInfo == NULL)
-         {
-            //Report an error
-            error = ERROR_BAD_CERTIFICATE;
-            //Exit immediately
-            break;
-         }
-
-         //Load EC domain parameters
-         error = ecLoadDomainParameters(&context->peerEcParams, curveInfo);
+         //Check the subject name in the server certificate against the actual
+         //FQDN name that is being requested
+         error = x509CheckSubjectName(certInfo, subjectName);
          //Any error to report?
          if(error)
-            break;
+         {
+            //Debug message
+            TRACE_WARNING("Server name mismatch!\r\n");
 
-         //Retrieve the EC public key
-         error = ecImport(&context->peerEcParams, &context->peerEcPublicKey,
-            certInfo->subjectPublicKeyInfo.ecPublicKey.q, certInfo->subjectPublicKeyInfo.ecPublicKey.qLen);
-         //Any error to report
-         if(error)
+            //Report an error
+            error = ERROR_BAD_CERTIFICATE;
             break;
-
-         //Save the certificate type
-         context->peerCertType = TLS_CERT_ECDSA_SIGN;
+         }
       }
       else
 #endif
-      //The certificate does not contain any valid public key?
+      //TLS operates as a server?
       {
-         //Report an error
-         error = ERROR_BAD_CERTIFICATE;
-         break;
+         //Do not check name constraints
+         subjectName = NULL;
       }
+
+      //Test if the end-user certificate matches a trusted CA
+      validCertChain = tlsIsCertificateValid(certInfo, context->trustedCaList,
+         context->trustedCaListLen, 0, subjectName);
 
       //Next certificate
       p += n;
       length -= n;
 
       //PKIX path validation
-      while(length > 0)
+      for(i = 0; length > 0; i++)
       {
-         //Each certificate is preceded by a 3-byte length field
+         //Each intermediate certificate is preceded by a 3-byte length field
          if(length < 3)
          {
             //Report an error
@@ -948,7 +827,7 @@ error_t tlsParseCertificate(TlsContext *context,
          p += 3;
          length -= 3;
 
-         //Ensure that the certificate is valid
+         //Malformed Certificate message?
          if(n > length)
          {
             //Report an error
@@ -962,73 +841,66 @@ error_t tlsParseCertificate(TlsContext *context,
          if(error)
             break;
 
-         //Parse X.509 certificate
+         //Parse intermediate certificate
          error = x509ParseCertificate(p, n, issuerCertInfo);
          //Failed to parse the X.509 certificate?
          if(error)
+         {
+            //Report an error
+            error = ERROR_DECODING_FAILED;
             break;
+         }
 
-         //Valid trusted CA list?
-         if(context->trustedCaListLen > 0)
+         //Certificate chain validation in progress?
+         if(!validCertChain)
          {
             //Validate current certificate
-            error = x509ValidateCertificate(certInfo, issuerCertInfo);
+            error = x509ValidateCertificate(certInfo, issuerCertInfo, i);
             //Certificate validation failed?
             if(error)
                break;
+
+            //Check name constraints
+            error = x509CheckNameConstraints(subjectName, issuerCertInfo);
+            //Should the application reject the certificate?
+            if(error)
+               return ERROR_BAD_CERTIFICATE;
+
+            //Check the version of the certificate
+            if(issuerCertInfo->version < X509_VERSION_3)
+            {
+               //Conforming implementations may choose to reject all version 1
+               //and version 2 intermediate certificates (refer to RFC 5280,
+               //section 6.1.4)
+               error = ERROR_BAD_CERTIFICATE;
+               break;
+            }
+
+            //Test if the intermediate certificate matches a trusted CA
+            validCertChain = tlsIsCertificateValid(issuerCertInfo,
+               context->trustedCaList, context->trustedCaListLen, i, subjectName);
          }
 
          //Keep track of the issuer certificate
-         memcpy(certInfo, issuerCertInfo, sizeof(X509CertificateInfo));
+         *certInfo = *issuerCertInfo;
 
          //Next certificate
          p += n;
          length -= n;
       }
 
-      //Propagate exception if necessary...
-      if(error)
-         break;
-
-      //Point to the first trusted CA certificate
-      pemCert = context->trustedCaList;
-      //Get the total length, in bytes, of the trusted CA list
-      pemCertLength = context->trustedCaListLen;
-
-      //DER encoded certificate
-      derCert = NULL;
-      derCertSize = 0;
-      derCertLength = 0;
-
-      //Loop through the list
-      while(pemCertLength > 0)
+      //Check status code
+      if(!error)
       {
-         //Decode PEM certificate
-         error = pemReadCertificate(&pemCert, &pemCertLength,
-            &derCert, &derCertSize, &derCertLength);
-         //Any error to report?
-         if(error)
-            break;
-
-         //Parse X.509 certificate
-         error = x509ParseCertificate(derCert, derCertLength, issuerCertInfo);
-         //Failed to parse the X.509 certificate?
-         if(error)
-            break;
-
-         //Validate the certificate with the current trusted CA
-         error = x509ValidateCertificate(certInfo, issuerCertInfo);
-         //Certificate validation succeeded?
-         if(!error)
-            break;
+         //Certificate chain validation failed?
+         if(!validCertChain)
+         {
+            //A valid certificate chain or partial chain was received, but the
+            //certificate was not accepted because the CA certificate could not
+            //be matched with a known, trusted CA
+            error = ERROR_UNKNOWN_CA;
+         }
       }
-
-      //The certificate could not be matched with a known, trusted CA?
-      if(error == ERROR_END_OF_FILE)
-         error = ERROR_UNKNOWN_CA;
-
-      //Free previously allocated memory
-      tlsFreeMem(derCert);
 
       //End of exception handling block
    } while(0);
@@ -1037,39 +909,23 @@ error_t tlsParseCertificate(TlsContext *context,
    tlsFreeMem(certInfo);
    tlsFreeMem(issuerCertInfo);
 
-   //Clean up side effects
-   if(error)
+   //Check status code
+   if(!error)
    {
-#if (TLS_RSA_SIGN_SUPPORT == ENABLED || TLS_RSA_SUPPORT == ENABLED || \
-   TLS_DHE_RSA_SUPPORT == ENABLED || TLS_ECDHE_RSA_SUPPORT == ENABLED)
-      //Release peer's RSA public key
-      rsaFreePublicKey(&context->peerRsaPublicKey);
-#endif
-#if (TLS_DSA_SIGN_SUPPORT == ENABLED || TLS_DHE_DSS_SUPPORT == ENABLED)
-      //Release peer's DSA public key
-      dsaFreePublicKey(&context->peerDsaPublicKey);
-#endif
-#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED || TLS_ECDHE_ECDSA_SUPPORT == ENABLED)
-      //Release peer's EC domain parameters
-      ecFreeDomainParameters(&context->peerEcParams);
-      //Release peer's EC public key
-      ecFree(&context->peerEcPublicKey);
-#endif
-   }
-
-   //TLS operates as a client or a server?
-   if(context->entity == TLS_CONNECTION_END_CLIENT)
-   {
-      //Update FSM state
-      if(context->keyExchMethod == TLS_KEY_EXCH_RSA)
-         context->state = TLS_STATE_CERTIFICATE_REQUEST;
+      //TLS operates as a client or a server?
+      if(context->entity == TLS_CONNECTION_END_CLIENT)
+      {
+         //Update FSM state
+         if(context->keyExchMethod == TLS_KEY_EXCH_RSA)
+            context->state = TLS_STATE_CERTIFICATE_REQUEST;
+         else
+            context->state = TLS_STATE_SERVER_KEY_EXCHANGE;
+      }
       else
-         context->state = TLS_STATE_SERVER_KEY_EXCHANGE;
-   }
-   else
-   {
-      //Prepare to receive ClientKeyExchange message...
-      context->state = TLS_STATE_CLIENT_KEY_EXCHANGE;
+      {
+         //Prepare to receive ClientKeyExchange message...
+         context->state = TLS_STATE_CLIENT_KEY_EXCHANGE;
+      }
    }
 
    //Return status code
@@ -1095,7 +951,11 @@ error_t tlsParseChangeCipherSpec(TlsContext *context,
    TRACE_DEBUG_ARRAY("  ", message, length);
 
    //Check the length of the ChangeCipherSpec message
-   if(length < sizeof(TlsChangeCipherSpec))
+   if(length != sizeof(TlsChangeCipherSpec))
+      return ERROR_DECODING_FAILED;
+
+   //The message consists of a single byte of value 1
+   if(message->type != 0x01)
       return ERROR_DECODING_FAILED;
 
    //TLS operates as a client or a server?
@@ -1115,6 +975,9 @@ error_t tlsParseChangeCipherSpec(TlsContext *context,
    //Inform the record layer that subsequent records will be protected
    //under the newly negotiated encryption algorithm
    context->changeCipherSpecReceived = TRUE;
+
+   //Release decryption engine first
+   tlsFreeEncryptionEngine(&context->decryptionEngine);
 
    //TLS operates as a client or a server?
    if(context->entity == TLS_CONNECTION_END_CLIENT)
@@ -1141,6 +1004,15 @@ error_t tlsParseChangeCipherSpec(TlsContext *context,
       //Prepare to receive a Finished message from the client
       context->state = TLS_STATE_CLIENT_FINISHED;
    }
+
+#if (DTLS_SUPPORT == ENABLED)
+   //DTLS protocol?
+   if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_DATAGRAM)
+   {
+      //Initialize sliding window
+      dtlsInitReplayWindow(context);
+   }
+#endif
 
    //Successful processing
    return NO_ERROR;
@@ -1181,7 +1053,7 @@ error_t tlsParseFinished(TlsContext *context,
 
       //Check the length of the Finished message
       if(length != context->serverVerifyDataLen)
-         return ERROR_DECODING_FAILED;
+         return ERROR_INVALID_SIGNATURE;
 
       //Check the resulting verify data
       if(memcmp(message, context->serverVerifyData, context->serverVerifyDataLen))
@@ -1209,7 +1081,7 @@ error_t tlsParseFinished(TlsContext *context,
 
       //Check the length of the Finished message
       if(length != context->clientVerifyDataLen)
-         return ERROR_DECODING_FAILED;
+         return ERROR_INVALID_SIGNATURE;
 
       //Check the resulting verify data
       if(memcmp(message, context->clientVerifyData, context->clientVerifyDataLen))
@@ -1253,6 +1125,15 @@ error_t tlsParseAlert(TlsContext *context,
    //Alert messages convey the severity of the message
    if(message->level == TLS_ALERT_LEVEL_WARNING)
    {
+#if (TLS_MAX_WARNING_ALERTS > 0)
+      //Increment the count of consecutive warning alerts
+      context->alertCount++;
+
+      //Do not allow too many consecutive warning alerts
+      if(context->alertCount > TLS_MAX_WARNING_ALERTS)
+         return ERROR_UNEXPECTED_MESSAGE;
+#endif
+
       //Closure alert received?
       if(message->description == TLS_ALERT_CLOSE_NOTIFY)
       {

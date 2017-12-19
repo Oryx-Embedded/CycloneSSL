@@ -1,6 +1,6 @@
 /**
  * @file tls_client_misc.c
- * @brief Helper functions (TLS client)
+ * @brief Helper functions for TLS client
  *
  * @section License
  *
@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.7.8
+ * @version 1.8.0
  **/
 
 //Switch to the appropriate trace level
@@ -33,10 +33,12 @@
 #include <string.h>
 #include "tls.h"
 #include "tls_cipher_suites.h"
+#include "tls_handshake_misc.h"
 #include "tls_client.h"
 #include "tls_client_misc.h"
 #include "tls_common.h"
 #include "tls_record.h"
+#include "tls_signature.h"
 #include "tls_cache.h"
 #include "tls_misc.h"
 #include "debug.h"
@@ -50,7 +52,7 @@
  * @param[in] context Pointer to the TLS context
  * @param[out] eccCipherSuite This flag tells whether any ECC cipher suite
  *   is proposed by the client
- * @param[in] p Output stream where to write the ServerName extension
+ * @param[in] p Output stream where to write the list of cipher suites
  * @param[out] written Total number of bytes that have been written
  * @return Error code
  **/
@@ -60,10 +62,13 @@ error_t tlsFormatCipherSuites(TlsContext *context,
 {
    uint_t i;
    uint_t n;
+   uint_t numCipherSuites;
    TlsCipherSuites *cipherSuites;
 
    //Point to the list of cryptographic algorithms supported by the client
    cipherSuites = (TlsCipherSuites *) p;
+   //Number of cipher suites in the array
+   n = 0;
 
    //Debug message
    TRACE_DEBUG("Cipher suites:\r\n");
@@ -71,14 +76,12 @@ error_t tlsFormatCipherSuites(TlsContext *context,
    //User preferred cipher suite list
    if(context->numCipherSuites > 0)
    {
-      //Number of cipher suites in the array
-      n = 0;
-
       //Parse cipher suites
       for(i = 0; i < context->numCipherSuites; i++)
       {
          //Make sure the specified cipher suite is supported
-         if(tlsIsCipherSuiteSupported(context->cipherSuites[i]))
+         if(tlsIsCipherSuiteSupported(context->cipherSuites[i],
+            context->versionMax, context->transportProtocol))
          {
             //Copy cipher suite identifier
             cipherSuites->value[n++] = htons(context->cipherSuites[i]);
@@ -97,21 +100,33 @@ error_t tlsFormatCipherSuites(TlsContext *context,
    else
    {
       //Determine the number of supported cipher suites
-      n = tlsGetNumSupportedCipherSuites();
+      numCipherSuites = tlsGetNumSupportedCipherSuites();
 
       //Parse cipher suites
-      for(i = 0; i < n; i++)
+      for(i = 0; i < numCipherSuites; i++)
       {
-         //Copy cipher suite identifier
-         cipherSuites->value[i] = htons(tlsSupportedCipherSuites[i].identifier);
+         //TLS 1.2 cipher suites must not be negotiated in older versions of TLS
+         if(context->versionMax == TLS_VERSION_1_2 ||
+            tlsSupportedCipherSuites[i].prfHashAlgo == NULL)
+         {
+            //The only stream cipher described in TLS 1.2 is RC4, which cannot
+            //be randomly accessed. RC4 must not be used with DTLS
+            if(context->transportProtocol != TLS_TRANSPORT_PROTOCOL_DATAGRAM ||
+               tlsSupportedCipherSuites[i].cipherMode != CIPHER_MODE_STREAM)
+            {
+               //Copy cipher suite identifier
+               cipherSuites->value[n++] = htons(tlsSupportedCipherSuites[i].identifier);
 
-         //Debug message
-         TRACE_DEBUG("  0x%04" PRIX16 " (%s)\r\n", tlsSupportedCipherSuites[i].identifier,
-            tlsSupportedCipherSuites[i].name);
+               //Debug message
+               TRACE_DEBUG("  0x%04" PRIX16 " (%s)\r\n",
+                  tlsSupportedCipherSuites[i].identifier,
+                  tlsSupportedCipherSuites[i].name);
 
-         //ECC cipher suite?
-         if(tlsIsEccCipherSuite(tlsSupportedCipherSuites[i].identifier))
-            *eccCipherSuite = TRUE;
+               //ECC cipher suite?
+               if(tlsIsEccCipherSuite(tlsSupportedCipherSuites[i].identifier))
+                  *eccCipherSuite = TRUE;
+            }
+         }
       }
    }
 
@@ -125,6 +140,21 @@ error_t tlsFormatCipherSuites(TlsContext *context,
          //The client includes the TLS_EMPTY_RENEGOTIATION_INFO_SCSV signaling
          //cipher suite value in its ClientHello
          cipherSuites->value[n++] = HTONS(TLS_EMPTY_RENEGOTIATION_INFO_SCSV);
+      }
+   }
+#endif
+
+#if (TLS_FALLBACK_SCSV_SUPPORT == ENABLED)
+   //Check wether support for FALLBACK_SCSV is enabled
+   if(context->fallbackScsvEnabled)
+   {
+      //The TLS_FALLBACK_SCSV cipher suite value is meant for use by clients
+      //that repeat a connection attempt with a downgraded protocol
+      if(context->versionMax != TLS_MAX_VERSION)
+      {
+         //The client should put TLS_FALLBACK_SCSV after all cipher suites
+         //that it actually intends to negotiate
+         cipherSuites->value[n++] = HTONS(TLS_FALLBACK_SCSV);
       }
    }
 #endif
@@ -148,21 +178,21 @@ error_t tlsFormatCipherSuites(TlsContext *context,
  * @return Error code
  **/
 
-error_t tlsFormatCompressionMethods(TlsContext *context,
+error_t tlsFormatCompressMethods(TlsContext *context,
    uint8_t *p, size_t *written)
 {
-   TlsCompressionMethods *compressionMethods;
+   TlsCompressMethods *compressMethods;
 
    //List of compression algorithms supported by the client
-   compressionMethods = (TlsCompressionMethods *) p;
+   compressMethods = (TlsCompressMethods *) p;
 
    //The CRIME exploit takes advantage of TLS compression, so conservative
    //implementations do not enable compression at the TLS level
-   compressionMethods->length = 1;
-   compressionMethods->value[0] = TLS_COMPRESSION_METHOD_NULL;
+   compressMethods->length = 1;
+   compressMethods->value[0] = TLS_COMPRESSION_METHOD_NULL;
 
    //Total number of bytes that have been written
-   *written = sizeof(TlsCompressionMethods) + compressionMethods->length;
+   *written = sizeof(TlsCompressMethods) + compressMethods->length;
 
    //Successful processing
    return NO_ERROR;
@@ -170,21 +200,21 @@ error_t tlsFormatCompressionMethods(TlsContext *context,
 
 
 /**
- * @brief Format ServerName extension
+ * @brief Format SNI extension
  * @param[in] context Pointer to the TLS context
  * @param[in] p Output stream where to write the ServerName extension
  * @param[out] written Total number of bytes that have been written
  * @return Error code
  **/
 
-error_t tlsFormatServerNameExtension(TlsContext *context,
+error_t tlsFormatClientSniExtension(TlsContext *context,
    uint8_t *p, size_t *written)
 {
    size_t n = 0;
 
 #if (TLS_SNI_SUPPORT == ENABLED)
-   //In order to provide the server name, clients may include
-   //a ServerName extension
+   //In order to provide the server name, clients may include a ServerName
+   //extension
    if(context->serverName != NULL)
    {
       TlsExtension *extension;
@@ -234,6 +264,364 @@ error_t tlsFormatServerNameExtension(TlsContext *context,
 
 
 /**
+ * @brief Format MaxFragmentLength extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] p Output stream where to write the MaxFragmentLength extension
+ * @param[out] written Total number of bytes that have been written
+ * @return Error code
+ **/
+
+error_t tlsFormatClientMaxFragLenExtension(TlsContext *context,
+   uint8_t *p, size_t *written)
+{
+   size_t n = 0;
+
+#if (TLS_MAX_FRAG_LEN_SUPPORT == ENABLED)
+   //In order to negotiate smaller maximum fragment lengths, clients may
+   //include a MaxFragmentLength extension
+   if(context->maxFragLen == 512 || context->maxFragLen == 1024 ||
+      context->maxFragLen == 2048 || context->maxFragLen == 4096)
+   {
+      TlsExtension *extension;
+
+      //Add the MaxFragmentLength extension
+      extension = (TlsExtension *) p;
+      //Type of the extension
+      extension->type = HTONS(TLS_EXT_MAX_FRAGMENT_LENGTH);
+
+      //Set the maximum fragment length
+      switch(context->maxFragLen)
+      {
+      case 512:
+         extension->value[0] = TLS_MAX_FRAGMENT_LENGHT_512;
+         break;
+      case 1024:
+         extension->value[0] = TLS_MAX_FRAGMENT_LENGHT_1024;
+         break;
+      case 2048:
+         extension->value[0] = TLS_MAX_FRAGMENT_LENGHT_2048;
+         break;
+      default:
+         extension->value[0] = TLS_MAX_FRAGMENT_LENGHT_4096;
+         break;
+      }
+
+      //The extension data field contains a single byte
+      n = sizeof(uint8_t);
+      //Set the length of the extension
+      extension->length = HTONS(n);
+
+      //Compute the length, in bytes, of the MaxFragmentLength extension
+      n += sizeof(TlsExtension);
+   }
+#endif
+
+   //Total number of bytes that have been written
+   *written = n;
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
+ * @brief Format EllipticCurves extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] p Output stream where to write the EllipticCurves extension
+ * @param[out] written Total number of bytes that have been written
+ * @return Error code
+ **/
+
+error_t tlsFormatEllipticCurvesExtension(TlsContext *context,
+   uint8_t *p, size_t *written)
+{
+   size_t n = 0;
+
+#if (TLS_ECDH_ANON_SUPPORT == ENABLED || TLS_ECDHE_RSA_SUPPORT == ENABLED || \
+   TLS_ECDHE_ECDSA_SUPPORT == ENABLED || TLS_ECDHE_PSK_SUPPORT == ENABLED)
+   TlsExtension *extension;
+   TlsEllipticCurveList *ellipticCurveList;
+
+   //Add the EllipticCurves extension
+   extension = (TlsExtension *) p;
+   //Type of the extension
+   extension->type = HTONS(TLS_EXT_ELLIPTIC_CURVES);
+
+   //Point to the list of supported elliptic curves
+   ellipticCurveList = (TlsEllipticCurveList *) extension->value;
+   //Items in the list are ordered according to client's preferences
+   n = 0;
+
+   //secp160k1 elliptic curve supported?
+   if(tlsGetCurveInfo(TLS_EC_CURVE_SECP160K1) != NULL)
+      ellipticCurveList->value[n++] = HTONS(TLS_EC_CURVE_SECP160K1);
+
+   //secp160r1 elliptic curve supported?
+   if(tlsGetCurveInfo(TLS_EC_CURVE_SECP160R1) != NULL)
+      ellipticCurveList->value[n++] = HTONS(TLS_EC_CURVE_SECP160R1);
+
+   //secp160r2 elliptic curve supported?
+   if(tlsGetCurveInfo(TLS_EC_CURVE_SECP160R2) != NULL)
+      ellipticCurveList->value[n++] = HTONS(TLS_EC_CURVE_SECP160R2);
+
+   //secp192k1 elliptic curve supported?
+   if(tlsGetCurveInfo(TLS_EC_CURVE_SECP192K1) != NULL)
+      ellipticCurveList->value[n++] = HTONS(TLS_EC_CURVE_SECP192K1);
+
+   //secp192r1 elliptic curve supported?
+   if(tlsGetCurveInfo(TLS_EC_CURVE_SECP192R1) != NULL)
+      ellipticCurveList->value[n++] = HTONS(TLS_EC_CURVE_SECP192R1);
+
+   //secp224k1 elliptic curve supported?
+   if(tlsGetCurveInfo(TLS_EC_CURVE_SECP224K1) != NULL)
+      ellipticCurveList->value[n++] = HTONS(TLS_EC_CURVE_SECP224K1);
+
+   //secp224r1 elliptic curve supported?
+   if(tlsGetCurveInfo(TLS_EC_CURVE_SECP224R1) != NULL)
+      ellipticCurveList->value[n++] = HTONS(TLS_EC_CURVE_SECP224R1);
+
+   //secp256k1 elliptic curve supported?
+   if(tlsGetCurveInfo(TLS_EC_CURVE_SECP256K1) != NULL)
+      ellipticCurveList->value[n++] = HTONS(TLS_EC_CURVE_SECP256K1);
+
+   //secp256r1 elliptic curve supported?
+   if(tlsGetCurveInfo(TLS_EC_CURVE_SECP256R1) != NULL)
+      ellipticCurveList->value[n++] = HTONS(TLS_EC_CURVE_SECP256R1);
+
+   //secp384r1 elliptic curve supported?
+   if(tlsGetCurveInfo(TLS_EC_CURVE_SECP384R1) != NULL)
+      ellipticCurveList->value[n++] = HTONS(TLS_EC_CURVE_SECP384R1);
+
+   //secp521r1 elliptic curve supported?
+   if(tlsGetCurveInfo(TLS_EC_CURVE_SECP521R1) != NULL)
+      ellipticCurveList->value[n++] = HTONS(TLS_EC_CURVE_SECP521R1);
+
+   //brainpoolP256r1 elliptic curve supported?
+   if(tlsGetCurveInfo(TLS_EC_CURVE_BRAINPOOLP256R1) != NULL)
+      ellipticCurveList->value[n++] = HTONS(TLS_EC_CURVE_BRAINPOOLP256R1);
+
+   //brainpoolP384r1 elliptic curve supported?
+   if(tlsGetCurveInfo(TLS_EC_CURVE_BRAINPOOLP384R1) != NULL)
+      ellipticCurveList->value[n++] = HTONS(TLS_EC_CURVE_BRAINPOOLP384R1);
+
+   //brainpoolP512r1 elliptic curve supported?
+   if(tlsGetCurveInfo(TLS_EC_CURVE_BRAINPOOLP512R1) != NULL)
+      ellipticCurveList->value[n++] = HTONS(TLS_EC_CURVE_BRAINPOOLP512R1);
+
+   //Compute the length, in bytes, of the list
+   n *= 2;
+   //Fix the length of the list
+   ellipticCurveList->length = htons(n);
+
+   //Consider the 2-byte length field that precedes the list
+   n += sizeof(TlsEllipticCurveList);
+   //Fix the length of the extension
+   extension->length = htons(n);
+
+   //Compute the length, in bytes, of the EllipticCurves extension
+   n += sizeof(TlsExtension);
+#endif
+
+   //Total number of bytes that have been written
+   *written = n;
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
+ * @brief Format EcPointFormats extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] p Output stream where to write the EcPointFormats extension
+ * @param[out] written Total number of bytes that have been written
+ * @return Error code
+ **/
+
+error_t tlsFormatClientEcPointFormatsExtension(TlsContext *context,
+   uint8_t *p, size_t *written)
+{
+   size_t n = 0;
+
+#if (TLS_ECDH_ANON_SUPPORT == ENABLED || TLS_ECDHE_RSA_SUPPORT == ENABLED || \
+   TLS_ECDHE_ECDSA_SUPPORT == ENABLED || TLS_ECDHE_PSK_SUPPORT == ENABLED)
+   TlsExtension *extension;
+   TlsEcPointFormatList *ecPointFormatList;
+
+   //Add the EcPointFormats extension
+   extension = (TlsExtension *) p;
+   //Type of the extension
+   extension->type = HTONS(TLS_EXT_EC_POINT_FORMATS);
+
+   //Point to the list of supported EC point formats
+   ecPointFormatList = (TlsEcPointFormatList *) extension->value;
+   //Items in the list are ordered according to client's preferences
+   n = 0;
+
+   //The client can parse only the uncompressed point format...
+   ecPointFormatList->value[n++] = TLS_EC_POINT_FORMAT_UNCOMPRESSED;
+   //Fix the length of the list
+   ecPointFormatList->length = (uint8_t) n;
+
+   //Consider the 2-byte length field that precedes the list
+   n += sizeof(TlsEcPointFormatList);
+   //Fix the length of the extension
+   extension->length = htons(n);
+
+   //Compute the length, in bytes, of the EcPointFormats extension
+   n += sizeof(TlsExtension);
+#endif
+
+   //Total number of bytes that have been written
+   *written = n;
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
+ * @brief Format SignatureAlgorithms extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] eccCipherSuite This flag tells whether any ECC cipher suite
+ *   is proposed by the client
+ * @param[in] p Output stream where to write the SignatureAlgorithms extension
+ * @param[out] written Total number of bytes that have been written
+ * @return Error code
+ **/
+
+error_t tlsFormatSignatureAlgorithmsExtension(TlsContext *context,
+   bool_t eccCipherSuite, uint8_t *p, size_t *written)
+{
+   size_t n = 0;
+
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //Check whether TLS 1.2 is supported
+   if(context->versionMax >= TLS_VERSION_1_2)
+   {
+      TlsExtension *extension;
+      TlsSignHashAlgos *supportedSignAlgos;
+
+      //Add the SignatureAlgorithms extension
+      extension = (TlsExtension *) p;
+      //Type of the extension
+      extension->type = HTONS(TLS_EXT_SIGNATURE_ALGORITHMS);
+
+      //Point to the list of the hash/signature algorithm pairs that
+      //the server is able to verify
+      supportedSignAlgos = (TlsSignHashAlgos *) extension->value;
+
+      //Enumerate the hash/signature algorithm pairs in descending
+      //order of preference
+      n = 0;
+
+#if (TLS_RSA_SIGN_SUPPORT == ENABLED)
+#if (TLS_MD5_SUPPORT == ENABLED)
+      //MD5 with RSA support
+      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
+      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_MD5;
+#endif
+#if (TLS_SHA1_SUPPORT == ENABLED)
+      //SHA-1 with RSA support
+      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
+      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA1;
+#endif
+#if (TLS_SHA224_SUPPORT == ENABLED)
+      //SHA-224 with RSA support
+      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
+      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA224;
+#endif
+#if (TLS_SHA256_SUPPORT == ENABLED)
+      //SHA-256 with RSA support
+      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
+      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA256;
+#endif
+#if (TLS_SHA384_SUPPORT == ENABLED)
+      //SHA-384 with RSA support
+      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
+      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA384;
+#endif
+#if (TLS_SHA512_SUPPORT == ENABLED)
+      //SHA-512 with RSA support
+      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
+      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA512;
+#endif
+#endif
+
+#if (TLS_DSA_SIGN_SUPPORT == ENABLED)
+#if (TLS_SHA1_SUPPORT == ENABLED)
+      //DSA with SHA-1 support
+      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_DSA;
+      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA1;
+#endif
+#if (TLS_SHA224_SUPPORT == ENABLED)
+      //DSA with SHA-224 support
+      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_DSA;
+      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA224;
+#endif
+#if (TLS_SHA256_SUPPORT == ENABLED)
+      //DSA with SHA-256 support
+      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_DSA;
+      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA256;
+#endif
+#endif
+
+#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED)
+      //Any ECC cipher suite proposed by the client?
+      if(eccCipherSuite)
+      {
+#if (TLS_SHA1_SUPPORT == ENABLED)
+         //ECDSA with SHA-1 support
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA1;
+#endif
+#if (TLS_SHA224_SUPPORT == ENABLED)
+         //ECDSA with SHA-224 support
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA224;
+#endif
+#if (TLS_SHA256_SUPPORT == ENABLED)
+         //ECDSA with SHA-256 support
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA256;
+#endif
+#if (TLS_SHA384_SUPPORT == ENABLED)
+         //ECDSA with SHA-384 support
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA384;
+#endif
+#if (TLS_SHA512_SUPPORT == ENABLED)
+         //ECDSA with SHA-512 support
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA512;
+#endif
+      }
+#endif
+
+      //Compute the length, in bytes, of the list
+      n *= sizeof(TlsSignHashAlgo);
+      //Fix the length of the list
+      supportedSignAlgos->length = htons(n);
+
+      //Consider the 2-byte length field that precedes the list
+      n += sizeof(TlsSignHashAlgos);
+      //Fix the length of the extension
+      extension->length = htons(n);
+
+      //Compute the length, in bytes, of the SignatureAlgorithms extension
+      n += sizeof(TlsExtension);
+   }
+#endif
+
+   //Total number of bytes that have been written
+   *written = n;
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
  * @brief Format ALPN extension
  * @param[in] context Pointer to the TLS context
  * @param[in] p Output stream where to write the ALPN extension
@@ -241,7 +629,7 @@ error_t tlsFormatServerNameExtension(TlsContext *context,
  * @return Error code
  **/
 
-error_t tlsFormatAlpnExtension(TlsContext *context,
+error_t tlsFormatClientAlpnExtension(TlsContext *context,
    uint8_t *p, size_t *written)
 {
    size_t n = 0;
@@ -254,8 +642,8 @@ error_t tlsFormatAlpnExtension(TlsContext *context,
       uint_t i;
       uint_t j;
       TlsExtension *extension;
-      TlsProtocolNameList *protocolNameList;
       TlsProtocolName *protocolName;
+      TlsProtocolNameList *protocolNameList;
 
       //Add ALPN (Application-Layer Protocol Negotiation) extension
       extension = (TlsExtension *) p;
@@ -320,289 +708,36 @@ error_t tlsFormatAlpnExtension(TlsContext *context,
 
 
 /**
- * @brief Format EllipticCurves extension
+ * @brief Format ExtendedMasterSecret extension
  * @param[in] context Pointer to the TLS context
- * @param[in] p Output stream where to write the EllipticCurves extension
+ * @param[in] p Output stream where to write the ExtendedMasterSecret extension
  * @param[out] written Total number of bytes that have been written
  * @return Error code
  **/
 
-error_t tlsFormatEllipticCurvesExtension(TlsContext *context,
+error_t tlsFormatClientEmsExtension(TlsContext *context,
    uint8_t *p, size_t *written)
 {
    size_t n = 0;
 
-#if (TLS_ECDH_ANON_SUPPORT == ENABLED || TLS_ECDHE_RSA_SUPPORT == ENABLED || \
-   TLS_ECDHE_ECDSA_SUPPORT == ENABLED || TLS_ECDHE_PSK_SUPPORT == ENABLED)
-   TlsExtension *extension;
-   TlsEllipticCurveList *ellipticCurveList;
-
-   //Add the EllipticCurves extension
-   extension = (TlsExtension *) p;
-   //Type of the extension
-   extension->type = HTONS(TLS_EXT_ELLIPTIC_CURVES);
-
-   //Point to the list of supported elliptic curves
-   ellipticCurveList = (TlsEllipticCurveList *) extension->value;
-   //Items in the list are ordered according to client's preferences
-   n = 0;
-
-#if (TLS_SECP160K1_SUPPORT == ENABLED)
-   //Support for secp160k1 elliptic curve
-   ellipticCurveList->value[n++] = HTONS(TLS_EC_CURVE_SECP160K1);
-#endif
-#if (TLS_SECP160R1_SUPPORT == ENABLED)
-   //Support for secp160r1 elliptic curve
-   ellipticCurveList->value[n++] = HTONS(TLS_EC_CURVE_SECP160R1);
-#endif
-#if (TLS_SECP160R2_SUPPORT == ENABLED)
-   //Support for secp160r2 elliptic curve
-   ellipticCurveList->value[n++] = HTONS(TLS_EC_CURVE_SECP160R2);
-#endif
-#if (TLS_SECP192K1_SUPPORT == ENABLED)
-   //Support for secp192k1 elliptic curve
-   ellipticCurveList->value[n++] = HTONS(TLS_EC_CURVE_SECP192K1);
-#endif
-#if (TLS_SECP192R1_SUPPORT == ENABLED)
-   //Support for secp192r1 elliptic curve
-   ellipticCurveList->value[n++] = HTONS(TLS_EC_CURVE_SECP192R1);
-#endif
-#if (TLS_SECP224K1_SUPPORT == ENABLED)
-   //Support for secp224k1 elliptic curve
-   ellipticCurveList->value[n++] = HTONS(TLS_EC_CURVE_SECP224K1);
-#endif
-#if (TLS_SECP224R1_SUPPORT == ENABLED)
-   //Support for secp224r1 elliptic curve
-   ellipticCurveList->value[n++] = HTONS(TLS_EC_CURVE_SECP224R1);
-#endif
-#if (TLS_SECP256K1_SUPPORT == ENABLED)
-   //Support for secp256k1 elliptic curve
-   ellipticCurveList->value[n++] = HTONS(TLS_EC_CURVE_SECP256K1);
-#endif
-#if (TLS_SECP256R1_SUPPORT == ENABLED)
-   //Support for secp256r1 elliptic curve
-   ellipticCurveList->value[n++] = HTONS(TLS_EC_CURVE_SECP256R1);
-#endif
-#if (TLS_SECP384R1_SUPPORT == ENABLED)
-   //Support for secp384r1 elliptic curve
-   ellipticCurveList->value[n++] = HTONS(TLS_EC_CURVE_SECP384R1);
-#endif
-#if (TLS_SECP521R1_SUPPORT == ENABLED)
-   //Support for secp521r1 elliptic curve
-   ellipticCurveList->value[n++] = HTONS(TLS_EC_CURVE_SECP521R1);
-#endif
-#if (TLS_BRAINPOOLP256R1_SUPPORT == ENABLED)
-   //Support for brainpoolP256r1 elliptic curve
-   ellipticCurveList->value[n++] = HTONS(TLS_EC_CURVE_BRAINPOOLP256R1);
-#endif
-#if (TLS_BRAINPOOLP384R1_SUPPORT == ENABLED)
-   //Support for brainpoolP384r1 elliptic curve
-   ellipticCurveList->value[n++] = HTONS(TLS_EC_CURVE_BRAINPOOLP384R1);
-#endif
-#if (TLS_BRAINPOOLP512R1_SUPPORT == ENABLED)
-   //Support for brainpoolP512r1 elliptic curve
-   ellipticCurveList->value[n++] = HTONS(TLS_EC_CURVE_BRAINPOOLP512R1);
-#endif
-
-   //Compute the length, in bytes, of the list
-   n *= 2;
-   //Fix the length of the list
-   ellipticCurveList->length = htons(n);
-
-   //Consider the 2-byte length field that precedes the list
-   n += sizeof(TlsEllipticCurveList);
-   //Fix the length of the extension
-   extension->length = htons(n);
-
-   //Compute the length, in bytes, of the EllipticCurves extension
-   n += sizeof(TlsExtension);
-#endif
-
-   //Total number of bytes that have been written
-   *written = n;
-
-   //Successful processing
-   return NO_ERROR;
-}
-
-
-/**
- * @brief Format EcPointFormats extension
- * @param[in] context Pointer to the TLS context
- * @param[in] p Output stream where to write the EcPointFormats extension
- * @param[out] written Total number of bytes that have been written
- * @return Error code
- **/
-
-error_t tlsFormatClientEcPointFormatsExtension(TlsContext *context,
-   uint8_t *p, size_t *written)
-{
-   size_t n = 0;
-
-#if (TLS_ECDH_ANON_SUPPORT == ENABLED || TLS_ECDHE_RSA_SUPPORT == ENABLED || \
-   TLS_ECDHE_ECDSA_SUPPORT == ENABLED || TLS_ECDHE_PSK_SUPPORT == ENABLED)
-   TlsExtension *extension;
-   TlsEcPointFormatList *ecPointFormatList;
-
-   //Add the EcPointFormats extension
-   extension = (TlsExtension *) p;
-   //Type of the extension
-   extension->type = HTONS(TLS_EXT_EC_POINT_FORMATS);
-
-   //Point to the list of supported EC point formats
-   ecPointFormatList = (TlsEcPointFormatList *) extension->value;
-   //Items in the list are ordered according to client's preferences
-   n = 0;
-
-   //The client can parse only the uncompressed point format...
-   ecPointFormatList->value[n++] = TLS_EC_POINT_FORMAT_UNCOMPRESSED;
-   //Fix the length of the list
-   ecPointFormatList->length = n;
-
-   //Consider the 2-byte length field that precedes the list
-   n += sizeof(TlsEcPointFormatList);
-   //Fix the length of the extension
-   extension->length = htons(n);
-
-   //Compute the length, in bytes, of the EcPointFormats extension
-   n += sizeof(TlsExtension);
-#endif
-
-   //Total number of bytes that have been written
-   *written = n;
-
-   //Successful processing
-   return NO_ERROR;
-}
-
-
-/**
- * @brief Format SignatureAlgorithms extension
- * @param[in] context Pointer to the TLS context
- * @param[in] eccCipherSuite This flag tells whether any ECC cipher suite
- *   is proposed by the client
- * @param[in] p Output stream where to write the SignatureAlgorithms extension
- * @param[out] written Total number of bytes that have been written
- * @return Error code
- **/
-
-error_t tlsFormatSignatureAlgorithmsExtension(TlsContext *context,
-   bool_t eccCipherSuite, uint8_t *p, size_t *written)
-{
-   size_t n = 0;
-
-#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
-   TlsExtension *extension;
-   TlsSignHashAlgos *supportedSignAlgos;
-
-   //Add the SignatureAlgorithms extension
-   extension = (TlsExtension *) p;
-   //Type of the extension
-   extension->type = HTONS(TLS_EXT_SIGNATURE_ALGORITHMS);
-
-   //Point to the list of the hash/signature algorithm pairs that
-   //the server is able to verify
-   supportedSignAlgos = (TlsSignHashAlgos *) extension->value;
-
-   //Enumerate the hash/signature algorithm pairs in descending
-   //order of preference
-   n = 0;
-
-#if (TLS_RSA_SIGN_SUPPORT == ENABLED)
-#if (TLS_MD5_SUPPORT == ENABLED)
-   //MD5 with RSA support
-   supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
-   supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_MD5;
-#endif
-#if (TLS_SHA1_SUPPORT == ENABLED)
-   //SHA-1 with RSA support
-   supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
-   supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA1;
-#endif
-#if (TLS_SHA224_SUPPORT == ENABLED)
-   //SHA-224 with RSA support
-   supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
-   supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA224;
-#endif
-#if (TLS_SHA256_SUPPORT == ENABLED)
-   //SHA-256 with RSA support
-   supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
-   supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA256;
-#endif
-#if (TLS_SHA384_SUPPORT == ENABLED)
-   //SHA-384 with RSA support
-   supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
-   supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA384;
-#endif
-#if (TLS_SHA512_SUPPORT == ENABLED)
-   //SHA-512 with RSA support
-   supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
-   supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA512;
-#endif
-#endif
-
-#if (TLS_DSA_SIGN_SUPPORT == ENABLED)
-#if (TLS_SHA1_SUPPORT == ENABLED)
-   //DSA with SHA-1 support
-   supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_DSA;
-   supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA1;
-#endif
-#if (TLS_SHA224_SUPPORT == ENABLED)
-   //DSA with SHA-224 support
-   supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_DSA;
-   supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA224;
-#endif
-#if (TLS_SHA256_SUPPORT == ENABLED)
-   //DSA with SHA-256 support
-   supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_DSA;
-   supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA256;
-#endif
-#endif
-
-#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED)
-   //Any ECC cipher suite proposed by the client?
-   if(eccCipherSuite)
+#if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
+   //If the client chooses to support SSL 3.0, the resulting session must
+   //use the legacy master secret computation
+   if(context->versionMax >= TLS_VERSION_1_0)
    {
-#if (TLS_SHA1_SUPPORT == ENABLED)
-      //ECDSA with SHA-1 support
-      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
-      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA1;
-#endif
-#if (TLS_SHA224_SUPPORT == ENABLED)
-      //ECDSA with SHA-224 support
-      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
-      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA224;
-#endif
-#if (TLS_SHA256_SUPPORT == ENABLED)
-      //ECDSA with SHA-256 support
-      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
-      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA256;
-#endif
-#if (TLS_SHA384_SUPPORT == ENABLED)
-      //ECDSA with SHA-384 support
-      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
-      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA384;
-#endif
-#if (TLS_SHA512_SUPPORT == ENABLED)
-      //ECDSA with SHA-512 support
-      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
-      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA512;
-#endif
+      TlsExtension *extension;
+
+      //Add the ExtendedMasterSecret extension
+      extension = (TlsExtension *) p;
+      //Type of the extension
+      extension->type = HTONS(TLS_EXT_EXTENDED_MASTER_SECRET);
+
+      //The extension data field of this extension is empty
+      extension->length = HTONS(0);
+
+      //Compute the length, in bytes, of the ExtendedMasterSecret extension
+      n = sizeof(TlsExtension);
    }
-#endif
-
-   //Compute the length, in bytes, of the list
-   n *= sizeof(TlsSignHashAlgo);
-   //Fix the length of the list
-   supportedSignAlgos->length = htons(n);
-
-   //Consider the 2-byte length field that precedes the list
-   n += sizeof(TlsSignHashAlgos);
-   //Fix the length of the extension
-   extension->length = htons(n);
-
-   //Compute the length, in bytes, of the SignatureAlgorithms extension
-   n += sizeof(TlsExtension);
 #endif
 
    //Total number of bytes that have been written
@@ -635,7 +770,7 @@ error_t tlsFormatClientRenegoInfoExtension(TlsContext *context,
       if(context->secureRenegoFlag)
       {
          TlsExtension *extension;
-         TlsRenegoConnection *renegoConnection;
+         TlsRenegoInfo *renegoInfo;
 
          //Determine the length of the verify data
          n = context->clientVerifyDataLen;
@@ -646,17 +781,17 @@ error_t tlsFormatClientRenegoInfoExtension(TlsContext *context,
          extension->type = HTONS(TLS_EXT_RENEGOTIATION_INFO);
 
          //Point to the renegotiated_connection field
-         renegoConnection = (TlsRenegoConnection *) extension->value;
+         renegoInfo = (TlsRenegoInfo *) extension->value;
          //Set the length of the verify data
-         renegoConnection->length = n;
+         renegoInfo->length = n;
 
          //Copy the verify data from the Finished message sent by the client
          //on the immediately previous handshake
-         memcpy(renegoConnection->value, context->clientVerifyData, n);
+         memcpy(renegoInfo->value, context->clientVerifyData, n);
 
          //Consider the length field that precedes the renegotiated_connection
          //field
-         n += sizeof(TlsRenegoConnection);
+         n += sizeof(TlsRenegoInfo);
          //Fix the length of the extension
          extension->length = htons(n);
 
@@ -753,7 +888,7 @@ error_t tlsFormatClientKeyParams(TlsContext *context,
       size_t n;
 
       //Sanity check
-      if(TLS_MAX_PREMASTER_SECRET_SIZE < 48)
+      if(TLS_PREMASTER_SECRET_SIZE < 48)
          return ERROR_BUFFER_OVERFLOW;
 
       //If RSA is being used for key agreement and authentication, the
@@ -761,7 +896,7 @@ error_t tlsFormatClientKeyParams(TlsContext *context,
       context->premasterSecretLen = 48;
 
       //The first 2 bytes code the latest version supported by the client
-      STORE16BE(TLS_MAX_VERSION, context->premasterSecret);
+      STORE16BE(context->clientVersion, context->premasterSecret);
 
       //The last 46 bytes contain securely-generated random bytes
       error = context->prngAlgo->read(context->prngContext,
@@ -830,8 +965,9 @@ error_t tlsFormatClientKeyParams(TlsContext *context,
       *written = n;
 
       //Calculate the negotiated key Z
-      error = dhComputeSharedSecret(&context->dhContext, context->premasterSecret,
-         TLS_MAX_PREMASTER_SECRET_SIZE, &context->premasterSecretLen);
+      error = dhComputeSharedSecret(&context->dhContext,
+         context->premasterSecret, TLS_PREMASTER_SECRET_SIZE,
+         &context->premasterSecretLen);
       //Any error to report?
       if(error)
          return error;
@@ -893,8 +1029,9 @@ error_t tlsFormatClientKeyParams(TlsContext *context,
             return error;
 
          //Calculate the negotiated key Z
-         error = ecdhComputeSharedSecret(&context->ecdhContext, context->premasterSecret,
-            TLS_MAX_PREMASTER_SECRET_SIZE, &context->premasterSecretLen);
+         error = ecdhComputeSharedSecret(&context->ecdhContext,
+            context->premasterSecret, TLS_PREMASTER_SECRET_SIZE,
+            &context->premasterSecretLen);
          //Any error to report?
          if(error)
             return error;
@@ -929,6 +1066,162 @@ error_t tlsFormatClientKeyParams(TlsContext *context,
 
 
 /**
+ * @brief Parse MaxFragmentLength extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] maxFragLen Pointer to the MaxFragmentLength extension
+ * @return Error code
+ **/
+
+error_t tlsParseServerMaxFragLenExtension(TlsContext *context,
+   const uint8_t *maxFragLen)
+{
+#if (TLS_MAX_FRAG_LEN_SUPPORT == ENABLED)
+   size_t n;
+
+   //Retrieve the value advertised by the server
+   switch(*maxFragLen)
+   {
+   case TLS_MAX_FRAGMENT_LENGHT_512:
+      n = 512;
+      break;
+   case TLS_MAX_FRAGMENT_LENGHT_1024:
+      n = 1024;
+      break;
+   case TLS_MAX_FRAGMENT_LENGHT_2048:
+      n = 2048;
+      break;
+   case TLS_MAX_FRAGMENT_LENGHT_4096:
+      n = 4096;
+      break;
+   default:
+      n = 0;
+      break;
+   }
+
+   //If a client receives a maximum fragment length negotiation response that
+   //differs from the length it requested, it must also abort the handshake
+   //with an illegal_parameter alert
+   if(n != context->maxFragLen)
+      return ERROR_ILLEGAL_PARAMETER;
+#endif
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
+ * @brief Parse EcPointFormats extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] ecPointFormatList Pointer to the EcPointFormats extension
+ * @return Error code
+ **/
+
+error_t tlsParseServerEcPointFormatsExtension(TlsContext *context,
+   const TlsEcPointFormatList *ecPointFormatList)
+{
+   error_t error;
+   uint_t i;
+
+   //Initialize status code
+   error = ERROR_ILLEGAL_PARAMETER;
+
+   //Loop through the list of supported EC point formats
+   for(i = 0; i < ecPointFormatList->length; i++)
+   {
+      //If the EcPointFormats extension is sent, it must contain the value 0
+      //as one of the items in the list of point formats (refer to RFC 4492,
+      //section 5.2)
+      if(ecPointFormatList->value[i] == TLS_EC_POINT_FORMAT_UNCOMPRESSED)
+      {
+         //Exit immediately
+         error = NO_ERROR;
+         break;
+      }
+   }
+
+   //Return status code
+   return error;
+}
+
+
+/**
+ * @brief Parse ALPN extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] protocolNameList Pointer to the ALPN extension
+ * @return Error code
+ **/
+
+error_t tlsParseServerAlpnExtension(TlsContext *context,
+   const TlsProtocolNameList *protocolNameList)
+{
+#if (TLS_ALPN_SUPPORT == ENABLED)
+   size_t length;
+   const TlsProtocolName *protocolName;
+
+   //If a client receives an extension type in the ServerHello that it did
+   //not request in the associated ClientHello, it must abort the handshake
+   //with an unsupported_extension fatal alert
+   if(context->protocolList == NULL)
+      return ERROR_UNSUPPORTED_EXTENSION;
+
+   //Retrieve the length of the list
+   length = ntohs(protocolNameList->length);
+
+   //The list must not be be empty
+   if(length == 0)
+      return ERROR_DECODING_FAILED;
+
+   //Point to the selected protocol
+   protocolName = (TlsProtocolName *) protocolNameList->value;
+
+   //The list must contain exactly one protocol name
+   if(length < sizeof(TlsProtocolName))
+      return ERROR_DECODING_FAILED;
+   if(length != (sizeof(TlsProtocolName) + protocolName->length))
+      return ERROR_DECODING_FAILED;
+
+   //Retrieve the length of the protocol name
+   length -= sizeof(TlsProtocolName);
+
+   //Empty strings must not be included in the list
+   if(length == 0)
+      return ERROR_DECODING_FAILED;
+
+   //Check whether the protocol is supported by the client
+   if(!tlsIsAlpnProtocolSupported(context, protocolName->value, length))
+   {
+      //Report an error if unknown ALPN protocols are disallowed
+      if(!context->unknownProtocolsAllowed)
+         return ERROR_ILLEGAL_PARAMETER;
+   }
+
+   //Sanity check
+   if(context->selectedProtocol != NULL)
+   {
+      //Release memory
+      tlsFreeMem(context->selectedProtocol);
+      context->selectedProtocol = NULL;
+   }
+
+   //Allocate a memory block to hold the protocol name
+   context->selectedProtocol = tlsAllocMem(length + 1);
+   //Failed to allocate memory?
+   if(context->selectedProtocol == NULL)
+      return ERROR_OUT_OF_MEMORY;
+
+   //Save protocol name
+   memcpy(context->selectedProtocol, protocolName->value, length);
+   //Properly terminate the string with a NULL character
+   context->selectedProtocol[length] = '\0';
+#endif
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
  * @brief Parse PSK identity hint
  * @param[in] context Pointer to the TLS context
  * @param[in] p Input stream where to read the PSK identity hint
@@ -943,19 +1236,17 @@ error_t tlsParsePskIdentityHint(TlsContext *context,
    size_t n;
    TlsPskIdentityHint *pskIdentityHint;
 
-   //Malformed ServerKeyExchange message?
-   if(length < sizeof(TlsPskIdentityHint))
-      return ERROR_DECODING_FAILED;
-
    //Point to the PSK identity hint
    pskIdentityHint = (TlsPskIdentityHint *) p;
 
+   //Malformed ServerKeyExchange message?
+   if(length < sizeof(TlsPskIdentityHint))
+      return ERROR_DECODING_FAILED;
+   if(length < (sizeof(TlsPskIdentityHint) + ntohs(pskIdentityHint->length)))
+      return ERROR_DECODING_FAILED;
+
    //Retrieve the length of the PSK identity hint
    n = ntohs(pskIdentityHint->length);
-
-   //Make sure the length field is valid
-   if(length < (sizeof(TlsPskIdentityHint) + n))
-      return ERROR_DECODING_FAILED;
 
 #if (TLS_PSK_SUPPORT == ENABLED || TLS_RSA_PSK_SUPPORT == ENABLED || \
    TLS_DHE_PSK_SUPPORT == ENABLED || TLS_ECDHE_PSK_SUPPORT == ENABLED)
@@ -1478,8 +1769,9 @@ error_t tlsVerifyServerKeySignature(TlsContext *context, const uint8_t *p,
    }
    else
 #endif
+   //Invalid TLS version?
    {
-      //The negotiated TLS version is not valid
+      //Report an error
       error = ERROR_INVALID_VERSION;
    }
 

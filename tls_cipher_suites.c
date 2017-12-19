@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.7.8
+ * @version 1.8.0
  **/
 
 //Switch to the appropriate trace level
@@ -32,18 +32,18 @@
 //Dependencies
 #include "tls.h"
 #include "tls_cipher_suites.h"
-#include "md5.h"
-#include "sha1.h"
-#include "sha256.h"
-#include "sha384.h"
-#include "rc4.h"
-#include "idea.h"
-#include "des.h"
-#include "des3.h"
-#include "aes.h"
-#include "camellia.h"
-#include "seed.h"
-#include "aria.h"
+#include "cipher/rc4.h"
+#include "cipher/idea.h"
+#include "cipher/des.h"
+#include "cipher/des3.h"
+#include "cipher/aes.h"
+#include "cipher/camellia.h"
+#include "cipher/seed.h"
+#include "cipher/aria.h"
+#include "hash/md5.h"
+#include "hash/sha1.h"
+#include "hash/sha256.h"
+#include "hash/sha384.h"
 #include "debug.h"
 
 //Check SSL library configuration
@@ -52,6 +52,21 @@
 //List of supported cipher suites
 const TlsCipherSuiteInfo tlsSupportedCipherSuites[] =
 {
+//TLS_RSA_WITH_NULL_MD5 cipher suite
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_RSA_SUPPORT == ENABLED && TLS_NULL_CIPHER_SUPPORT == ENABLED && TLS_MD5_SUPPORT == ENABLED)
+   TLS_CIPHER_SUITE(TLS_RSA_WITH_NULL_MD5, TLS_KEY_EXCH_RSA, NULL, CIPHER_MODE_NULL, MD5_HASH_ALGO, NULL, 16, 0, 0, 0, 0, 12),
+#endif
+
+//TLS_RSA_WITH_NULL_SHA cipher suite
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_RSA_SUPPORT == ENABLED && TLS_NULL_CIPHER_SUPPORT == ENABLED && TLS_SHA1_SUPPORT == ENABLED)
+   TLS_CIPHER_SUITE(TLS_RSA_WITH_NULL_SHA, TLS_KEY_EXCH_RSA, NULL, CIPHER_MODE_NULL, SHA1_HASH_ALGO, NULL, 20, 0, 0, 0, 0, 12),
+#endif
+
+//TLS_RSA_WITH_NULL_SHA256 cipher suite
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_RSA_SUPPORT == ENABLED && TLS_NULL_CIPHER_SUPPORT == ENABLED && TLS_SHA256_SUPPORT == ENABLED)
+   TLS_CIPHER_SUITE(TLS_RSA_WITH_NULL_SHA256, TLS_KEY_EXCH_RSA, NULL, CIPHER_MODE_NULL, SHA256_HASH_ALGO, SHA256_HASH_ALGO, 32, 0, 0, 0, 0, 12),
+#endif
+
 //TLS_RSA_WITH_RC4_128_MD5 cipher suite
 #if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_RSA_SUPPORT == ENABLED && TLS_STREAM_CIPHER_SUPPORT == ENABLED && TLS_RC4_SUPPORT == ENABLED && TLS_MD5_SUPPORT == ENABLED)
    TLS_CIPHER_SUITE(TLS_RSA_WITH_RC4_128_MD5, TLS_KEY_EXCH_RSA, RC4_CIPHER_ALGO, CIPHER_MODE_STREAM, MD5_HASH_ALGO, NULL, 16, 16, 0, 0, 0, 12),
@@ -497,6 +512,11 @@ const TlsCipherSuiteInfo tlsSupportedCipherSuites[] =
    TLS_CIPHER_SUITE(TLS_DH_ANON_WITH_ARIA_256_GCM_SHA384, TLS_KEY_EXCH_DH_ANON, ARIA_CIPHER_ALGO, CIPHER_MODE_GCM, NULL, SHA384_HASH_ALGO, 0, 32, 4, 8, 16, 12),
 #endif
 
+//TLS_ECDHE_RSA_WITH_NULL_SHA cipher suite
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_ECDHE_RSA_SUPPORT == ENABLED && TLS_NULL_CIPHER_SUPPORT == ENABLED && TLS_SHA1_SUPPORT == ENABLED)
+   TLS_CIPHER_SUITE(TLS_ECDHE_RSA_WITH_NULL_SHA, TLS_KEY_EXCH_ECDHE_RSA, NULL, CIPHER_MODE_NULL, SHA1_HASH_ALGO, NULL, 20, 0, 0, 0, 0, 12),
+#endif
+
 //TLS_ECDHE_RSA_WITH_RC4_128_SHA cipher suite
 #if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_ECDHE_RSA_SUPPORT == ENABLED && TLS_STREAM_CIPHER_SUPPORT == ENABLED && TLS_RC4_SUPPORT == ENABLED && TLS_SHA1_SUPPORT == ENABLED)
    TLS_CIPHER_SUITE(TLS_ECDHE_RSA_WITH_RC4_128_SHA, TLS_KEY_EXCH_ECDHE_RSA, RC4_CIPHER_ALGO, CIPHER_MODE_STREAM, SHA1_HASH_ALGO, NULL, 20, 16, 0, 0, 0, 12),
@@ -580,6 +600,11 @@ const TlsCipherSuiteInfo tlsSupportedCipherSuites[] =
 //TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256 cipher suite
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_ECDHE_RSA_SUPPORT == ENABLED && TLS_CHACHA20_POLY1305_SUPPORT == ENABLED && TLS_SHA256_SUPPORT == ENABLED)
    TLS_CIPHER_SUITE(TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256, TLS_KEY_EXCH_ECDHE_RSA, NULL, CIPHER_MODE_CHACHA20_POLY1305, NULL, SHA256_HASH_ALGO, 0, 32, 12, 0, 16, 12),
+#endif
+
+//TLS_ECDHE_ECDSA_WITH_NULL_SHA cipher suite
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_ECDHE_ECDSA_SUPPORT == ENABLED && TLS_NULL_CIPHER_SUPPORT == ENABLED && TLS_SHA1_SUPPORT == ENABLED)
+   TLS_CIPHER_SUITE(TLS_ECDHE_ECDSA_WITH_NULL_SHA, TLS_KEY_EXCH_ECDHE_ECDSA, NULL, CIPHER_MODE_NULL, SHA1_HASH_ALGO, NULL, 20, 0, 0, 0, 0, 12),
 #endif
 
 //TLS_ECDHE_ECDSA_WITH_RC4_128_SHA cipher suite
@@ -687,6 +712,11 @@ const TlsCipherSuiteInfo tlsSupportedCipherSuites[] =
    TLS_CIPHER_SUITE(TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256, TLS_KEY_EXCH_ECDHE_ECDSA, NULL, CIPHER_MODE_CHACHA20_POLY1305, NULL, SHA256_HASH_ALGO, 0, 32, 12, 0, 16, 12),
 #endif
 
+//TLS_ECDH_anon_WITH_NULL_SHA cipher suite
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_ECDH_ANON_SUPPORT == ENABLED && TLS_NULL_CIPHER_SUPPORT == ENABLED && TLS_SHA1_SUPPORT == ENABLED)
+   TLS_CIPHER_SUITE(TLS_ECDH_ANON_WITH_NULL_SHA, TLS_KEY_EXCH_ECDH_ANON, NULL, CIPHER_MODE_NULL, SHA1_HASH_ALGO, NULL, 20, 0, 0, 0, 0, 12),
+#endif
+
 //TLS_ECDH_anon_WITH_RC4_128_SHA cipher suite
 #if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_ECDH_ANON_SUPPORT == ENABLED && TLS_STREAM_CIPHER_SUPPORT == ENABLED && TLS_RC4_SUPPORT == ENABLED && TLS_SHA1_SUPPORT == ENABLED)
    TLS_CIPHER_SUITE(TLS_ECDH_ANON_WITH_RC4_128_SHA, TLS_KEY_EXCH_ECDH_ANON, RC4_CIPHER_ALGO, CIPHER_MODE_STREAM, SHA1_HASH_ALGO, NULL, 20, 16, 0, 0, 0, 12),
@@ -705,6 +735,21 @@ const TlsCipherSuiteInfo tlsSupportedCipherSuites[] =
 //TLS_ECDH_anon_WITH_AES_256_CBC_SHA cipher suite
 #if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_ECDH_ANON_SUPPORT == ENABLED && TLS_CBC_CIPHER_SUPPORT == ENABLED && TLS_AES_SUPPORT == ENABLED && TLS_SHA1_SUPPORT == ENABLED)
    TLS_CIPHER_SUITE(TLS_ECDH_ANON_WITH_AES_256_CBC_SHA, TLS_KEY_EXCH_ECDH_ANON, AES_CIPHER_ALGO, CIPHER_MODE_CBC, SHA1_HASH_ALGO, NULL, 20, 32, 16, 16, 0, 12),
+#endif
+
+//TLS_PSK_WITH_NULL_SHA cipher suite
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_PSK_SUPPORT == ENABLED && TLS_NULL_CIPHER_SUPPORT == ENABLED && TLS_SHA1_SUPPORT == ENABLED)
+   TLS_CIPHER_SUITE(TLS_PSK_WITH_NULL_SHA, TLS_KEY_EXCH_PSK, NULL, CIPHER_MODE_NULL, SHA1_HASH_ALGO, NULL, 20, 0, 0, 0, 0, 12),
+#endif
+
+//TLS_PSK_WITH_NULL_SHA256 cipher suite
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_PSK_SUPPORT == ENABLED && TLS_NULL_CIPHER_SUPPORT == ENABLED && TLS_SHA256_SUPPORT == ENABLED)
+   TLS_CIPHER_SUITE(TLS_PSK_WITH_NULL_SHA256, TLS_KEY_EXCH_PSK, NULL, CIPHER_MODE_NULL, SHA256_HASH_ALGO, SHA256_HASH_ALGO, 32, 0, 0, 0, 0, 12),
+#endif
+
+//TLS_PSK_WITH_NULL_SHA384 cipher suite
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_PSK_SUPPORT == ENABLED && TLS_NULL_CIPHER_SUPPORT == ENABLED && TLS_SHA384_SUPPORT == ENABLED)
+   TLS_CIPHER_SUITE(TLS_PSK_WITH_NULL_SHA384, TLS_KEY_EXCH_PSK, NULL, CIPHER_MODE_NULL, SHA384_HASH_ALGO, SHA384_HASH_ALGO, 48, 0, 0, 0, 0, 12),
 #endif
 
 //TLS_PSK_WITH_RC4_128_SHA cipher suite
@@ -812,6 +857,21 @@ const TlsCipherSuiteInfo tlsSupportedCipherSuites[] =
    TLS_CIPHER_SUITE(TLS_PSK_WITH_CHACHA20_POLY1305_SHA256, TLS_KEY_EXCH_PSK, NULL, CIPHER_MODE_CHACHA20_POLY1305, NULL, SHA256_HASH_ALGO, 0, 32, 12, 0, 16, 12),
 #endif
 
+//TLS_RSA_PSK_WITH_NULL_SHA cipher suite
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_RSA_PSK_SUPPORT == ENABLED && TLS_NULL_CIPHER_SUPPORT == ENABLED && TLS_SHA1_SUPPORT == ENABLED)
+   TLS_CIPHER_SUITE(TLS_RSA_PSK_WITH_NULL_SHA, TLS_KEY_EXCH_RSA_PSK, NULL, CIPHER_MODE_NULL, SHA1_HASH_ALGO, NULL, 20, 0, 0, 0, 0, 12),
+#endif
+
+//TLS_RSA_PSK_WITH_NULL_SHA256 cipher suite
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_RSA_PSK_SUPPORT == ENABLED && TLS_NULL_CIPHER_SUPPORT == ENABLED && TLS_SHA256_SUPPORT == ENABLED)
+   TLS_CIPHER_SUITE(TLS_RSA_PSK_WITH_NULL_SHA256, TLS_KEY_EXCH_RSA_PSK, NULL, CIPHER_MODE_NULL, SHA256_HASH_ALGO, SHA256_HASH_ALGO, 32, 0, 0, 0, 0, 12),
+#endif
+
+//TLS_RSA_PSK_WITH_NULL_SHA384 cipher suite
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_RSA_PSK_SUPPORT == ENABLED && TLS_NULL_CIPHER_SUPPORT == ENABLED && TLS_SHA384_SUPPORT == ENABLED)
+   TLS_CIPHER_SUITE(TLS_RSA_PSK_WITH_NULL_SHA384, TLS_KEY_EXCH_RSA_PSK, NULL, CIPHER_MODE_NULL, SHA384_HASH_ALGO, SHA384_HASH_ALGO, 48, 0, 0, 0, 0, 12),
+#endif
+
 //TLS_RSA_PSK_WITH_RC4_128_SHA cipher suite
 #if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_RSA_PSK_SUPPORT == ENABLED && TLS_STREAM_CIPHER_SUPPORT == ENABLED && TLS_RC4_SUPPORT == ENABLED && TLS_SHA1_SUPPORT == ENABLED)
    TLS_CIPHER_SUITE(TLS_RSA_PSK_WITH_RC4_128_SHA, TLS_KEY_EXCH_RSA_PSK, RC4_CIPHER_ALGO, CIPHER_MODE_STREAM, SHA1_HASH_ALGO, NULL, 20, 16, 0, 0, 0, 12),
@@ -895,6 +955,21 @@ const TlsCipherSuiteInfo tlsSupportedCipherSuites[] =
 //TLS_RSA_PSK_WITH_CHACHA20_POLY1305_SHA256 cipher suite
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_RSA_PSK_SUPPORT == ENABLED && TLS_CHACHA20_POLY1305_SUPPORT == ENABLED && TLS_SHA256_SUPPORT == ENABLED)
    TLS_CIPHER_SUITE(TLS_RSA_PSK_WITH_CHACHA20_POLY1305_SHA256, TLS_KEY_EXCH_RSA_PSK, NULL, CIPHER_MODE_CHACHA20_POLY1305, NULL, SHA256_HASH_ALGO, 0, 32, 12, 0, 16, 12),
+#endif
+
+//TLS_DHE_PSK_WITH_NULL_SHA cipher suite
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_DHE_PSK_SUPPORT == ENABLED && TLS_NULL_CIPHER_SUPPORT == ENABLED && TLS_SHA1_SUPPORT == ENABLED)
+   TLS_CIPHER_SUITE(TLS_DHE_PSK_WITH_NULL_SHA, TLS_KEY_EXCH_DHE_PSK, NULL, CIPHER_MODE_NULL, SHA1_HASH_ALGO, NULL, 20, 0, 0, 0, 0, 12),
+#endif
+
+//TLS_DHE_PSK_WITH_NULL_SHA256 cipher suite
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_DHE_PSK_SUPPORT == ENABLED && TLS_NULL_CIPHER_SUPPORT == ENABLED && TLS_SHA256_SUPPORT == ENABLED)
+   TLS_CIPHER_SUITE(TLS_DHE_PSK_WITH_NULL_SHA256, TLS_KEY_EXCH_DHE_PSK, NULL, CIPHER_MODE_NULL, SHA256_HASH_ALGO, SHA256_HASH_ALGO, 32, 0, 0, 0, 0, 12),
+#endif
+
+//TLS_DHE_PSK_WITH_NULL_SHA384 cipher suite
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_DHE_PSK_SUPPORT == ENABLED && TLS_NULL_CIPHER_SUPPORT == ENABLED && TLS_SHA384_SUPPORT == ENABLED)
+   TLS_CIPHER_SUITE(TLS_DHE_PSK_WITH_NULL_SHA384, TLS_KEY_EXCH_DHE_PSK, NULL, CIPHER_MODE_NULL, SHA384_HASH_ALGO, SHA384_HASH_ALGO, 48, 0, 0, 0, 0, 12),
 #endif
 
 //TLS_DHE_PSK_WITH_RC4_128_SHA cipher suite
@@ -1002,6 +1077,21 @@ const TlsCipherSuiteInfo tlsSupportedCipherSuites[] =
    TLS_CIPHER_SUITE(TLS_DHE_PSK_WITH_CHACHA20_POLY1305_SHA256, TLS_KEY_EXCH_DHE_PSK, NULL, CIPHER_MODE_CHACHA20_POLY1305, NULL, SHA256_HASH_ALGO, 0, 32, 12, 0, 16, 12),
 #endif
 
+//TLS_ECDHE_PSK_WITH_NULL_SHA cipher suite
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_ECDHE_PSK_SUPPORT == ENABLED && TLS_NULL_CIPHER_SUPPORT == ENABLED && TLS_SHA1_SUPPORT == ENABLED)
+   TLS_CIPHER_SUITE(TLS_ECDHE_PSK_WITH_NULL_SHA, TLS_KEY_EXCH_ECDHE_PSK, NULL, CIPHER_MODE_NULL, SHA1_HASH_ALGO, NULL, 20, 0, 0, 0, 0, 12),
+#endif
+
+//TLS_ECDHE_PSK_WITH_NULL_SHA256 cipher suite
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_ECDHE_PSK_SUPPORT == ENABLED && TLS_NULL_CIPHER_SUPPORT == ENABLED && TLS_SHA256_SUPPORT == ENABLED)
+   TLS_CIPHER_SUITE(TLS_ECDHE_PSK_WITH_NULL_SHA256, TLS_KEY_EXCH_ECDHE_PSK, NULL, CIPHER_MODE_NULL, SHA256_HASH_ALGO, SHA256_HASH_ALGO, 32, 0, 0, 0, 0, 12),
+#endif
+
+//TLS_ECDHE_PSK_WITH_NULL_SHA384 cipher suite
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_ECDHE_PSK_SUPPORT == ENABLED && TLS_NULL_CIPHER_SUPPORT == ENABLED && TLS_SHA384_SUPPORT == ENABLED)
+   TLS_CIPHER_SUITE(TLS_ECDHE_PSK_WITH_NULL_SHA384, TLS_KEY_EXCH_ECDHE_PSK, NULL, CIPHER_MODE_NULL, SHA384_HASH_ALGO, SHA384_HASH_ALGO, 48, 0, 0, 0, 0, 12),
+#endif
+
 //TLS_ECDHE_PSK_WITH_RC4_128_SHA cipher suite
 #if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_ECDHE_PSK_SUPPORT == ENABLED && TLS_STREAM_CIPHER_SUPPORT == ENABLED && TLS_RC4_SUPPORT == ENABLED && TLS_SHA1_SUPPORT == ENABLED)
    TLS_CIPHER_SUITE(TLS_ECDHE_PSK_WITH_RC4_128_SHA, TLS_KEY_EXCH_ECDHE_PSK, RC4_CIPHER_ALGO, CIPHER_MODE_STREAM, SHA1_HASH_ALGO, NULL, 20, 16, 0, 0, 0, 12),
@@ -1084,7 +1174,7 @@ const char_t *tlsGetCipherSuiteName(uint16_t identifier)
    //Default name for unknown cipher suites
    static const char_t defaultName[] = "Unknown";
 
-   //Parse the list of supported cipher suite
+   //Parse the list of supported cipher suites
    for(i = 0; i < arraysize(tlsSupportedCipherSuites); i++)
    {
       //The current cipher suite matches the specified identifier?
@@ -1092,7 +1182,7 @@ const char_t *tlsGetCipherSuiteName(uint16_t identifier)
          return tlsSupportedCipherSuites[i].name;
    }
 
-   //Unknown cipher suite...
+   //Unknown cipher suite
    return defaultName;
 }
 
@@ -1100,22 +1190,39 @@ const char_t *tlsGetCipherSuiteName(uint16_t identifier)
 /**
  * @brief Check whether a cipher suite is supported
  * @param[in] identifier Cipher suite identifier
+ * @param[in] version TLS protocol version
+ * @param[in] transportProtocol Transport protocol (TLS or DTLS)
  * @return TRUE if the specified cipher suite is supported, else FALSE
  **/
 
-bool_t tlsIsCipherSuiteSupported(uint16_t identifier)
+bool_t tlsIsCipherSuiteSupported(uint16_t identifier, uint16_t version,
+   TlsTransportProtocol transportProtocol)
 {
    uint_t i;
 
-   //Parse the list of supported cipher suite
+   //Parse the list of supported cipher suites
    for(i = 0; i < arraysize(tlsSupportedCipherSuites); i++)
    {
       //The current cipher suite matches the specified identifier?
       if(tlsSupportedCipherSuites[i].identifier == identifier)
-         return TRUE;
+      {
+         //TLS 1.2 cipher suites must not be negotiated in older versions of TLS
+         if(version == TLS_VERSION_1_2 ||
+            tlsSupportedCipherSuites[i].prfHashAlgo == NULL)
+         {
+            //The only stream cipher described in TLS 1.2 is RC4, which cannot
+            //be randomly accessed. RC4 must not be used with DTLS
+            if(transportProtocol != TLS_TRANSPORT_PROTOCOL_DATAGRAM ||
+               tlsSupportedCipherSuites[i].cipherMode != CIPHER_MODE_STREAM)
+            {
+               //The specified cipher suite is acceptable
+               return TRUE;
+            }
+         }
+      }
    }
 
-   //The specified cipher suite is not supported...
+   //The specified cipher suite is not supported
    return FALSE;
 }
 
@@ -1130,7 +1237,7 @@ bool_t tlsIsEccCipherSuite(uint16_t identifier)
 {
    uint_t i;
 
-   //Parse the list of supported cipher suite
+   //Parse the list of supported cipher suites
    for(i = 0; i < arraysize(tlsSupportedCipherSuites); i++)
    {
       //The current cipher suite matches the specified identifier?
@@ -1152,7 +1259,7 @@ bool_t tlsIsEccCipherSuite(uint16_t identifier)
       }
    }
 
-   //Unknown cipher suite...
+   //Unknown cipher suite
    return FALSE;
 }
 

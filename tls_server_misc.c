@@ -1,6 +1,6 @@
 /**
  * @file tls_server_misc.c
- * @brief Helper functions (TLS server)
+ * @brief Helper functions for TLS server
  *
  * @section License
  *
@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.7.8
+ * @version 1.8.0
  **/
 
 //Switch to the appropriate trace level
@@ -33,17 +33,131 @@
 #include <string.h>
 #include "tls.h"
 #include "tls_cipher_suites.h"
+#include "tls_handshake_misc.h"
 #include "tls_server.h"
 #include "tls_server_misc.h"
 #include "tls_common.h"
 #include "tls_record.h"
+#include "tls_signature.h"
 #include "tls_cache.h"
 #include "tls_misc.h"
-#include "pem.h"
+#include "certificate/pem_import.h"
 #include "debug.h"
 
 //Check SSL library configuration
 #if (TLS_SUPPORT == ENABLED && TLS_SERVER_SUPPORT == ENABLED)
+
+
+/**
+ * @brief Format SNI extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] p Output stream where to write the ServerName extension
+ * @param[out] written Total number of bytes that have been written
+ * @return Error code
+ **/
+
+error_t tlsFormatServerSniExtension(TlsContext *context,
+   uint8_t *p, size_t *written)
+{
+   size_t n = 0;
+
+#if (TLS_SNI_SUPPORT == ENABLED)
+   //A server that receives a ClientHello containing the SNI extension may use
+   //the information contained in the extension to guide its selection of an
+   //appropriate certificate to return to the client. In this event, the server
+   //shall include an extension of type SNI in the ServerHello
+   if(context->serverName != NULL)
+   {
+      TlsExtension *extension;
+
+      //Add SNI (Server Name Indication) extension
+      extension = (TlsExtension *) p;
+      //Type of the extension
+      extension->type = HTONS(TLS_EXT_SERVER_NAME);
+
+      //The extension data field of this extension shall be empty (refer to
+      //RFC 6066, section 3)
+      extension->length = HTONS(0);
+
+      //Compute the length, in bytes, of the ServerName extension
+      n = sizeof(TlsExtension);
+   }
+#endif
+
+   //Total number of bytes that have been written
+   *written = n;
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
+ * @brief Format MaxFragmentLength extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] p Output stream where to write the MaxFragmentLength extension
+ * @param[out] written Total number of bytes that have been written
+ * @return Error code
+ **/
+
+error_t tlsFormatServerMaxFragLenExtension(TlsContext *context,
+   uint8_t *p, size_t *written)
+{
+   size_t n = 0;
+
+#if (TLS_MAX_FRAG_LEN_SUPPORT == ENABLED)
+   //An extension type must not appear in the ServerHello unless the same
+   //extension type appeared in the corresponding ClientHello
+   if(context->maxFragLenExtReceived)
+   {
+      //Servers that receive an ClientHello containing a MaxFragmentLength
+      //extension may accept the requested maximum fragment length by including
+      //an extension of type MaxFragmentLength in the ServerHello
+      if(context->maxFragLen == 512 || context->maxFragLen == 1024 ||
+         context->maxFragLen == 2048 || context->maxFragLen == 4096)
+      {
+         TlsExtension *extension;
+
+         //Add the MaxFragmentLength extension
+         extension = (TlsExtension *) p;
+         //Type of the extension
+         extension->type = HTONS(TLS_EXT_MAX_FRAGMENT_LENGTH);
+
+         //The data field of this extension shall contain a MaxFragmentLength
+         //whose value is the same as the requested maximum fragment length
+         switch(context->maxFragLen)
+         {
+         case 512:
+            extension->value[0] = TLS_MAX_FRAGMENT_LENGHT_512;
+            break;
+         case 1024:
+            extension->value[0] = TLS_MAX_FRAGMENT_LENGHT_1024;
+            break;
+         case 2048:
+            extension->value[0] = TLS_MAX_FRAGMENT_LENGHT_2048;
+            break;
+         default:
+            extension->value[0] = TLS_MAX_FRAGMENT_LENGHT_4096;
+            break;
+         }
+
+         //The extension data field contains a single byte
+         n = sizeof(uint8_t);
+         //Set the length of the extension
+         extension->length = HTONS(n);
+
+         //Compute the length, in bytes, of the MaxFragmentLength extension
+         n += sizeof(TlsExtension);
+      }
+   }
+#endif
+
+   //Total number of bytes that have been written
+   *written = n;
+
+   //Successful processing
+   return NO_ERROR;
+}
 
 
 /**
@@ -61,13 +175,14 @@ error_t tlsFormatServerEcPointFormatsExtension(TlsContext *context,
 
 #if (TLS_ECDH_ANON_SUPPORT == ENABLED || TLS_ECDHE_RSA_SUPPORT == ENABLED || \
    TLS_ECDHE_ECDSA_SUPPORT == ENABLED || TLS_ECDHE_PSK_SUPPORT == ENABLED)
-   //A server that selects an ECC cipher suite in response to a ClientHello
-   //message including an EcPointFormats extension appends this extension
-   //to its ServerHello message
-   if(tlsIsEccCipherSuite(context->cipherSuite.identifier))
+   //An extension type must not appear in the ServerHello unless the same
+   //extension type appeared in the corresponding ClientHello
+   if(context->ecPointFormatsExtReceived)
    {
-      //EcPointFormats extension found in the ClientHello message?
-      if(context->ecPointFormatExtFound)
+      //A server that selects an ECC cipher suite in response to a ClientHello
+      //message including an EcPointFormats extension appends this extension
+      //to its ServerHello message
+      if(tlsIsEccCipherSuite(context->cipherSuite.identifier))
       {
          TlsExtension *extension;
          TlsEcPointFormatList *ecPointFormatList;
@@ -85,7 +200,7 @@ error_t tlsFormatServerEcPointFormatsExtension(TlsContext *context,
          //The server can parse only the uncompressed point format...
          ecPointFormatList->value[n++] = TLS_EC_POINT_FORMAT_UNCOMPRESSED;
          //Fix the length of the list
-         ecPointFormatList->length = n;
+         ecPointFormatList->length = (uint8_t) n;
 
          //Consider the 2-byte length field that precedes the list
          n += sizeof(TlsEcPointFormatList);
@@ -95,6 +210,114 @@ error_t tlsFormatServerEcPointFormatsExtension(TlsContext *context,
          //Compute the length, in bytes, of the EcPointFormats extension
          n += sizeof(TlsExtension);
       }
+   }
+#endif
+
+   //Total number of bytes that have been written
+   *written = n;
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
+ * @brief Format ALPN extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] p Output stream where to write the ALPN extension
+ * @param[out] written Total number of bytes that have been written
+ * @return Error code
+ **/
+
+error_t tlsFormatServerAlpnExtension(TlsContext *context,
+   uint8_t *p, size_t *written)
+{
+   size_t n = 0;
+
+#if (TLS_ALPN_SUPPORT == ENABLED)
+   //The ALPN extension may be returned to the client within the extended
+   //ServerHello message
+   if(context->selectedProtocol != NULL)
+   {
+      //Empty strings must not be included
+      if(context->selectedProtocol[0] != '\0')
+      {
+         TlsExtension *extension;
+         TlsProtocolName *protocolName;
+         TlsProtocolNameList *protocolNameList;
+
+         //Add ALPN (Application-Layer Protocol Negotiation) extension
+         extension = (TlsExtension *) p;
+         //Type of the extension
+         extension->type = HTONS(TLS_EXT_ALPN);
+
+         //Point to the list of protocol names
+         protocolNameList = (TlsProtocolNameList *) extension->value;
+         //The list must contain exactly one protocol name
+         protocolName = (TlsProtocolName *) protocolNameList->value;
+
+         //Retrieve the length of the protocol name
+         n = strlen(context->selectedProtocol);
+
+         //Fill in the length field
+         protocolName->length = n;
+         //Copy protocol name
+         memcpy(protocolName->value, context->selectedProtocol, n);
+
+         //Adjust the length of the list
+         n += sizeof(TlsProtocolName);
+         //Fix the length of the list
+         protocolNameList->length = htons(n);
+
+         //Consider the 2-byte length field that precedes the list
+         n += sizeof(TlsProtocolNameList);
+         //Fix the length of the extension
+         extension->length = htons(n);
+
+         //Compute the length, in bytes, of the ALPN extension
+         n += sizeof(TlsExtension);
+      }
+   }
+#endif
+
+   //Total number of bytes that have been written
+   *written = n;
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
+ * @brief Format ExtendedMasterSecret extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] p Output stream where to write the ExtendedMasterSecret extension
+ * @param[out] written Total number of bytes that have been written
+ * @return Error code
+ **/
+
+error_t tlsFormatServerEmsExtension(TlsContext *context,
+   uint8_t *p, size_t *written)
+{
+   size_t n = 0;
+
+#if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
+   //If the server receives a ClientHello without the ExtendedMasterSecret
+   //extension, then it must not include the extension in the ServerHello
+   if(context->extendedMasterSecretExtReceived)
+   {
+      TlsExtension *extension;
+
+      //Add the ExtendedMasterSecret extension
+      extension = (TlsExtension *) p;
+      //Type of the extension
+      extension->type = HTONS(TLS_EXT_EXTENDED_MASTER_SECRET);
+
+      //The extension data field of this extension is empty
+      extension->length = HTONS(0);
+
+      //Compute the length, in bytes, of the ExtendedMasterSecret extension
+      n = sizeof(TlsExtension);
    }
 #endif
 
@@ -128,7 +351,7 @@ error_t tlsFormatServerRenegoInfoExtension(TlsContext *context,
       if(context->secureRenegoFlag)
       {
          TlsExtension *extension;
-         TlsRenegoConnection *renegoConnection;
+         TlsRenegoInfo *renegoInfo;
 
          //Determine the length of the renegotiated_connection field
          n = context->clientVerifyDataLen + context->serverVerifyDataLen;
@@ -139,21 +362,21 @@ error_t tlsFormatServerRenegoInfoExtension(TlsContext *context,
          extension->type = HTONS(TLS_EXT_RENEGOTIATION_INFO);
 
          //Point to the renegotiated_connection field
-         renegoConnection = (TlsRenegoConnection *) extension->value;
+         renegoInfo = (TlsRenegoInfo *) extension->value;
          //Set the length of the verify data
-         renegoConnection->length = n;
+         renegoInfo->length = n;
 
          //Copy the saved client_verify_data
-         memcpy(renegoConnection->value, context->clientVerifyData,
+         memcpy(renegoInfo->value, context->clientVerifyData,
             context->clientVerifyDataLen);
 
          //Copy the saved client_verify_data
-         memcpy(renegoConnection->value + context->clientVerifyDataLen,
+         memcpy(renegoInfo->value + context->clientVerifyDataLen,
             context->serverVerifyData, context->serverVerifyDataLen);
 
          //Consider the length field that precedes the renegotiated_connection
          //field
-         n += sizeof(TlsRenegoConnection);
+         n += sizeof(TlsRenegoInfo);
          //Fix the length of the extension
          extension->length = htons(n);
 
@@ -479,8 +702,8 @@ error_t tlsGenerateServerKeySignature(TlsContext *context,
          if(!error)
          {
             //Decode the PEM structure that holds the RSA private key
-            error = pemReadRsaPrivateKey(context->cert->privateKey,
-               context->cert->privateKeyLength, &privateKey);
+            error = pemImportRsaPrivateKey(context->cert->privateKey,
+               context->cert->privateKeyLen, &privateKey);
          }
 
          //Check status code
@@ -627,8 +850,8 @@ error_t tlsGenerateServerKeySignature(TlsContext *context,
                signature->algorithm.hash = context->signHashAlgo;
 
                //Decode the PEM structure that holds the RSA private key
-               error = pemReadRsaPrivateKey(context->cert->privateKey,
-                  context->cert->privateKeyLength, &privateKey);
+               error = pemImportRsaPrivateKey(context->cert->privateKey,
+                  context->cert->privateKeyLen, &privateKey);
 
                //Check status code
                if(!error)
@@ -699,13 +922,263 @@ error_t tlsGenerateServerKeySignature(TlsContext *context,
    }
    else
 #endif
+   //Invalid TLS version?
    {
-      //The negotiated TLS version is not valid
+      //Report an error
       error = ERROR_INVALID_VERSION;
    }
 
    //Return status code
    return error;
+}
+
+
+/**
+ * @brief Parse SNI extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] serverNameList Pointer to the SNI extension
+ * @return Error code
+ **/
+
+error_t tlsParseClientSniExtension(TlsContext *context,
+   const TlsServerNameList *serverNameList)
+{
+#if (TLS_SNI_SUPPORT == ENABLED)
+   size_t i;
+   size_t n;
+   size_t length;
+   const TlsServerName *serverName;
+
+   //In order to provide the server name, clients may include ServerName
+   //extension
+   if(context->serverName != NULL)
+   {
+      //Release memory
+      tlsFreeMem(context->serverName);
+      context->serverName = NULL;
+   }
+
+   //Retrieve the length of the list
+   length = ntohs(serverNameList->length);
+
+   //Loop through the list of server names advertised by the client
+   for(i = 0; i < length; i += sizeof(TlsServerName) + n)
+   {
+      //Point to the current server name
+      serverName = (TlsServerName *) (serverNameList->value + i);
+
+      //Malformed extension?
+      if(length < (i + sizeof(TlsServerName)))
+         return ERROR_DECODING_FAILED;
+      if(length < (i + sizeof(TlsServerName) + ntohs(serverName->length)))
+         return ERROR_DECODING_FAILED;
+
+      //Retrieve the length of the server name
+      n = ntohs(serverName->length);
+
+      //Empty strings must not be included in the list
+      if(n > 0 && n <= TLS_MAX_SERVER_NAME_LEN)
+      {
+         //Currently, the only server names supported are DNS hostnames
+         if(serverName->type == TLS_NAME_TYPE_HOSTNAME)
+         {
+            //In practice, current client implementations only send one name
+            if(context->serverName == NULL)
+            {
+               //Allocate a memory block to hold the server name
+               context->serverName = tlsAllocMem(n + 1);
+               //Failed to allocate memory?
+               if(context->serverName == NULL)
+                  return ERROR_OUT_OF_MEMORY;
+
+               //Save server name
+               memcpy(context->serverName, serverName->hostname, n);
+               //Properly terminate the string with a NULL character
+               context->serverName[n] = '\0';
+            }
+         }
+      }
+   }
+#endif
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
+ * @brief Parse MaxFragmentLength extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] maxFragLen Pointer to the MaxFragmentLength extension
+ * @return Error code
+ **/
+
+error_t tlsParseClientMaxFragLenExtension(TlsContext *context,
+   const uint8_t *maxFragLen)
+{
+#if (TLS_MAX_FRAG_LEN_SUPPORT == ENABLED)
+   size_t n;
+
+   //Retrieve the value advertised by the client
+   switch(*maxFragLen)
+   {
+   case TLS_MAX_FRAGMENT_LENGHT_512:
+      n = 512;
+      break;
+   case TLS_MAX_FRAGMENT_LENGHT_1024:
+      n = 1024;
+      break;
+   case TLS_MAX_FRAGMENT_LENGHT_2048:
+      n = 2048;
+      break;
+   case TLS_MAX_FRAGMENT_LENGHT_4096:
+      n = 4096;
+      break;
+   default:
+      n = 0;
+      break;
+   }
+
+   //If a server receives a maximum fragment length negotiation request for a
+   //value other than the allowed values, it must abort the handshake with an
+   //illegal_parameter alert
+   if(n == 0)
+      return ERROR_ILLEGAL_PARAMETER;
+
+   //Once a maximum fragment length has been successfully negotiated, the
+   //server must immediately begin fragmenting messages (including handshake
+   //messages) to ensure that no fragment larger than the negotiated length
+   //is sent
+   context->maxFragLen = n;
+#endif
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
+ * @brief Parse EcPointFormats extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] ecPointFormatList Pointer to the EcPointFormats extension
+ * @return Error code
+ **/
+
+error_t tlsParseClientEcPointFormatsExtension(TlsContext *context,
+   const TlsEcPointFormatList *ecPointFormatList)
+{
+   error_t error;
+   uint_t i;
+
+   //Initialize status code
+   error = ERROR_ILLEGAL_PARAMETER;
+
+   //Loop through the list of supported EC point formats
+   for(i = 0; i < ecPointFormatList->length; i++)
+   {
+      //If the EcPointFormats extension is sent, it must contain the value 0
+      //as one of the items in the list of point formats (refer to RFC 4492,
+      //section 5.1)
+      if(ecPointFormatList->value[i] == TLS_EC_POINT_FORMAT_UNCOMPRESSED)
+      {
+         //Exit immediately
+         error = NO_ERROR;
+         break;
+      }
+   }
+
+   //Return status code
+   return error;
+}
+
+
+/**
+ * @brief Parse ALPN extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] protocolNameList Pointer to the ALPN extension
+ * @return Error code
+ **/
+
+error_t tlsParseClientAlpnExtension(TlsContext *context,
+   const TlsProtocolNameList *protocolNameList)
+{
+#if (TLS_ALPN_SUPPORT == ENABLED)
+   size_t i;
+   size_t n;
+   size_t length;
+   const TlsProtocolName *protocolName;
+
+   //When session resumption is used, the previous contents of this
+   //extension are irrelevant
+   if(context->selectedProtocol != NULL)
+   {
+      //Release memory
+      tlsFreeMem(context->selectedProtocol);
+      context->selectedProtocol = NULL;
+   }
+
+   //Retrieve the length of the list
+   length = ntohs(protocolNameList->length);
+
+   //The list must not be be empty
+   if(length == 0)
+      return ERROR_DECODING_FAILED;
+
+   //Loop through the list of protocols advertised by the client
+   for(i = 0; i < length; i += sizeof(TlsProtocolName) + n)
+   {
+      //Point to the current protocol
+      protocolName = (TlsProtocolName *) (protocolNameList->value + i);
+
+      //Malformed extension?
+      if(length < (i + sizeof(TlsProtocolName)))
+         return ERROR_DECODING_FAILED;
+      if(length < (i + sizeof(TlsProtocolName) + protocolName->length))
+         return ERROR_DECODING_FAILED;
+
+      //Retrieve the length of the protocol name
+      n = protocolName->length;
+
+      //Empty strings must not be included in the list
+      if(n == 0)
+         return ERROR_DECODING_FAILED;
+
+      //Check whether the protocol is supported by the server
+      if(tlsIsAlpnProtocolSupported(context, protocolName->value, n))
+      {
+         //Select the current protocol
+         if(context->selectedProtocol == NULL)
+         {
+            //Allocate a memory block to hold the protocol name
+            context->selectedProtocol = tlsAllocMem(n + 1);
+            //Failed to allocate memory?
+            if(context->selectedProtocol == NULL)
+               return ERROR_OUT_OF_MEMORY;
+
+            //Save protocol name
+            memcpy(context->selectedProtocol, protocolName->value, n);
+            //Properly terminate the string with a NULL character
+            context->selectedProtocol[n] = '\0';
+         }
+      }
+   }
+
+   //ALPN protocol selection failed?
+   if(context->protocolList != NULL && context->selectedProtocol == NULL)
+   {
+      //Report an error if unknown ALPN protocols are disallowed
+      if(!context->unknownProtocolsAllowed)
+      {
+         //In the event that the server supports no protocols that the
+         //client advertises, then the server shall respond with a fatal
+         //no_application_protocol alert
+         return ERROR_NO_APPLICATION_PROTOCOL;
+      }
+   }
+#endif
+
+   //Successful processing
+   return NO_ERROR;
 }
 
 
@@ -724,19 +1197,17 @@ error_t tlsParsePskIdentity(TlsContext *context,
    size_t n;
    TlsPskIdentity *pskIdentity;
 
-   //Malformed ClientKeyExchange message?
-   if(length < sizeof(TlsPskIdentity))
-      return ERROR_DECODING_FAILED;
-
    //Point to the PSK identity
    pskIdentity = (TlsPskIdentity *) p;
 
+   //Malformed ClientKeyExchange message?
+   if(length < sizeof(TlsPskIdentity))
+      return ERROR_DECODING_FAILED;
+   if(length < (sizeof(TlsPskIdentity) + ntohs(pskIdentity->length)))
+      return ERROR_DECODING_FAILED;
+
    //Retrieve the length of the PSK identity
    n = ntohs(pskIdentity->length);
-
-   //Make sure the length field is valid
-   if(length < (sizeof(TlsPskIdentity) + n))
-      return ERROR_DECODING_FAILED;
 
 #if (TLS_PSK_SUPPORT == ENABLED || TLS_RSA_PSK_SUPPORT == ENABLED || \
    TLS_DHE_PSK_SUPPORT == ENABLED || TLS_ECDHE_PSK_SUPPORT == ENABLED)
@@ -843,15 +1314,16 @@ error_t tlsParseClientKeyParams(TlsContext *context,
       rsaInitPrivateKey(&privateKey);
 
       //Decode the PEM structure that holds the RSA private key
-      error = pemReadRsaPrivateKey(context->cert->privateKey,
-         context->cert->privateKeyLength, &privateKey);
+      error = pemImportRsaPrivateKey(context->cert->privateKey,
+         context->cert->privateKeyLen, &privateKey);
 
       //Check status code
       if(!error)
       {
          //Decrypt the premaster secret using the server private key
-         error = rsaesPkcs1v15Decrypt(&privateKey, p, length, context->premasterSecret,
-            TLS_MAX_PREMASTER_SECRET_SIZE, &context->premasterSecretLen);
+         error = rsaesPkcs1v15Decrypt(&privateKey, p, length,
+            context->premasterSecret, TLS_PREMASTER_SECRET_SIZE,
+            &context->premasterSecretLen);
       }
 
       //Release RSA private key
@@ -869,7 +1341,8 @@ error_t tlsParseClientKeyParams(TlsContext *context,
          //When it receives an incorrectly formatted RSA block, the server
          //should generate a random 48-byte value and proceed using it as
          //the premaster secret
-         error = context->prngAlgo->read(context->prngContext, context->premasterSecret, 48);
+         error = context->prngAlgo->read(context->prngContext,
+            context->premasterSecret, 48);
 
          //Fix the length of the premaster secret
          context->premasterSecretLen = 48;
@@ -897,15 +1370,17 @@ error_t tlsParseClientKeyParams(TlsContext *context,
          *consumed = n;
 
          //Verify client's public value
-         error = dhCheckPublicKey(&context->dhContext.params, &context->dhContext.yb);
+         error = dhCheckPublicKey(&context->dhContext.params,
+            &context->dhContext.yb);
       }
 
       //Check status code
       if(!error)
       {
          //Calculate the negotiated key Z
-         error = dhComputeSharedSecret(&context->dhContext, context->premasterSecret,
-            TLS_MAX_PREMASTER_SECRET_SIZE, &context->premasterSecretLen);
+         error = dhComputeSharedSecret(&context->dhContext,
+            context->premasterSecret, TLS_PREMASTER_SECRET_SIZE,
+            &context->premasterSecretLen);
       }
 
       //Check status code
@@ -964,8 +1439,9 @@ error_t tlsParseClientKeyParams(TlsContext *context,
       {
          //Calculate the shared secret Z. Leading zeros found in this octet
          //string must not be truncated (see RFC 4492, section 5.10)
-         error = ecdhComputeSharedSecret(&context->ecdhContext, context->premasterSecret,
-            TLS_MAX_PREMASTER_SECRET_SIZE, &context->premasterSecretLen);
+         error = ecdhComputeSharedSecret(&context->ecdhContext,
+            context->premasterSecret, TLS_PREMASTER_SECRET_SIZE,
+            &context->premasterSecretLen);
       }
    }
    else
@@ -979,6 +1455,5 @@ error_t tlsParseClientKeyParams(TlsContext *context,
    //Return status code
    return error;
 }
-
 
 #endif

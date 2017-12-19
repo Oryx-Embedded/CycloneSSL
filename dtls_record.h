@@ -1,6 +1,6 @@
 /**
- * @file tls_cache.h
- * @brief Session cache management
+ * @file dtls_record.h
+ * @brief DTLS record protocol
  *
  * @section License
  *
@@ -26,8 +26,8 @@
  * @version 1.8.0
  **/
 
-#ifndef _TLS_CACHE_H
-#define _TLS_CACHE_H
+#ifndef _DTLS_RECORD_H
+#define _DTLS_RECORD_H
 
 //Dependencies
 #include "tls.h"
@@ -37,12 +37,33 @@
    extern "C" {
 #endif
 
-//Session cache management
-TlsCache *tlsInitCache(uint_t size);
-TlsSession *tlsFindCache(TlsCache *cache, const uint8_t *id, size_t length);
-error_t tlsSaveToCache(TlsContext *context);
-error_t tlsRemoveFromCache(TlsContext *context);
-void tlsFreeCache(TlsCache *cache);
+//DTLS related functions
+error_t dtlsWriteProtocolData(TlsContext *context,
+   const uint8_t *data, size_t length, TlsContentType contentType);
+
+error_t dtlsReadProtocolData(TlsContext *context,
+   uint8_t **data, size_t *length, TlsContentType *contentType);
+
+error_t dtlsWriteRecord(TlsContext *context, const uint8_t *data,
+   size_t length, TlsContentType contentType);
+
+error_t dtlsReadRecord(TlsContext *context);
+error_t dtlsProcessRecord(TlsContext *context);
+
+error_t dtlsSendFlight(TlsContext *context);
+
+error_t dtlsFragmentHandshakeMessage(TlsContext *context, uint16_t version,
+   TlsEncryptionEngine *encryptionEngine, const DtlsHandshake *message);
+
+error_t dtlsReassembleHandshakeMessage(TlsContext *context,
+   const DtlsHandshake *message);
+
+error_t dtlsReadDatagram(TlsContext *context, uint8_t *data,
+   size_t size, size_t *length);
+
+error_t dtlsTick(TlsContext *context);
+
+void dtlsIncSequenceNumber(DtlsSequenceNumber *seqNum);
 
 //C++ guard
 #ifdef __cplusplus

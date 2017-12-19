@@ -1,6 +1,6 @@
 /**
- * @file ssl_common.c
- * @brief Functions common to SSL 3.0 client and server
+ * @file ssl_misc.c
+ * @brief SSL 3.0 helper functions
  *
  * @section License
  *
@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.7.8
+ * @version 1.8.0
  **/
 
 //Switch to the appropriate trace level
@@ -31,13 +31,13 @@
 
 //Dependencies
 #include <string.h>
-#include "crypto.h"
+#include "core/crypto.h"
 #include "tls.h"
-#include "ssl_common.h"
+#include "ssl_misc.h"
 #include "debug.h"
 
 //Check SSL library configuration
-#if (TLS_SUPPORT == ENABLED)
+#if (TLS_SUPPORT == ENABLED && TLS_MIN_VERSION <= SSL_VERSION_3_0)
 
 //pad1 pattern
 const uint8_t sslPad1[48] =
@@ -59,16 +59,16 @@ const uint8_t sslPad2[48] =
 /**
  * @brief Key expansion function (SSL 3.0)
  * @param[in] secret Pointer to the secret
- * @param[in] secretLength Length of the secret
+ * @param[in] secretLen Length of the secret
  * @param[in] random Pointer to the random bytes
- * @param[in] randomLength Length of the random bytes
+ * @param[in] randomLen Length of the random bytes
  * @param[out] output Pointer to the output
- * @param[in] outputLength Desired output length
+ * @param[in] outputLen Desired output length
  * @return Error code
  **/
 
-error_t sslExpandKey(const uint8_t *secret, size_t secretLength,
-   const uint8_t *random, size_t randomLength, uint8_t *output, size_t outputLength)
+error_t sslExpandKey(const uint8_t *secret, size_t secretLen,
+   const uint8_t *random, size_t randomLen, uint8_t *output, size_t outputLen)
 {
    uint_t i;
    size_t n;
@@ -77,7 +77,7 @@ error_t sslExpandKey(const uint8_t *secret, size_t secretLength,
    Sha1Context *sha1Context;
 
    //Output length cannot exceed 256 bytes
-   if(outputLength > (sizeof(pad) * MD5_DIGEST_SIZE))
+   if(outputLen > (sizeof(pad) * MD5_DIGEST_SIZE))
       return ERROR_INVALID_LENGTH;
 
    //Allocate a memory buffer to hold the MD5 context
@@ -97,7 +97,7 @@ error_t sslExpandKey(const uint8_t *secret, size_t secretLength,
    }
 
    //Loop until enough output has been generated
-   for(i = 0; outputLength > 0; i++)
+   for(i = 0; outputLen > 0; i++)
    {
       //Generate pad
       memset(pad, 'A' + i, i + 1);
@@ -105,25 +105,25 @@ error_t sslExpandKey(const uint8_t *secret, size_t secretLength,
       //Compute SHA(pad + secret + random)
       sha1Init(sha1Context);
       sha1Update(sha1Context, pad, i + 1);
-      sha1Update(sha1Context, secret, secretLength);
-      sha1Update(sha1Context, random, randomLength);
+      sha1Update(sha1Context, secret, secretLen);
+      sha1Update(sha1Context, random, randomLen);
       sha1Final(sha1Context, NULL);
 
       //Then compute MD5(secret + SHA(pad + secret + random))
       md5Init(md5Context);
-      md5Update(md5Context, secret, secretLength);
+      md5Update(md5Context, secret, secretLen);
       md5Update(md5Context, sha1Context->digest, SHA1_DIGEST_SIZE);
       md5Final(md5Context, NULL);
 
       //Calculate the number of bytes to copy
-      n = MIN(outputLength, MD5_DIGEST_SIZE);
+      n = MIN(outputLen, MD5_DIGEST_SIZE);
       //Copy the resulting hash value
       memcpy(output, md5Context->digest, n);
 
       //Advance data pointer
       output += n;
       //Decrement byte counter
-      outputLength -= n;
+      outputLen -= n;
    }
 
    //Release previously allocated resources
@@ -140,15 +140,15 @@ error_t sslExpandKey(const uint8_t *secret, size_t secretLength,
  * @param[in] encryptionEngine Pointer to the encryption/decryption engine
  * @param[in] record Pointer to the TLS record
  * @param[in] data Pointer to the record data
- * @param[in] dataLength Length of the data
+ * @param[in] dataLen Length of the data
  * @param[out] mac The computed MAC value
  * @return Error code
  **/
 
 error_t sslComputeMac(TlsEncryptionEngine *encryptionEngine,
-   const TlsRecord *record, const uint8_t *data, size_t dataLength, uint8_t *mac)
+   const TlsRecord *record, const uint8_t *data, size_t dataLen, uint8_t *mac)
 {
-   size_t padLength;
+   size_t padLen;
    const HashAlgo *hashAlgo;
    HashContext *hashContext;
 
@@ -161,12 +161,12 @@ error_t sslComputeMac(TlsEncryptionEngine *encryptionEngine,
    if(hashAlgo == MD5_HASH_ALGO)
    {
       //48-byte long patterns are used with MD5
-      padLength = 48;
+      padLen = 48;
    }
    else if(hashAlgo == SHA1_HASH_ALGO)
    {
       //40-byte long patterns are used with SHA-1
-      padLength = 40;
+      padLen = 40;
    }
    else
    {
@@ -177,17 +177,17 @@ error_t sslComputeMac(TlsEncryptionEngine *encryptionEngine,
    //Compute hash(secret + pad1 + seqNum + type + length + data)
    hashAlgo->init(hashContext);
    hashAlgo->update(hashContext, encryptionEngine->macKey, encryptionEngine->macKeyLen);
-   hashAlgo->update(hashContext, sslPad1, padLength);
-   hashAlgo->update(hashContext, encryptionEngine->seqNum, sizeof(TlsSequenceNumber));
+   hashAlgo->update(hashContext, sslPad1, padLen);
+   hashAlgo->update(hashContext, &encryptionEngine->seqNum, sizeof(TlsSequenceNumber));
    hashAlgo->update(hashContext, &record->type, sizeof(record->type));
    hashAlgo->update(hashContext, (void *) &record->length, sizeof(record->length));
-   hashAlgo->update(hashContext, data, dataLength);
+   hashAlgo->update(hashContext, data, dataLen);
    hashAlgo->final(hashContext, mac);
 
    //Then compute hash(secret + pad2 + hash(secret + pad1 + seqNum + type + length + data))
    hashAlgo->init(hashContext);
    hashAlgo->update(hashContext, encryptionEngine->macKey, encryptionEngine->macKeyLen);
-   hashAlgo->update(hashContext, sslPad2, padLength);
+   hashAlgo->update(hashContext, sslPad2, padLen);
    hashAlgo->update(hashContext, mac, hashAlgo->digestSize);
    hashAlgo->final(hashContext, mac);
 

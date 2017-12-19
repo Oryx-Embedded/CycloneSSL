@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.7.8
+ * @version 1.8.0
  **/
 
 #ifndef _TLS_RECORD_H
@@ -50,10 +50,23 @@ error_t tlsWriteRecord(TlsContext *context, const uint8_t *data,
 error_t tlsReadRecord(TlsContext *context, uint8_t *data,
    size_t size, size_t *length, TlsContentType *contentType);
 
-error_t tlsEncryptRecord(TlsContext *context, TlsRecord *record);
-error_t tlsDecryptRecord(TlsContext *context, TlsRecord *record);
+error_t tlsEncryptRecord(TlsContext *context,
+   TlsEncryptionEngine *encryptionEngine, void *record);
 
-void tlsIncSequenceNumber(TlsSequenceNumber seqNum);
+error_t tlsDecryptRecord(TlsContext *context,
+   TlsEncryptionEngine *decryptionEngine, void *record);
+
+void tlsSetRecordLength(TlsContext *context, void *record, size_t length);
+size_t tlsGetRecordLength(TlsContext *context, void *record);
+uint8_t *tlsGetRecordData(TlsContext *context, void *record);
+
+error_t tlsComputeMac(TlsContext *context, TlsEncryptionEngine *encryptionEngine,
+   void *record, const uint8_t *data, size_t dataLen, uint8_t *mac);
+
+void tlsFormatAdditionalData(TlsContext *context,
+   const TlsSequenceNumber *seqNum, const void *record, uint8_t *aad);
+
+void tlsIncSequenceNumber(TlsSequenceNumber *seqNum);
 
 //C++ guard
 #ifdef __cplusplus

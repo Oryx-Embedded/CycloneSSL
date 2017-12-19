@@ -1,6 +1,6 @@
 /**
- * @file tls_cache.h
- * @brief Session cache management
+ * @file tls_handshake_misc.h
+ * @brief Helper functions for TLS handshake
  *
  * @section License
  *
@@ -26,8 +26,8 @@
  * @version 1.8.0
  **/
 
-#ifndef _TLS_CACHE_H
-#define _TLS_CACHE_H
+#ifndef _TLS_HANDSHAKE_MISC_H
+#define _TLS_HANDSHAKE_MISC_H
 
 //Dependencies
 #include "tls.h"
@@ -37,12 +37,18 @@
    extern "C" {
 #endif
 
-//Session cache management
-TlsCache *tlsInitCache(uint_t size);
-TlsSession *tlsFindCache(TlsCache *cache, const uint8_t *id, size_t length);
-error_t tlsSaveToCache(TlsContext *context);
-error_t tlsRemoveFromCache(TlsContext *context);
-void tlsFreeCache(TlsCache *cache);
+//TLS related functions
+error_t tlsSendHandshakeMessage(TlsContext *context,
+   const void *data, size_t length, TlsMessageType type);
+
+error_t tlsParseHelloExtensions(TlsContext *context, const uint8_t *p,
+   size_t length, TlsHelloExtensions *extensions);
+
+error_t tlsCheckDuplicateExtension(uint16_t type, const uint8_t *p,
+   size_t length);
+
+bool_t tlsIsAlpnProtocolSupported(TlsContext *context,
+   const char_t *protocol, size_t length);
 
 //C++ guard
 #ifdef __cplusplus

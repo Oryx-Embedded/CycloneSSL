@@ -1,6 +1,6 @@
 /**
  * @file tls_server_misc.h
- * @brief Helper functions (TLS server)
+ * @brief Helper functions for TLS server
  *
  * @section License
  *
@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.7.8
+ * @version 1.8.0
  **/
 
 #ifndef _TLS_SERVER_MISC_H
@@ -38,7 +38,19 @@
 #endif
 
 //TLS server specific functions
+error_t tlsFormatServerSniExtension(TlsContext *context,
+   uint8_t *p, size_t *written);
+
+error_t tlsFormatServerMaxFragLenExtension(TlsContext *context,
+   uint8_t *p, size_t *written);
+
 error_t tlsFormatServerEcPointFormatsExtension(TlsContext *context,
+   uint8_t *p, size_t *written);
+
+error_t tlsFormatServerAlpnExtension(TlsContext *context,
+   uint8_t *p, size_t *written);
+
+error_t tlsFormatServerEmsExtension(TlsContext *context,
    uint8_t *p, size_t *written);
 
 error_t tlsFormatServerRenegoInfoExtension(TlsContext *context,
@@ -52,6 +64,18 @@ error_t tlsFormatServerKeyParams(TlsContext *context,
 
 error_t tlsGenerateServerKeySignature(TlsContext *context,
    uint8_t *p, const uint8_t *params, size_t paramsLen, size_t *written);
+
+error_t tlsParseClientSniExtension(TlsContext *context,
+   const TlsServerNameList *serverNameList);
+
+error_t tlsParseClientMaxFragLenExtension(TlsContext *context,
+   const uint8_t *maxFragLen);
+
+error_t tlsParseClientEcPointFormatsExtension(TlsContext *context,
+   const TlsEcPointFormatList *ecPointFormatList);
+
+error_t tlsParseClientAlpnExtension(TlsContext *context,
+   const TlsProtocolNameList *protocolNameList);
 
 error_t tlsParsePskIdentity(TlsContext *context,
    const uint8_t *p, size_t length, size_t *consumed);

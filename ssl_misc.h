@@ -1,6 +1,6 @@
 /**
- * @file tls_cache.h
- * @brief Session cache management
+ * @file ssl_misc.h
+ * @brief SSL 3.0 helper functions
  *
  * @section License
  *
@@ -26,10 +26,11 @@
  * @version 1.8.0
  **/
 
-#ifndef _TLS_CACHE_H
-#define _TLS_CACHE_H
+#ifndef _SSL_MISC_H
+#define _SSL_MISC_H
 
 //Dependencies
+#include "core/crypto.h"
 #include "tls.h"
 
 //C++ guard
@@ -37,12 +38,16 @@
    extern "C" {
 #endif
 
-//Session cache management
-TlsCache *tlsInitCache(uint_t size);
-TlsSession *tlsFindCache(TlsCache *cache, const uint8_t *id, size_t length);
-error_t tlsSaveToCache(TlsContext *context);
-error_t tlsRemoveFromCache(TlsContext *context);
-void tlsFreeCache(TlsCache *cache);
+//SSL 3.0 related constants
+extern const uint8_t sslPad1[48];
+extern const uint8_t sslPad2[48];
+
+//SSL 3.0 related functions
+error_t sslExpandKey(const uint8_t *secret, size_t secretLen,
+   const uint8_t *random, size_t randomLen, uint8_t *output, size_t outputLen);
+
+error_t sslComputeMac(TlsEncryptionEngine *encryptionEngine,
+   const TlsRecord *record, const uint8_t *data, size_t dataLen, uint8_t *mac);
 
 //C++ guard
 #ifdef __cplusplus

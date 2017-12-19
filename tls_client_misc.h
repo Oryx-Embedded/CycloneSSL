@@ -1,6 +1,6 @@
 /**
  * @file tls_client_misc.h
- * @brief Helper functions (TLS client)
+ * @brief Helper functions for TLS client
  *
  * @section License
  *
@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.7.8
+ * @version 1.8.0
  **/
 
 #ifndef _TLS_SERVER_MISC_H
@@ -41,13 +41,13 @@
 error_t tlsFormatCipherSuites(TlsContext *context,
    bool_t *eccCipherSuite, uint8_t *p, size_t *written);
 
-error_t tlsFormatCompressionMethods(TlsContext *context,
+error_t tlsFormatCompressMethods(TlsContext *context,
    uint8_t *p, size_t *written);
 
-error_t tlsFormatServerNameExtension(TlsContext *context,
+error_t tlsFormatClientSniExtension(TlsContext *context,
    uint8_t *p, size_t *written);
 
-error_t tlsFormatAlpnExtension(TlsContext *context,
+error_t tlsFormatClientMaxFragLenExtension(TlsContext *context,
    uint8_t *p, size_t *written);
 
 error_t tlsFormatEllipticCurvesExtension(TlsContext *context,
@@ -59,6 +59,12 @@ error_t tlsFormatClientEcPointFormatsExtension(TlsContext *context,
 error_t tlsFormatSignatureAlgorithmsExtension(TlsContext *context,
    bool_t eccCipherSuite, uint8_t *p, size_t *written);
 
+error_t tlsFormatClientAlpnExtension(TlsContext *context,
+   uint8_t *p, size_t *written);
+
+error_t tlsFormatClientEmsExtension(TlsContext *context,
+   uint8_t *p, size_t *written);
+
 error_t tlsFormatClientRenegoInfoExtension(TlsContext *context,
    uint8_t *p, size_t *written);
 
@@ -67,6 +73,15 @@ error_t tlsFormatPskIdentity(TlsContext *context,
 
 error_t tlsFormatClientKeyParams(TlsContext *context,
    uint8_t *p, size_t *written);
+
+error_t tlsParseServerMaxFragLenExtension(TlsContext *context,
+   const uint8_t *maxFragLen);
+
+error_t tlsParseServerEcPointFormatsExtension(TlsContext *context,
+   const TlsEcPointFormatList *ecPointFormatList);
+
+error_t tlsParseServerAlpnExtension(TlsContext *context,
+   const TlsProtocolNameList *protocolNameList);
 
 error_t tlsParsePskIdentityHint(TlsContext *context,
    const uint8_t *p, size_t length, size_t *consumed);

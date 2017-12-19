@@ -1,12 +1,12 @@
 /**
- * @file tls_cache.h
- * @brief Session cache management
+ * @file tls_legacy.h
+ * @brief Legacy definitions
  *
  * @section License
  *
  * Copyright (C) 2010-2017 Oryx Embedded SARL. All rights reserved.
  *
- * This file is part of CycloneSSL Open.
+ * This file is part of CycloneTCP Open.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -26,27 +26,14 @@
  * @version 1.8.0
  **/
 
-#ifndef _TLS_CACHE_H
-#define _TLS_CACHE_H
+#ifndef _TLS_LEGACY_H
+#define _TLS_LEGACY_H
 
-//Dependencies
-#include "tls.h"
+//Deprecated definitions
+#define TlsIoHandle TlsSocketHandle
 
-//C++ guard
-#ifdef __cplusplus
-   extern "C" {
-#endif
-
-//Session cache management
-TlsCache *tlsInitCache(uint_t size);
-TlsSession *tlsFindCache(TlsCache *cache, const uint8_t *id, size_t length);
-error_t tlsSaveToCache(TlsContext *context);
-error_t tlsRemoveFromCache(TlsContext *context);
-void tlsFreeCache(TlsCache *cache);
-
-//C++ guard
-#ifdef __cplusplus
-   }
-#endif
+//Deprecated functions
+#define tlsSetIoCallbacks(context, handle, sendCallback, receiveCallback) \
+   tlsSetSocketCallbacks(context, sendCallback, receiveCallback, handle);
 
 #endif
