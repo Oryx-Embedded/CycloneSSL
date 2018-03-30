@@ -4,7 +4,7 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2017 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.0
+ * @version 1.8.2
  **/
 
 #ifndef _DTLS_MISC_H
@@ -33,7 +33,7 @@
 #define DTLS_VERSION_1_0 0xFEFF
 #define DTLS_VERSION_1_2 0xFEFD
 
-//Enable DTLS support
+//DTLS support
 #ifndef DTLS_SUPPORT
    #define DTLS_SUPPORT DISABLED
 #elif (DTLS_SUPPORT != ENABLED && DTLS_SUPPORT != DISABLED)
@@ -235,8 +235,7 @@ typedef error_t (*DtlsCookieVerifyCallback)(DtlsCookieHandle handle,
 error_t dtlsSelectVersion(TlsContext *context, uint16_t version);
 uint16_t dtlsTranslateVersion(uint16_t version);
 
-error_t dtlsFormatCookie(TlsContext *context,
-   uint8_t *p, size_t *written);
+error_t dtlsFormatCookie(TlsContext *context, uint8_t *p, size_t *written);
 
 error_t dtlsSendHelloVerifyRequest(TlsContext *context);
 

@@ -4,7 +4,7 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2017 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.0
+ * @version 1.8.2
  **/
 
 #ifndef _TLS_CERTIFICATE_H
@@ -39,6 +39,18 @@
 #endif
 
 //TLS related functions
+error_t tlsFormatCertificateList(TlsContext *context, uint8_t *p,
+   size_t *written);
+
+error_t tlsFormatRawPublicKey(TlsContext *context, uint8_t *p,
+   size_t *written);
+
+error_t tlsParseCertificateList(TlsContext *context, const uint8_t *p,
+   size_t length);
+
+error_t tlsParseRawPublicKey(TlsContext *context, const uint8_t *p,
+   size_t length);
+
 bool_t tlsIsCertificateAcceptable(const TlsCertDesc *cert,
    const uint8_t *certTypes, size_t numCertTypes, const TlsSignHashAlgos *signHashAlgos,
    const TlsEllipticCurveList *curveList, const TlsCertAuthorities *certAuthorities);
@@ -52,7 +64,7 @@ error_t tlsGetCertificateType(const X509CertificateInfo *certInfo,
    TlsHashAlgo *certHashAlgo, TlsEcNamedCurve *namedCurve);
 
 error_t tlsReadSubjectPublicKey(TlsContext *context,
-   const X509CertificateInfo *certInfo);
+   const X509SubjectPublicKeyInfo *subjectPublicKeyInfo);
 
 error_t tlsCheckKeyUsage(const X509CertificateInfo *certInfo,
    TlsConnectionEnd entity, TlsKeyExchMethod keyExchMethod);

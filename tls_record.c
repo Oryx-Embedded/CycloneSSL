@@ -4,7 +4,7 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2017 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.0
+ * @version 1.8.2
  **/
 
 //Switch to the appropriate trace level
@@ -1299,12 +1299,12 @@ error_t tlsComputeMac(TlsContext *context, TlsEncryptionEngine *encryptionEngine
 
       //Compute the MAC over the 64-bit value formed by concatenating the epoch
       //and the sequence number in the order they appear on the wire
-      hmacUpdate(encryptionEngine->hmacContext, &dtlsRecord->epoch, 2);
+      hmacUpdate(encryptionEngine->hmacContext, (void *) &dtlsRecord->epoch, 2);
       hmacUpdate(encryptionEngine->hmacContext, &dtlsRecord->seqNum, 6);
 
       //Compute MAC over the record contents
       hmacUpdate(encryptionEngine->hmacContext, &dtlsRecord->type, 3);
-      hmacUpdate(encryptionEngine->hmacContext, &dtlsRecord->length, 2);
+      hmacUpdate(encryptionEngine->hmacContext, (void *) &dtlsRecord->length, 2);
       hmacUpdate(encryptionEngine->hmacContext, data, dataLen);
    }
    else
@@ -1354,10 +1354,10 @@ void tlsFormatAdditionalData(TlsContext *context,
       dtlsRecord = (DtlsRecord *) record;
 
       //Additional data to be authenticated
-      memcpy(aad, &dtlsRecord->epoch, 2);
+      memcpy(aad, (void *) &dtlsRecord->epoch, 2);
       memcpy(aad + 2, &dtlsRecord->seqNum, 6);
       memcpy(aad + 8, &dtlsRecord->type, 3);
-      memcpy(aad + 11, &dtlsRecord->length, 2);
+      memcpy(aad + 11, (void *) &dtlsRecord->length, 2);
    }
    else
 #endif

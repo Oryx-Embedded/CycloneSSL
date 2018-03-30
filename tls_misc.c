@@ -4,7 +4,7 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2017 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.0
+ * @version 1.8.2
  **/
 
 //Switch to the appropriate trace level
@@ -164,13 +164,15 @@ error_t tlsGenerateRandomValue(TlsContext *context, TlsRandom *random)
          random->gmtUnixTime = htonl(time);
 
          //The last 28 bytes contain securely-generated random bytes
-         error = context->prngAlgo->read(context->prngContext, random->randomBytes, 28);
+         error = context->prngAlgo->read(context->prngContext,
+            random->randomBytes, 28);
       }
       else
       {
          //Generate a 32-byte random value using a cryptographically-safe
          //pseudorandom number generator
-         error = context->prngAlgo->read(context->prngContext, (uint8_t *) random, 32);
+         error = context->prngAlgo->read(context->prngContext,
+            (uint8_t *) random, 32);
       }
    }
    else
@@ -337,7 +339,7 @@ error_t tlsSelectCipherSuite(TlsContext *context, uint16_t identifier)
    else
    {
       //Debug message
-      TRACE_ERROR("Cipher suite not supported!\r\n");
+      TRACE_DEBUG("Cipher suite not supported!\r\n");
       //The specified cipher suite is not supported
       error = ERROR_HANDSHAKE_FAILED;
    }
@@ -622,7 +624,7 @@ error_t tlsWriteMpi(const Mpi *a, uint8_t *data, size_t *length)
    STORE16BE(n, data);
 
    //Convert the integer to an octet string
-   error = mpiWriteRaw(a, data + 2, n);
+   error = mpiExport(a, data + 2, n, MPI_FORMAT_BIG_ENDIAN);
    //Conversion failed?
    if(error)
       return error;
@@ -660,7 +662,7 @@ error_t tlsReadMpi(Mpi *a, const uint8_t *data, size_t size, size_t *length)
       return ERROR_DECODING_FAILED;
 
    //Convert the octet string to a multiple precision integer
-   error = mpiReadRaw(a, data + 2, n);
+   error = mpiImport(a, data + 2, n, MPI_FORMAT_BIG_ENDIAN);
    //Any error to report?
    if(error)
       return error;
@@ -952,6 +954,18 @@ const EcCurveInfo *tlsGetCurveInfo(uint16_t namedCurve)
    //brainpoolP512r1 elliptic curve?
    case TLS_EC_CURVE_BRAINPOOLP512R1:
       curveInfo = ecGetCurveInfo(BRAINPOOLP512R1_OID, sizeof(BRAINPOOLP512R1_OID));
+      break;
+#endif
+#if (TLS_CURVE25519_SUPPORT == ENABLED)
+   //Curve25519 elliptic curve?
+   case TLS_EC_CURVE_ECDH_X25519:
+      curveInfo = ecGetCurveInfo(X25519_OID, sizeof(X25519_OID));
+      break;
+#endif
+#if (TLS_CURVE448_SUPPORT == ENABLED)
+   //Curve448 elliptic curve?
+   case TLS_EC_CURVE_ECDH_X448:
+      curveInfo = ecGetCurveInfo(X448_OID, sizeof(X448_OID));
       break;
 #endif
    //Unknown elliptic curve identifier?

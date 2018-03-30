@@ -4,7 +4,7 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2017 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.0
+ * @version 1.8.2
  **/
 
 //Switch to the appropriate trace level
@@ -237,7 +237,7 @@ error_t tlsGenerateRsaSignature(const RsaPrivateKey *key,
    do
    {
       //Convert the encoded message EM to an integer message representative m
-      error = mpiReadRaw(&m, em, k);
+      error = mpiImport(&m, em, k, MPI_FORMAT_BIG_ENDIAN);
       //Conversion failed?
       if(error)
          break;
@@ -249,7 +249,7 @@ error_t tlsGenerateRsaSignature(const RsaPrivateKey *key,
          break;
 
       //Convert the signature representative s to a signature of length k octets
-      error = mpiWriteRaw(&s, signature, k);
+      error = mpiExport(&s, signature, k, MPI_FORMAT_BIG_ENDIAN);
       //Conversion failed?
       if(error)
          break;
@@ -330,7 +330,7 @@ error_t tlsVerifyRsaSignature(const RsaPublicKey *key,
    do
    {
       //Convert the signature to an integer signature representative s
-      error = mpiReadRaw(&s, signature, signatureLen);
+      error = mpiImport(&s, signature, signatureLen, MPI_FORMAT_BIG_ENDIAN);
       //Conversion failed?
       if(error)
          break;
@@ -341,8 +341,9 @@ error_t tlsVerifyRsaSignature(const RsaPublicKey *key,
       if(error)
          break;
 
-      //Convert the message representative m to an encoded message EM of length k octets
-      error = mpiWriteRaw(&m, em, k);
+      //Convert the message representative m to an encoded message EM of
+      //length k octets
+      error = mpiExport(&m, em, k, MPI_FORMAT_BIG_ENDIAN);
       //Conversion failed?
       if(error)
          break;

@@ -4,7 +4,7 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2017 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -29,7 +29,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.0
+ * @version 1.8.2
  **/
 
 //Switch to the appropriate trace level
@@ -160,6 +160,27 @@ TlsContext *tlsInit(void)
 
    //Return a pointer to the freshly created TLS context
    return context;
+}
+
+
+/**
+ * @brief Retrieve current state
+ * @param[in] context Pointer to the TLS context
+ * @return Current TLS state
+ **/
+
+TlsState tlsGetState(TlsContext *context)
+{
+   TlsState state;
+
+   //Valid TLS context?
+   if(context != NULL)
+      state = context->state;
+   else
+      state = TLS_STATE_INIT;
+
+   //Return current state
+   return state;
 }
 
 
@@ -923,6 +944,33 @@ error_t tlsSetPskCallback(TlsContext *context, TlsPskCallback pskCallback)
 
 
 /**
+ * @brief Register the raw public key verification callback function
+ * @param[in] context Pointer to the TLS context
+ * @param[in] rpkVerifyCallback RPK verification callback function
+ * @return Error code
+ **/
+
+error_t tlsSetRpkVerifyCallback(TlsContext *context,
+   TlsRpkVerifyCallback rpkVerifyCallback)
+{
+#if (TLS_RAW_PUBLIC_KEY_SUPPORT == ENABLED)
+   //Check parameters
+   if(context == NULL || rpkVerifyCallback == NULL)
+      return ERROR_INVALID_PARAMETER;
+
+   //Save the raw public key verification callback function
+   context->rpkVerifyCallback = rpkVerifyCallback;
+
+   //Successful processing
+   return NO_ERROR;
+#else
+   //Raw public keys are not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
+}
+
+
+/**
  * @brief Import a trusted CA list
  * @param[in] context Pointer to the TLS context
  * @param[in] trustedCaList List of trusted CA (PEM format)
@@ -1106,7 +1154,7 @@ error_t tlsEnableFallbackScsv(TlsContext *context, bool_t enabled)
    //Successful processing
    return NO_ERROR;
 #else
-    //Not implemented
+   //Not implemented
    return ERROR_NOT_IMPLEMENTED;
 #endif
 }
@@ -1668,6 +1716,50 @@ error_t tlsRead(TlsContext *context, void *data,
 
    //Return status code
    return error;
+}
+
+
+/**
+ * @brief Check whether some data is available in the receive buffer
+ * @param[in] context Pointer to the TLS context
+ * @return The function returns TRUE if some data is pending and can be read
+ *   immediately without blocking. Otherwise, FALSE is returned
+ **/
+
+bool_t tlsIsRxReady(TlsContext *context)
+{
+   bool_t ready = FALSE;
+
+   //Invalid TLS context?
+   if(context == NULL)
+      return ERROR_INVALID_PARAMETER;
+
+#if (DTLS_SUPPORT == ENABLED)
+   //DTLS protocol?
+   if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_DATAGRAM)
+   {
+      //Check whether a datagram is pending in the receive buffer
+      if(context->rxBufferLen > 0 ||
+         context->rxRecordLen > 0 ||
+         context->rxDatagramLen > 0)
+      {
+         ready = TRUE;
+      }
+   }
+   else
+#endif
+   //TLS protocol?
+   {
+      //Check whether some data is pending in the receive buffer
+      if(context->rxBufferLen > 0)
+      {
+         ready = TRUE;
+      }
+   }
+
+   //The function returns TRUE if some data can be read immediately
+   //without blocking
+   return ready;
 }
 
 

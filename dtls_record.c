@@ -4,7 +4,7 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2017 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.0
+ * @version 1.8.2
  **/
 
 //Switch to the appropriate trace level
@@ -273,7 +273,8 @@ error_t dtlsWriteRecord(TlsContext *context, const uint8_t *data,
          return ERROR_BUFFER_OVERFLOW;
 
       //Protect record payload?
-      if(encryptionEngine->cipherMode != CIPHER_MODE_NULL)
+      if(encryptionEngine->cipherMode != CIPHER_MODE_NULL ||
+         encryptionEngine->hashAlgo != NULL)
       {
          //Encrypt DTLS record
          error = tlsEncryptRecord(context, encryptionEngine, record);
@@ -283,7 +284,7 @@ error_t dtlsWriteRecord(TlsContext *context, const uint8_t *data,
       }
 
       //Debug message
-      TRACE_INFO("Encrypted DTLS record (%" PRIuSIZE " bytes)...\r\n", ntohs(record->length));
+      TRACE_DEBUG("Encrypted DTLS record (%" PRIuSIZE " bytes)...\r\n", ntohs(record->length));
       TRACE_DEBUG_ARRAY("  ", record, ntohs(record->length) + sizeof(DtlsRecord));
 
       //Increment sequence number
@@ -343,7 +344,7 @@ error_t dtlsReadRecord(TlsContext *context)
    }
 
    //Debug message
-   TRACE_INFO("DTLS encrypted record received (%" PRIuSIZE " bytes)...\r\n", recordLen);
+   TRACE_DEBUG("DTLS encrypted record received (%" PRIuSIZE " bytes)...\r\n", recordLen);
    TRACE_DEBUG_ARRAY("  ", record, recordLen + sizeof(DtlsRecord));
 
    //Point to the payload data
@@ -353,21 +354,10 @@ error_t dtlsReadRecord(TlsContext *context)
    context->rxDatagramPos += recordLen + sizeof(DtlsRecord);
    context->rxDatagramLen -= recordLen + sizeof(DtlsRecord);
 
-   //Check current state
-   if(context->state > TLS_STATE_SERVER_HELLO)
-   {
-      //Once the server has sent the ServerHello message, enforce the version
-      //of incoming records
-      if(ntohs(record->version) != dtlsTranslateVersion(context->version))
-         return ERROR_VERSION_NOT_SUPPORTED;
-   }
-   else
-   {
-      //Compliant servers must accept any value {254,XX} as the record layer
-      //version number for ClientHello
-      if(LSB(record->version) != MSB(DTLS_VERSION_1_0))
-         error = ERROR_VERSION_NOT_SUPPORTED;
-   }
+   //Compliant servers must accept any value {254,XX} as the record layer
+   //version number for ClientHello
+   if(LSB(record->version) != MSB(DTLS_VERSION_1_0))
+      error = ERROR_VERSION_NOT_SUPPORTED;
 
    //Discard packets from earlier epochs
    if(ntohs(record->epoch) != context->decryptionEngine.epoch)
@@ -396,9 +386,11 @@ error_t dtlsReadRecord(TlsContext *context)
    recordLen = ntohs(record->length);
 
    //Debug message
-   TRACE_INFO("DTLS decrypted record received (%" PRIuSIZE " bytes)...\r\n", recordLen);
+   TRACE_DEBUG("DTLS decrypted record received (%" PRIuSIZE " bytes)...\r\n", recordLen);
    TRACE_DEBUG_ARRAY("  ", record, recordLen + sizeof(DtlsRecord));
 
+   //Save record version
+   context->rxRecordVersion = ntohs(record->version);
    //Save record type
    context->rxBufferType = (TlsContentType) record->type;
    //Save record length
@@ -438,12 +430,13 @@ error_t dtlsProcessRecord(TlsContext *context)
       message = (DtlsHandshake *) (context->rxBuffer + context->rxRecordPos);
 
       //Debug message
-      TRACE_INFO("Handshake message fragment received...\r\n");
-      TRACE_INFO("  msgType = %u\r\n", message->msgType);
-      TRACE_INFO("  msgSeq = %u\r\n", ntohs(message->msgSeq));
-      TRACE_INFO("  fragOffset = %u\r\n", LOAD24BE(message->fragOffset));
-      TRACE_INFO("  fragLength = %u\r\n", LOAD24BE(message->fragLength));
-      TRACE_INFO("  length = %u\r\n", LOAD24BE(message->length));
+      TRACE_DEBUG("Handshake message fragment received (%" PRIuSIZE " bytes)...\r\n",
+         LOAD24BE(message->fragLength));
+      TRACE_DEBUG("  msgType = %u\r\n", message->msgType);
+      TRACE_DEBUG("  msgSeq = %u\r\n", ntohs(message->msgSeq));
+      TRACE_DEBUG("  fragOffset = %u\r\n", LOAD24BE(message->fragOffset));
+      TRACE_DEBUG("  fragLength = %u\r\n", LOAD24BE(message->fragLength));
+      TRACE_DEBUG("  length = %u\r\n", LOAD24BE(message->length));
 
       //Retrieve fragment length
       fragLength = LOAD24BE(message->fragLength) + sizeof(DtlsHandshake);
@@ -528,6 +521,15 @@ error_t dtlsProcessRecord(TlsContext *context)
          //expected value, the message is processed
       }
 
+      //Check current state
+      if(context->state > TLS_STATE_SERVER_HELLO)
+      {
+         //Once the server has sent the ServerHello message, enforce the version
+         //of incoming records
+         if(context->rxRecordVersion != dtlsTranslateVersion(context->version))
+            return ERROR_VERSION_NOT_SUPPORTED;
+      }
+
       //When a DTLS implementation receives a handshake message fragment,
       //it must buffer it until it has the entire handshake message. DTLS
       //implementations must be able to handle overlapping fragment ranges
@@ -608,6 +610,10 @@ error_t dtlsProcessRecord(TlsContext *context)
                return ERROR_UNEXPECTED_MESSAGE;
             }
          }
+
+         //Enforce the version the received DTLS record
+         if(context->rxRecordVersion != dtlsTranslateVersion(context->version))
+            return ERROR_VERSION_NOT_SUPPORTED;
       }
       //Alert message received?
       else if(context->rxBufferType == TLS_TYPE_ALERT)
@@ -637,6 +643,10 @@ error_t dtlsProcessRecord(TlsContext *context)
             //Report an error
             return ERROR_UNEXPECTED_MESSAGE;
          }
+
+         //Enforce the version the received DTLS record
+         if(context->rxRecordVersion != dtlsTranslateVersion(context->version))
+            return ERROR_VERSION_NOT_SUPPORTED;
       }
       //Unknown content type?
       else
@@ -704,7 +714,7 @@ error_t dtlsSendFlight(TlsContext *context)
       //Point to the current DTLS record
       record = (DtlsRecord *) (context->txBuffer + context->txBufferPos);
 
-      //Get the relevant encryption engine
+      //Select the relevant encryption engine
       if(ntohs(record->epoch) == context->encryptionEngine.epoch)
          encryptionEngine = &context->encryptionEngine;
       else
@@ -773,7 +783,8 @@ error_t dtlsSendFlight(TlsContext *context)
          record->seqNum = encryptionEngine->dtlsSeqNum;
 
          //Protect record payload?
-         if(encryptionEngine->cipherMode != CIPHER_MODE_NULL)
+         if(encryptionEngine->cipherMode != CIPHER_MODE_NULL ||
+            encryptionEngine->hashAlgo != NULL)
          {
             //Encrypt DTLS record
             error = tlsEncryptRecord(context, encryptionEngine, record);
@@ -783,7 +794,7 @@ error_t dtlsSendFlight(TlsContext *context)
          }
 
          //Debug message
-         TRACE_INFO("Encrypted DTLS record (%" PRIuSIZE " bytes)...\r\n", ntohs(record->length));
+         TRACE_DEBUG("Encrypted DTLS record (%" PRIuSIZE " bytes)...\r\n", ntohs(record->length));
          TRACE_DEBUG_ARRAY("  ", record, ntohs(record->length) + sizeof(DtlsRecord));
 
          //Increment sequence number
@@ -930,15 +941,17 @@ error_t dtlsFragmentHandshakeMessage(TlsContext *context, uint16_t version,
       memcpy(fragment->data, message->data + fragOffset, fragLength);
 
       //Debug message
-      TRACE_INFO("Sending handshake message fragment...\r\n");
-      TRACE_INFO("  msgType = %u\r\n", fragment->msgType);
-      TRACE_INFO("  msgSeq = %u\r\n", ntohs(fragment->msgSeq));
-      TRACE_INFO("  fragOffset = %u\r\n", LOAD24BE(fragment->fragOffset));
-      TRACE_INFO("  fragLength = %u\r\n", LOAD24BE(fragment->fragLength));
-      TRACE_INFO("  length = %u\r\n", LOAD24BE(fragment->length));
+      TRACE_DEBUG("Sending handshake message fragment (%" PRIuSIZE " bytes)...\r\n",
+         LOAD24BE(fragment->fragLength));
+      TRACE_DEBUG("  msgType = %u\r\n", fragment->msgType);
+      TRACE_DEBUG("  msgSeq = %u\r\n", ntohs(fragment->msgSeq));
+      TRACE_DEBUG("  fragOffset = %u\r\n", LOAD24BE(fragment->fragOffset));
+      TRACE_DEBUG("  fragLength = %u\r\n", LOAD24BE(fragment->fragLength));
+      TRACE_DEBUG("  length = %u\r\n", LOAD24BE(fragment->length));
 
       //Protect record payload?
-      if(encryptionEngine->cipherMode != CIPHER_MODE_NULL)
+      if(encryptionEngine->cipherMode != CIPHER_MODE_NULL ||
+         encryptionEngine->hashAlgo != NULL)
       {
          //Encrypt DTLS record
          error = tlsEncryptRecord(context, encryptionEngine, record);
@@ -948,7 +961,7 @@ error_t dtlsFragmentHandshakeMessage(TlsContext *context, uint16_t version,
       }
 
       //Debug message
-      TRACE_INFO("Encrypted DTLS record (%" PRIuSIZE " bytes)...\r\n", ntohs(record->length));
+      TRACE_DEBUG("Encrypted DTLS record (%" PRIuSIZE " bytes)...\r\n", ntohs(record->length));
       TRACE_DEBUG_ARRAY("  ", record, ntohs(record->length) + sizeof(DtlsRecord));
 
       //Increment sequence number

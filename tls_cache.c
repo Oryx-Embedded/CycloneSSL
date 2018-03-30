@@ -4,7 +4,7 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2017 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.0
+ * @version 1.8.2
  **/
 
 //Switch to the appropriate trace level
@@ -101,6 +101,7 @@ TlsSession *tlsFindCache(TlsCache *cache, const uint8_t *id, size_t length)
    //Check whether session caching is supported
    if(cache == NULL)
       return NULL;
+
    //Ensure the session ID is valid
    if(id == NULL || length == 0)
       return NULL;
@@ -118,7 +119,7 @@ TlsSession *tlsFindCache(TlsCache *cache, const uint8_t *id, size_t length)
       session = &cache->sessions[i];
 
       //Skip unused entries
-      if(session->idLength)
+      if(session->idLength != 0)
       {
          //Outdated entry?
          if((time - session->timestamp) >= TLS_SESSION_CACHE_LIFETIME)
@@ -162,6 +163,7 @@ error_t tlsSaveToCache(TlsContext *context)
 {
    error_t error;
    uint_t i;
+   systime_t time;
    TlsSession *session;
    TlsSession *firstFreeEntry;
    TlsSession *oldestEntry;
@@ -178,6 +180,9 @@ error_t tlsSaveToCache(TlsContext *context)
 
    //Acquire exclusive access to the session cache
    osAcquireMutex(&context->cache->mutex);
+
+   //Get current time
+   time = osGetSystemTime();
 
    //Keep track of the first free entry
    firstFreeEntry = NULL;
@@ -202,17 +207,25 @@ error_t tlsSaveToCache(TlsContext *context)
       }
 
       //Check whether current entry is free
-      if(!session->idLength)
+      if(session->idLength == 0)
       {
          //Keep track of the first free entry
          if(!firstFreeEntry)
+         {
             firstFreeEntry = session;
+         }
       }
       else
       {
          //Keep track of the oldest entry in the table
-         if(!oldestEntry || timeCompare(session->timestamp, oldestEntry->timestamp) < 0)
+         if(oldestEntry == NULL)
+         {
             oldestEntry = session;
+         }
+         else if((time - session->timestamp) > (time - oldestEntry->timestamp))
+         {
+            oldestEntry = session;
+         }
       }
    }
 

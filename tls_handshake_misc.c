@@ -4,7 +4,7 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2017 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.0
+ * @version 1.8.2
  **/
 
 //Switch to the appropriate trace level
@@ -325,9 +325,9 @@ error_t tlsParseHelloExtensions(TlsContext *context, const uint8_t *p,
          //The SignatureAlgorithms extension is valid
          extensions->signAlgoList = signAlgoList;
       }
+#if (TLS_ALPN_SUPPORT == ENABLED)
       else if(type == TLS_EXT_ALPN)
       {
-#if (TLS_ALPN_SUPPORT == ENABLED)
          const TlsProtocolNameList *protocolNameList;
 
          //Point to the ALPN extension
@@ -341,22 +341,83 @@ error_t tlsParseHelloExtensions(TlsContext *context, const uint8_t *p,
 
          //The ALPN extension is valid
          extensions->protocolNameList = protocolNameList;
-#endif
       }
+#endif
+#if (TLS_RAW_PUBLIC_KEY_SUPPORT == ENABLED)
+      else if(type == TLS_EXT_CLIENT_CERT_TYPE)
+      {
+         //TLS operates as a client?
+         if(context->entity == TLS_CONNECTION_END_CLIENT)
+         {
+            //Only a single value is permitted in the ClientCertType extension
+            //when carried in the ServerHello
+            if(n != sizeof(uint8_t))
+               return ERROR_DECODING_FAILED;
+
+            //The ClientCertType extension is valid
+            extensions->clientCertType = extension->value;
+         }
+         else
+         {
+            const TlsCertTypeList *clientCertTypeList;
+
+            //Point to the ClientCertType extension
+            clientCertTypeList = (TlsCertTypeList *) extension->value;
+
+            //Malformed extension?
+            if(n < sizeof(TlsCertTypeList))
+               return ERROR_DECODING_FAILED;
+            if(n != (sizeof(TlsCertTypeList) + clientCertTypeList->length))
+               return ERROR_DECODING_FAILED;
+
+            //The ClientCertType extension is valid
+            extensions->clientCertTypeList = clientCertTypeList;
+         }
+      }
+      else if(type == TLS_EXT_SERVER_CERT_TYPE)
+      {
+         if(context->entity == TLS_CONNECTION_END_CLIENT)
+         {
+            //Only a single value is permitted in the ServerCertType extension
+            //when carried in the ServerHello
+            if(n != sizeof(uint8_t))
+               return ERROR_DECODING_FAILED;
+
+            //The ServerCertType extension is valid
+            extensions->serverCertType = extension->value;
+         }
+         else
+         {
+            const TlsCertTypeList *serverCertTypeList;
+
+            //Point to the ServerCertType extension
+            serverCertTypeList = (TlsCertTypeList *) extension->value;
+
+            //Malformed extension?
+            if(n < sizeof(TlsCertTypeList))
+               return ERROR_DECODING_FAILED;
+            if(n != (sizeof(TlsCertTypeList) + serverCertTypeList->length))
+               return ERROR_DECODING_FAILED;
+
+            //The ServerCertType extension is valid
+            extensions->serverCertTypeList = serverCertTypeList;
+         }
+      }
+#endif
+#if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
       else if(type == TLS_EXT_EXTENDED_MASTER_SECRET)
       {
-#if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
          //Malformed extension?
          if(n != 0)
             return ERROR_DECODING_FAILED;
 
          //The ExtendedMasterSecret extension is valid
          extensions->extendedMasterSecret = extension->value;
-#endif
       }
+#endif
+#if (TLS_SECURE_RENEGOTIATION_SUPPORT == ENABLED)
       else if(type == TLS_EXT_RENEGOTIATION_INFO)
       {
-#if (TLS_SECURE_RENEGOTIATION_SUPPORT == ENABLED)
          const TlsRenegoInfo *renegoInfo;
 
          //Point to the RenegotiationInfo extension
@@ -370,8 +431,8 @@ error_t tlsParseHelloExtensions(TlsContext *context, const uint8_t *p,
 
          //The RenegotiationInfo extension is valid
          extensions->renegoInfo = renegoInfo;
-#endif
       }
+#endif
       else
       {
          //Unknown extension received

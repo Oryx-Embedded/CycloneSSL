@@ -4,7 +4,7 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2017 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.0
+ * @version 1.8.2
  **/
 
 #ifndef _TLS_SERVER_MISC_H
@@ -48,6 +48,12 @@ error_t tlsFormatServerEcPointFormatsExtension(TlsContext *context,
    uint8_t *p, size_t *written);
 
 error_t tlsFormatServerAlpnExtension(TlsContext *context,
+   uint8_t *p, size_t *written);
+
+error_t tlsFormatClientCertTypeExtension(TlsContext *context,
+   uint8_t *p, size_t *written);
+
+error_t tlsFormatServerCertTypeExtension(TlsContext *context,
    uint8_t *p, size_t *written);
 
 error_t tlsFormatServerEmsExtension(TlsContext *context,
@@ -76,6 +82,12 @@ error_t tlsParseClientEcPointFormatsExtension(TlsContext *context,
 
 error_t tlsParseClientAlpnExtension(TlsContext *context,
    const TlsProtocolNameList *protocolNameList);
+
+error_t tlsParseClientCertTypeListExtension(TlsContext *context,
+   const TlsCertTypeList *clientCertTypeList);
+
+error_t tlsParseServerCertTypeListExtension(TlsContext *context,
+   const TlsCertTypeList *serverCertTypeList);
 
 error_t tlsParsePskIdentity(TlsContext *context,
    const uint8_t *p, size_t length, size_t *consumed);

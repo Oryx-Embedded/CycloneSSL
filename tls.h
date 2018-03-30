@@ -4,7 +4,7 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2017 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.0
+ * @version 1.8.2
  **/
 
 #ifndef _TLS_H
@@ -53,7 +53,7 @@ struct _TlsContext;
 #define TLS_VERSION_1_1 0x0302
 #define TLS_VERSION_1_2 0x0303
 
-//Enable SSL/TLS support
+//TLS support
 #ifndef TLS_SUPPORT
    #define TLS_SUPPORT ENABLED
 #elif (TLS_SUPPORT != ENABLED && TLS_SUPPORT != DISABLED)
@@ -128,6 +128,13 @@ struct _TlsContext;
    #define TLS_EXT_MASTER_SECRET_SUPPORT DISABLED
 #elif (TLS_EXT_MASTER_SECRET_SUPPORT != ENABLED && TLS_EXT_MASTER_SECRET_SUPPORT != DISABLED)
    #error TLS_EXT_MASTER_SECRET_SUPPORT parameter is not valid
+#endif
+
+//RPK (Raw Public Key) support
+#ifndef TLS_RAW_PUBLIC_KEY_SUPPORT
+   #define TLS_RAW_PUBLIC_KEY_SUPPORT DISABLED
+#elif (TLS_RAW_PUBLIC_KEY_SUPPORT != ENABLED && TLS_RAW_PUBLIC_KEY_SUPPORT != DISABLED)
+   #error TLS_RAW_PUBLIC_KEY_SUPPORT parameter is not valid
 #endif
 
 //Secure renegotiation
@@ -328,7 +335,7 @@ struct _TlsContext;
 
 //Triple DES cipher support (weak)
 #ifndef TLS_3DES_SUPPORT
-   #define TLS_3DES_SUPPORT ENABLED
+   #define TLS_3DES_SUPPORT DISABLED
 #elif (TLS_3DES_SUPPORT != ENABLED && TLS_3DES_SUPPORT != DISABLED)
    #error TLS_3DES_SUPPORT parameter is not valid
 #endif
@@ -499,6 +506,20 @@ struct _TlsContext;
    #define TLS_BRAINPOOLP512R1_SUPPORT DISABLED
 #elif (TLS_BRAINPOOLP512R1_SUPPORT != ENABLED && TLS_BRAINPOOLP512R1_SUPPORT != DISABLED)
    #error TLS_BRAINPOOLP512R1_SUPPORT parameter is not valid
+#endif
+
+//Curve25519 elliptic curve support
+#ifndef TLS_CURVE25519_SUPPORT
+   #define TLS_CURVE25519_SUPPORT DISABLED
+#elif (TLS_CURVE25519_SUPPORT != ENABLED && TLS_CURVE25519_SUPPORT != DISABLED)
+   #error TLS_CURVE25519_SUPPORT parameter is not valid
+#endif
+
+//Curve448 elliptic curve support
+#ifndef TLS_CURVE448_SUPPORT
+   #define TLS_CURVE448_SUPPORT DISABLED
+#elif (TLS_CURVE448_SUPPORT != ENABLED && TLS_CURVE448_SUPPORT != DISABLED)
+   #error TLS_CURVE448_SUPPORT parameter is not valid
 #endif
 
 //Certificate key usage verification
@@ -672,7 +693,8 @@ typedef enum
    TLS_TYPE_ALERT              = 21,
    TLS_TYPE_HANDSHAKE          = 22,
    TLS_TYPE_APPLICATION_DATA   = 23,
-   TLS_TYPE_HEARTBEAT          = 24
+   TLS_TYPE_HEARTBEAT          = 24,
+   TLS_TYPE_ACK                = 25  //RFC draft
 } TlsContentType;
 
 
@@ -687,6 +709,9 @@ typedef enum
    TLS_TYPE_SERVER_HELLO         = 2,
    TLS_TYPE_HELLO_VERIFY_REQUEST = 3,
    TLS_TYPE_NEW_SESSION_TICKET   = 4,
+   TLS_TYPE_END_OF_EARLY_DATA    = 5,  //RFC draft
+   TLS_TYPE_HELLO_RETRY_REQUEST  = 6,  //RFC draft
+   TLS_TYPE_ENCRYPTED_EXTENSIONS = 8,  //RFC draft
    TLS_TYPE_CERTIFICATE          = 11,
    TLS_TYPE_SERVER_KEY_EXCHANGE  = 12,
    TLS_TYPE_CERTIFICATE_REQUEST  = 13,
@@ -696,7 +721,9 @@ typedef enum
    TLS_TYPE_FINISHED             = 20,
    TLS_TYPE_CERTIFICATE_URL      = 21,
    TLS_TYPE_CERTIFICATE_STATUS   = 22,
-   TLS_TYPE_SUPPLEMENTAL_DATA    = 23
+   TLS_TYPE_SUPPLEMENTAL_DATA    = 23,
+   TLS_TYPE_KEY_UPDATE           = 24, //RFC draft
+   TLS_TYPE_MESSAGE_HASH         = 254 //RFC draft
 } TlsMessageType;
 
 
@@ -792,6 +819,18 @@ typedef enum
 
 
 /**
+ * @brief Certificate formats
+ **/
+
+typedef enum
+{
+   TLS_CERT_FORMAT_X509           = 0,
+   TLS_CERT_FORMAT_OPEN_PGP       = 1,
+   TLS_CERT_FORMAT_RAW_PUBLIC_KEY = 2
+} TlsCertificateFormat;
+
+
+/**
  * @brief Certificate types
  **/
 
@@ -836,7 +875,9 @@ typedef enum
    TLS_SIGN_ALGO_ANONYMOUS = 0,
    TLS_SIGN_ALGO_RSA       = 1,
    TLS_SIGN_ALGO_DSA       = 2,
-   TLS_SIGN_ALGO_ECDSA     = 3
+   TLS_SIGN_ALGO_ECDSA     = 3,
+   TLS_SIGN_ALGO_ED25519   = 7,
+   TLS_SIGN_ALGO_ED448     = 8
 } TlsSignatureAlgo;
 
 
@@ -846,26 +887,43 @@ typedef enum
 
 typedef enum
 {
-   TLS_EXT_SERVER_NAME            = 0,
-   TLS_EXT_MAX_FRAGMENT_LENGTH    = 1,
-   TLS_EXT_CLIENT_CERTIFICATE_URL = 2,
-   TLS_EXT_TRUSTED_CA_KEYS        = 3,
-   TLS_EXT_TRUNCATED_HMAC         = 4,
-   TLS_EXT_STATUS_REQUEST         = 5,
-   TLS_EXT_USER_MAPPING           = 6,
-   TLS_EXT_CLIENT_AUTHZ           = 7,
-   TLS_EXT_SERVER_AUTHZ           = 8,
-   TLS_EXT_CERT_TYPE              = 9,
-   TLS_EXT_ELLIPTIC_CURVES        = 10,
-   TLS_EXT_EC_POINT_FORMATS       = 11,
-   TLS_EXT_SRP                    = 12,
-   TLS_EXT_SIGNATURE_ALGORITHMS   = 13,
-   TLS_EXT_USE_SRTP               = 14,
-   TLS_EXT_HEARTBEAT              = 15,
-   TLS_EXT_ALPN                   = 16,
-   TLS_EXT_EXTENDED_MASTER_SECRET = 23,
-   TLS_EXT_SESSION_TICKET         = 35,
-   TLS_EXT_RENEGOTIATION_INFO     = 65281
+   TLS_EXT_SERVER_NAME               = 0,
+   TLS_EXT_MAX_FRAGMENT_LENGTH       = 1,
+   TLS_EXT_CLIENT_CERTIFICATE_URL    = 2,
+   TLS_EXT_TRUSTED_CA_KEYS           = 3,
+   TLS_EXT_TRUNCATED_HMAC            = 4,
+   TLS_EXT_STATUS_REQUEST            = 5,
+   TLS_EXT_USER_MAPPING              = 6,
+   TLS_EXT_CLIENT_AUTHZ              = 7,
+   TLS_EXT_SERVER_AUTHZ              = 8,
+   TLS_EXT_CERT_TYPE                 = 9,
+   TLS_EXT_ELLIPTIC_CURVES           = 10,
+   TLS_EXT_EC_POINT_FORMATS          = 11,
+   TLS_EXT_SRP                       = 12,
+   TLS_EXT_SIGNATURE_ALGORITHMS      = 13,
+   TLS_EXT_USE_SRTP                  = 14,
+   TLS_EXT_HEARTBEAT                 = 15,
+   TLS_EXT_ALPN                      = 16,
+   TLS_EXT_STATUS_REQUEST_V2         = 17,
+   TLS_EXT_SIGNED_CERT_TIMESTAMP     = 18,
+   TLS_EXT_CLIENT_CERT_TYPE          = 19,
+   TLS_EXT_SERVER_CERT_TYPE          = 20,
+   TLS_EXT_PADDING                   = 21,
+   TLS_EXT_ENCRYPT_THEN_MAC          = 22,
+   TLS_EXT_EXTENDED_MASTER_SECRET    = 23,
+   TLS_EXT_CACHED_INFO               = 25,
+   TLS_EXT_SESSION_TICKET            = 35,
+   TLS_EXT_PRE_SHARED_KEY            = 41,   //RFC draft
+   TLS_EXT_EARLY_DATA                = 42,   //RFC draft
+   TLS_EXT_SUPPORTED_VERSIONS        = 43,   //RFC draft
+   TLS_EXT_COOKIE                    = 44,   //RFC draft
+   TLS_EXT_PSK_KEY_EXCHANGE_MODES    = 45,   //RFC draft
+   TLS_EXT_CERTIFICATE_AUTHORITIES   = 47,   //RFC draft
+   TLS_EXT_OID_FILTERS               = 48,   //RFC draft
+   TLS_EXT_POST_HANDSHAKE_AUTH       = 49,   //RFC draft
+   TLS_EXT_SIGNATURE_ALGORITHMS_CERT = 50,   //RFC draft
+   TLS_EXT_KEY_SHARE                 = 51,   //RFC draft
+   TLS_EXT_RENEGOTIATION_INFO        = 65281
 } TlsExtensionType;
 
 
@@ -1177,6 +1235,17 @@ typedef __start_packed struct
 
 
 /**
+ * @brief List of supported certificate types
+ **/
+
+typedef __start_packed struct
+{
+   uint8_t length;  //0
+   uint8_t value[]; //1
+} __end_packed TlsCertTypeList;
+
+
+/**
  * @brief Renegotiated connection
  **/
 
@@ -1296,8 +1365,8 @@ typedef __start_packed struct
 
 typedef __start_packed struct
 {
-   uint8_t certificateListLength[3]; //0-2
-   uint8_t certificateList[];        //3
+   uint8_t certificateListLen[3]; //0-2
+   uint8_t certificateList[];     //3
 } __end_packed TlsCertificate;
 
 
@@ -1314,8 +1383,8 @@ typedef void TlsServerKeyExchange;
 
 typedef __start_packed struct
 {
-   uint8_t certificateTypesLength;  //0
-   uint8_t certificateTypes[];      //1
+   uint8_t certificateTypesLen;  //0
+   uint8_t certificateTypes[];   //1
 } __end_packed TlsCertificateRequest;
 
 
@@ -1403,6 +1472,14 @@ typedef error_t (*TlsSocketReceiveCallback)(TlsSocketHandle handle,
 
 typedef error_t (*TlsPskCallback)(TlsContext *context,
    const char_t *pskIdentity);
+
+
+/**
+ * @brief Raw public key verification callback function
+ **/
+
+typedef error_t (*TlsRpkVerifyCallback)(TlsContext *context,
+   const uint8_t *rawPublicKey, size_t rawPublicKeyLen);
 
 
 /**
@@ -1511,6 +1588,12 @@ typedef struct
    const TlsSignHashAlgos *signAlgoList;          ///<SignatureAlgorithms extension
 #if (TLS_ALPN_SUPPORT == ENABLED)
    const TlsProtocolNameList *protocolNameList;   ///<ALPN extension
+#endif
+#if (TLS_RAW_PUBLIC_KEY_SUPPORT == ENABLED)
+   const TlsCertTypeList *clientCertTypeList;     ///<ClientCertType extension
+   const uint8_t *clientCertType;
+   const TlsCertTypeList *serverCertTypeList;     ///<ServerCertType extension
+   const uint8_t *serverCertType;
 #endif
 #if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
    const uint8_t *extendedMasterSecret;           ///<ExtendedMasterSecret extension
@@ -1719,6 +1802,14 @@ struct _TlsContext
    bool_t extendedMasterSecretExtReceived;  ///<The ExtendedMasterSecret extension has been received
 #endif
 
+#if (TLS_RAW_PUBLIC_KEY_SUPPORT == ENABLED)
+   bool_t clientCertTypeExtReceived;        ///<The ClientCertType extension has been received
+   bool_t serverCertTypeExtReceived;        ///<The ServerCertType extension has been received
+   TlsCertificateFormat certFormat;         ///<Certificate format
+   TlsCertificateFormat peerCertFormat;     ///<Peer's certificate format
+   TlsRpkVerifyCallback rpkVerifyCallback;  ///<Raw public key verification callback function
+#endif
+
 #if (TLS_SECURE_RENEGOTIATION_SUPPORT == ENABLED)
    bool_t secureRenegoEnabled;              ///<Secure renegociation enabled
    bool_t secureRenegoFlag;                 ///<Secure renegociation flag
@@ -1758,6 +1849,7 @@ struct _TlsContext
    size_t rxFragQueueLen;                   ///<Length of the reassembly queue
    size_t rxDatagramLen;                    ///<Length of the incoming datagram, in bytes
    size_t rxDatagramPos;
+   uint16_t rxRecordVersion;                ///<Version of the incoming record
 
 #if (DTLS_REPLAY_DETECTION_SUPPORT == ENABLED)
    bool_t replayDetectionEnabled;           ///<Anti-replay mechanism enabled
@@ -1771,6 +1863,7 @@ struct _TlsContext
 
 //TLS application programming interface (API)
 TlsContext *tlsInit(void);
+TlsState tlsGetState(TlsContext *context);
 
 error_t tlsSetSocketCallbacks(TlsContext *context,
    TlsSocketSendCallback socketSendCallback,
@@ -1819,6 +1912,9 @@ error_t tlsSetPskIdentity(TlsContext *context, const char_t *pskIdentity);
 error_t tlsSetPskIdentityHint(TlsContext *context, const char_t *pskIdentityHint);
 error_t tlsSetPskCallback(TlsContext *context, TlsPskCallback pskCallback);
 
+error_t tlsSetRpkVerifyCallback(TlsContext *context,
+   TlsRpkVerifyCallback rpkVerifyCallback);
+
 error_t tlsSetTrustedCaList(TlsContext *context,
    const char_t *trustedCaList, size_t length);
 
@@ -1844,6 +1940,8 @@ error_t tlsWrite(TlsContext *context, const void *data,
 
 error_t tlsRead(TlsContext *context, void *data,
    size_t size, size_t *received, uint_t flags);
+
+bool_t tlsIsRxReady(TlsContext *context);
 
 error_t tlsShutdown(TlsContext *context);
 error_t tlsShutdownEx(TlsContext *context, bool_t waitForCloseNotify);

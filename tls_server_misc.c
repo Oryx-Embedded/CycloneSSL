@@ -4,7 +4,7 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2017 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.0
+ * @version 1.8.2
  **/
 
 //Switch to the appropriate trace level
@@ -144,7 +144,7 @@ error_t tlsFormatServerMaxFragLenExtension(TlsContext *context,
          //The extension data field contains a single byte
          n = sizeof(uint8_t);
          //Set the length of the extension
-         extension->length = HTONS(n);
+         extension->length = htons(n);
 
          //Compute the length, in bytes, of the MaxFragmentLength extension
          n += sizeof(TlsExtension);
@@ -260,7 +260,7 @@ error_t tlsFormatServerAlpnExtension(TlsContext *context,
          n = strlen(context->selectedProtocol);
 
          //Fill in the length field
-         protocolName->length = n;
+         protocolName->length = (uint8_t) n;
          //Copy protocol name
          memcpy(protocolName->value, context->selectedProtocol, n);
 
@@ -277,6 +277,101 @@ error_t tlsFormatServerAlpnExtension(TlsContext *context,
          //Compute the length, in bytes, of the ALPN extension
          n += sizeof(TlsExtension);
       }
+   }
+#endif
+
+   //Total number of bytes that have been written
+   *written = n;
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
+ * @brief Format ClientCertType extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] p Output stream where to write the ClientCertType extension
+ * @param[out] written Total number of bytes that have been written
+ * @return Error code
+ **/
+
+error_t tlsFormatClientCertTypeExtension(TlsContext *context,
+   uint8_t *p, size_t *written)
+{
+   size_t n = 0;
+
+#if (TLS_RAW_PUBLIC_KEY_SUPPORT == ENABLED)
+   //An extension type must not appear in the ServerHello unless the same
+   //extension type appeared in the corresponding ClientHello
+   if(context->clientCertTypeExtReceived)
+   {
+      TlsExtension *extension;
+
+      //Add the ClientCertType extension
+      extension = (TlsExtension *) p;
+      //Type of the extension
+      extension->type = HTONS(TLS_EXT_CLIENT_CERT_TYPE);
+
+      //The ClientCertType extension in the ServerHello indicates the type
+      //of certificates the client is requested to provide in a subsequent
+      //certificate payload
+      extension->value[0] = context->peerCertFormat;
+
+      //The extension data field contains a single byte
+      n = sizeof(uint8_t);
+      //Set the length of the extension
+      extension->length = htons(n);
+
+      //Compute the length, in bytes, of the ClientCertType extension
+      n += sizeof(TlsExtension);
+   }
+#endif
+
+   //Total number of bytes that have been written
+   *written = n;
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
+ * @brief Format ServerCertType extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] p Output stream where to write the ServerCertType extension
+ * @param[out] written Total number of bytes that have been written
+ * @return Error code
+ **/
+
+error_t tlsFormatServerCertTypeExtension(TlsContext *context,
+   uint8_t *p, size_t *written)
+{
+   size_t n = 0;
+
+#if (TLS_RAW_PUBLIC_KEY_SUPPORT == ENABLED)
+   //An extension type must not appear in the ServerHello unless the same
+   //extension type appeared in the corresponding ClientHello
+   if(context->serverCertTypeExtReceived)
+   {
+      TlsExtension *extension;
+
+      //Add the ServerCertType extension
+      extension = (TlsExtension *) p;
+      //Type of the extension
+      extension->type = HTONS(TLS_EXT_SERVER_CERT_TYPE);
+
+      //With the ServerCertType extension in the ServerHello, the TLS server
+      //indicates the certificate type carried in the certificate payload
+      extension->value[0] = context->certFormat;
+
+      //The extension data field contains a single byte
+      n = sizeof(uint8_t);
+      //Set the length of the extension
+      extension->length = htons(n);
+
+      //Compute the length, in bytes, of the ServerCertType extension
+      n += sizeof(TlsExtension);
    }
 #endif
 
@@ -364,7 +459,7 @@ error_t tlsFormatServerRenegoInfoExtension(TlsContext *context,
          //Point to the renegotiated_connection field
          renegoInfo = (TlsRenegoInfo *) extension->value;
          //Set the length of the verify data
-         renegoInfo->length = n;
+         renegoInfo->length = (uint8_t) n;
 
          //Copy the saved client_verify_data
          memcpy(renegoInfo->value, context->clientVerifyData,
@@ -545,9 +640,27 @@ error_t tlsFormatServerKeyParams(TlsContext *context,
          //Check status code
          if(!error)
          {
-            //Generate an ephemeral key pair
-            error = ecdhGenerateKeyPair(&context->ecdhContext,
-               context->prngAlgo, context->prngContext);
+#if (TLS_ECC_CALLBACK_SUPPORT == ENABLED)
+            //Any registered callback?
+            if(context->ecdhCallback != NULL)
+            {
+               //Invoke user callback function
+               error = context->ecdhCallback(context);
+            }
+            else
+#endif
+            {
+               //No callback function defined
+               error = ERROR_UNSUPPORTED_ELLIPTIC_CURVE;
+            }
+
+            //Check status code
+            if(error == ERROR_UNSUPPORTED_ELLIPTIC_CURVE)
+            {
+               //Generate an ephemeral key pair
+               error = ecdhGenerateKeyPair(&context->ecdhContext,
+                  context->prngAlgo, context->prngContext);
+            }
          }
 
          //Check status code
@@ -1067,11 +1180,7 @@ error_t tlsParseClientMaxFragLenExtension(TlsContext *context,
 error_t tlsParseClientEcPointFormatsExtension(TlsContext *context,
    const TlsEcPointFormatList *ecPointFormatList)
 {
-   error_t error;
    uint_t i;
-
-   //Initialize status code
-   error = ERROR_ILLEGAL_PARAMETER;
 
    //Loop through the list of supported EC point formats
    for(i = 0; i < ecPointFormatList->length; i++)
@@ -1082,13 +1191,12 @@ error_t tlsParseClientEcPointFormatsExtension(TlsContext *context,
       if(ecPointFormatList->value[i] == TLS_EC_POINT_FORMAT_UNCOMPRESSED)
       {
          //Exit immediately
-         error = NO_ERROR;
-         break;
+         return NO_ERROR;
       }
    }
 
-   //Return status code
-   return error;
+   //The point format is not supported
+   return ERROR_ILLEGAL_PARAMETER;
 }
 
 
@@ -1179,6 +1287,97 @@ error_t tlsParseClientAlpnExtension(TlsContext *context,
 
    //Successful processing
    return NO_ERROR;
+}
+
+
+/**
+ * @brief Parse ClientCertType extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] clientCertTypeList Pointer to the ClientCertType extension
+ * @return Error code
+ **/
+
+error_t tlsParseClientCertTypeListExtension(TlsContext *context,
+   const TlsCertTypeList *clientCertTypeList)
+{
+#if (TLS_RAW_PUBLIC_KEY_SUPPORT == ENABLED)
+   uint_t i;
+
+   //If the server does not send any CertificateRequest message, then the
+   //ClientCertType extension in the ServerHello must be omitted
+   if(context->clientAuthMode == TLS_CLIENT_AUTH_NONE)
+      return NO_ERROR;
+
+   //The ClientCertType extension carries a list of supported certificate
+   //types, sorted by client preference
+   for(i = 0; i < clientCertTypeList->length; i++)
+   {
+      //Check certificate type
+      if(clientCertTypeList->value[i] == TLS_CERT_FORMAT_X509)
+      {
+         //Select X.509 certificate format
+         context->peerCertFormat = TLS_CERT_FORMAT_X509;
+         //Exit immediately
+         return NO_ERROR;
+      }
+      else if(clientCertTypeList->value[i] == TLS_CERT_FORMAT_RAW_PUBLIC_KEY)
+      {
+         //Ensure the server is able to process raw public keys
+         if(context->rpkVerifyCallback != NULL)
+         {
+            //Select raw public key format
+            context->peerCertFormat = TLS_CERT_FORMAT_RAW_PUBLIC_KEY;
+            //Exit immediately
+            return NO_ERROR;
+         }
+      }
+      else
+      {
+         //Unsupported certificate type
+      }
+   }
+#endif
+
+   //If the server does not have any certificate type in common with the
+   //client, then the server terminates the session with a fatal alert
+   return ERROR_UNSUPPORTED_CERTIFICATE;
+}
+
+
+/**
+ * @brief Parse ServerCertType extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] serverCertTypeList Pointer to the ServerCertType extension
+ * @return Error code
+ **/
+
+error_t tlsParseServerCertTypeListExtension(TlsContext *context,
+   const TlsCertTypeList *serverCertTypeList)
+{
+#if (TLS_RAW_PUBLIC_KEY_SUPPORT == ENABLED)
+   uint_t i;
+
+   //The ServerCertType extension carries a list of supported certificate
+   //types, sorted by client preference
+   for(i = 0; i < serverCertTypeList->length; i++)
+   {
+      //Check certificate type
+      if(serverCertTypeList->value[i] == TLS_CERT_FORMAT_X509 ||
+         serverCertTypeList->value[i] == TLS_CERT_FORMAT_RAW_PUBLIC_KEY)
+      {
+         //The certificate type is selected from one of the values provided
+         //by the client
+         context->certFormat = (TlsCertificateFormat) serverCertTypeList->value[i];
+
+         //Exit immediately
+         return NO_ERROR;
+      }
+   }
+#endif
+
+   //If the server does not have any certificate type in common with the
+   //client, then the server terminates the session with a fatal alert
+   return ERROR_UNSUPPORTED_CERTIFICATE;
 }
 
 
@@ -1437,11 +1636,29 @@ error_t tlsParseClientKeyParams(TlsContext *context,
       //Check status code
       if(!error)
       {
-         //Calculate the shared secret Z. Leading zeros found in this octet
-         //string must not be truncated (see RFC 4492, section 5.10)
-         error = ecdhComputeSharedSecret(&context->ecdhContext,
-            context->premasterSecret, TLS_PREMASTER_SECRET_SIZE,
-            &context->premasterSecretLen);
+#if (TLS_ECC_CALLBACK_SUPPORT == ENABLED)
+         //Any registered callback?
+         if(context->ecdhCallback != NULL)
+         {
+            //Invoke user callback function
+            error = context->ecdhCallback(context);
+         }
+         else
+#endif
+         {
+            //No callback function defined
+            error = ERROR_UNSUPPORTED_ELLIPTIC_CURVE;
+         }
+
+         //Check status code
+         if(error == ERROR_UNSUPPORTED_ELLIPTIC_CURVE)
+         {
+            //Calculate the shared secret Z. Leading zeros found in this octet
+            //string must not be truncated (see RFC 4492, section 5.10)
+            error = ecdhComputeSharedSecret(&context->ecdhContext,
+               context->premasterSecret, TLS_PREMASTER_SECRET_SIZE,
+               &context->premasterSecretLen);
+         }
       }
    }
    else

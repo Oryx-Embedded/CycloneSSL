@@ -4,7 +4,7 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2017 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -29,7 +29,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.0
+ * @version 1.8.2
  **/
 
 //Switch to the appropriate trace level
@@ -478,6 +478,37 @@ error_t tlsFormatServerHello(TlsContext *context,
    *length += n;
 #endif
 
+#if (TLS_RAW_PUBLIC_KEY_SUPPORT == ENABLED)
+   //The ClientCertType extension in the ServerHello indicates the type
+   //of certificates the client is requested to provide in a subsequent
+   //certificate payload
+   error = tlsFormatClientCertTypeExtension(context, p, &n);
+   //Any error to report?
+   if(error)
+      return error;
+
+   //Fix the length of the extension list
+   extensionList->length += (uint16_t) n;
+   //Point to the next field
+   p += n;
+   //Adjust the length of the message
+   *length += n;
+
+   //With the ServerCertType extension in the ServerHello, the TLS server
+   //indicates the certificate type carried in the certificate payload
+   error = tlsFormatServerCertTypeExtension(context, p, &n);
+   //Any error to report?
+   if(error)
+      return error;
+
+   //Fix the length of the extension list
+   extensionList->length += (uint16_t) n;
+   //Point to the next field
+   p += n;
+   //Adjust the length of the message
+   *length += n;
+#endif
+
 #if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
    //If a server implementing RFC 7627 receives the ExtendedMasterSecret
    //extension, it must include the extension in its ServerHello message
@@ -546,6 +577,8 @@ error_t tlsFormatServerKeyExchange(TlsContext *context,
    //Length of the handshake message
    *length = 0;
 
+#if (TLS_PSK_SUPPORT == ENABLED || TLS_RSA_PSK_SUPPORT == ENABLED || \
+   TLS_DHE_PSK_SUPPORT == ENABLED || TLS_ECDHE_PSK_SUPPORT == ENABLED)
    //PSK key exchange method?
    if(context->keyExchMethod == TLS_KEY_EXCH_PSK ||
       context->keyExchMethod == TLS_KEY_EXCH_RSA_PSK ||
@@ -564,6 +597,7 @@ error_t tlsFormatServerKeyExchange(TlsContext *context,
       //Adjust the length of the message
       *length += n;
    }
+#endif
 
    //Diffie-Hellman or ECDH key exchange method?
    if(context->keyExchMethod == TLS_KEY_EXCH_DH_ANON ||
@@ -656,7 +690,7 @@ error_t tlsFormatCertificateRequest(TlsContext *context,
 #endif
 
    //Fix the length of the list
-   message->certificateTypesLength = (uint8_t) n;
+   message->certificateTypesLen = (uint8_t) n;
    //Length of the handshake message
    *length = sizeof(TlsCertificateRequest) + n;
 
@@ -1527,6 +1561,50 @@ error_t tlsParseClientHello(TlsContext *context,
    }
 #endif
 
+#if (TLS_RAW_PUBLIC_KEY_SUPPORT == ENABLED)
+   //ClientCertType extension found?
+   if(extensions.clientCertTypeList != NULL)
+   {
+      //Parse ClientCertType extension
+      error = tlsParseClientCertTypeListExtension(context,
+         extensions.clientCertTypeList);
+      //Any error to report?
+      if(error)
+         return error;
+
+      //A valid ClientCertType extension has been received
+      context->clientCertTypeExtReceived = TRUE;
+   }
+   else
+   {
+      //The ClientHello does not contain any ClientCertType extension
+      context->clientCertTypeExtReceived = FALSE;
+      //Select default certificate format
+      context->peerCertFormat = TLS_CERT_FORMAT_X509;
+   }
+
+   //ServerCertType extension found?
+   if(extensions.serverCertTypeList != NULL)
+   {
+      //Parse ServerCertType extension
+      error = tlsParseServerCertTypeListExtension(context,
+         extensions.serverCertTypeList);
+      //Any error to report?
+      if(error)
+         return error;
+
+      //A valid ServerCertType extension has been received
+      context->serverCertTypeExtReceived = TRUE;
+   }
+   else
+   {
+      //The ClientHello does not contain any ServerCertType extension
+      context->serverCertTypeExtReceived = FALSE;
+      //Select default certificate format
+      context->certFormat = TLS_CERT_FORMAT_X509;
+   }
+#endif
+
 #if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
    //ExtendedMasterSecret extension found?
    if(extensions.extendedMasterSecret != NULL)
@@ -1627,6 +1705,8 @@ error_t tlsParseClientKeyExchange(TlsContext *context,
    //Point to the beginning of the handshake message
    p = message;
 
+#if (TLS_PSK_SUPPORT == ENABLED || TLS_RSA_PSK_SUPPORT == ENABLED || \
+   TLS_DHE_PSK_SUPPORT == ENABLED || TLS_ECDHE_PSK_SUPPORT == ENABLED)
    //PSK key exchange method?
    if(context->keyExchMethod == TLS_KEY_EXCH_PSK ||
       context->keyExchMethod == TLS_KEY_EXCH_RSA_PSK ||
@@ -1644,6 +1724,7 @@ error_t tlsParseClientKeyExchange(TlsContext *context,
       //Remaining bytes to process
       length -= n;
    }
+#endif
 
    //RSA, Diffie-Hellman or ECDH key exchange method?
    if(context->keyExchMethod != TLS_KEY_EXCH_PSK)
@@ -1665,18 +1746,25 @@ error_t tlsParseClientKeyExchange(TlsContext *context,
    if(length != 0)
       return ERROR_DECODING_FAILED;
 
+#if (TLS_PSK_SUPPORT == ENABLED || TLS_RSA_PSK_SUPPORT == ENABLED || \
+   TLS_DHE_PSK_SUPPORT == ENABLED || TLS_ECDHE_PSK_SUPPORT == ENABLED)
    //PSK key exchange method?
    if(context->keyExchMethod == TLS_KEY_EXCH_PSK ||
       context->keyExchMethod == TLS_KEY_EXCH_RSA_PSK ||
       context->keyExchMethod == TLS_KEY_EXCH_DHE_PSK ||
       context->keyExchMethod == TLS_KEY_EXCH_ECDHE_PSK)
    {
+      //Invalid pre-shared key?
+      if(context->pskLen == 0)
+         return ERROR_INVALID_KEY_LENGTH;
+
       //Generate premaster secret
       error = tlsGeneratePskPremasterSecret(context);
       //Any error to report?
       if(error)
          return error;
    }
+#endif
 
    //Derive session keys from the premaster secret
    error = tlsGenerateSessionKeys(context);
