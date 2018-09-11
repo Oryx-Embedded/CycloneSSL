@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.2
+ * @version 1.8.6
  **/
 
 //Switch to the appropriate trace level
@@ -319,6 +319,10 @@ error_t dtlsReadRecord(TlsContext *context)
    error_t error;
    DtlsRecord *record;
    size_t recordLen;
+   TlsEncryptionEngine *decryptionEngine;
+
+   //Point to the decryption engine
+   decryptionEngine = &context->decryptionEngine;
 
    //Make sure the datagram is large enough to hold a DTLS record
    if(context->rxDatagramLen < sizeof(DtlsRecord))
@@ -369,11 +373,12 @@ error_t dtlsReadRecord(TlsContext *context)
    if(error)
       return error;
 
-   //Record payload protected?
-   if(context->changeCipherSpecReceived)
+   //Check whether the record payload is protected
+   if(decryptionEngine->cipherMode != CIPHER_MODE_NULL ||
+      decryptionEngine->hashAlgo != NULL)
    {
       //Decrypt DTLS record
-      error = tlsDecryptRecord(context, &context->decryptionEngine, record);
+      error = tlsDecryptRecord(context, decryptionEngine, record);
       //If the MAC validation fails, the receiver must discard the record
       if(error)
          return error;
@@ -836,7 +841,7 @@ error_t dtlsSendFlight(TlsContext *context)
 
 
 /**
- * @brief Hanshake message fragmentation
+ * @brief Handshake message fragmentation
  * @param[in] context Pointer to the TLS context
  * @param[in] version DTLS version to be used
  * @param[in] encryptionEngine Pointer to the encryption engine
@@ -982,7 +987,7 @@ error_t dtlsFragmentHandshakeMessage(TlsContext *context, uint16_t version,
 
 
 /**
- * @brief Hanshake message reassembly algorithm
+ * @brief Handshake message reassembly algorithm
  * @param[in] context Pointer to the TLS context
  * @param[in] message Pointer the newly arrived fragment
  * @return Error code
@@ -1005,7 +1010,7 @@ error_t dtlsReassembleHandshakeMessage(TlsContext *context,
    //Retrieve fragment length
    fragLength = LOAD24BE(message->fragLength) + sizeof(DtlsHandshake);
 
-   //Point the beginning of the reassembly queue
+   //Point to the beginning of the reassembly queue
    pos = 0;
 
    //Loop through the reassembly queue

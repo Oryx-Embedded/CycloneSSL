@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.2
+ * @version 1.8.6
  **/
 
 //Switch to the appropriate trace level
@@ -430,7 +430,7 @@ error_t tlsComputeVerifyData(TlsContext *context, TlsConnectionEnd entity,
             label = "server finished";
 
          //Generate the verify data
-         error = tlsPrf2(hashAlgo, context->masterSecret, TLS_MASTER_SECRET_SIZE,
+         error = tls12Prf(hashAlgo, context->masterSecret, TLS_MASTER_SECRET_SIZE,
             label, hashContext->digest, hashAlgo->digestSize,
             verifyData, context->cipherSuite.verifyDataLen);
 

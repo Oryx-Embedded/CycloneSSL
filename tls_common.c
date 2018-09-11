@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.2
+ * @version 1.8.6
  **/
 
 //Switch to the appropriate trace level
@@ -39,14 +39,11 @@
 #include "tls_server.h"
 #include "tls_common.h"
 #include "tls_record.h"
+#include "tls_signature.h"
 #include "tls_certificate.h"
 #include "tls_cache.h"
 #include "tls_misc.h"
 #include "dtls_record.h"
-#include "encoding/oid.h"
-#include "certificate/pem_import.h"
-#include "certificate/x509_cert_parse.h"
-#include "certificate/x509_cert_validate.h"
 #include "debug.h"
 
 //Check SSL library configuration
@@ -156,6 +153,67 @@ error_t tlsSendCertificate(TlsContext *context)
 
 
 /**
+ * @brief Send CertificateVerify message
+ *
+ * The CertificateVerify message is used to provide explicit verification
+ * of a client certificate. This message is only sent following a client
+ * certificate that has signing capability
+ *
+ * @param[in] context Pointer to the TLS context
+ * @return Error code
+ **/
+
+error_t tlsSendCertificateVerify(TlsContext *context)
+{
+   error_t error;
+   size_t length;
+   TlsCertificateVerify *message;
+
+   //Initialize status code
+   error = NO_ERROR;
+
+   //The CertificateVerify message is only sent following a client
+   //certificate that has signing capability
+   if(context->cert != NULL)
+   {
+      //Check certificate type
+      if(context->cert->type == TLS_CERT_RSA_SIGN ||
+         context->cert->type == TLS_CERT_DSS_SIGN ||
+         context->cert->type == TLS_CERT_ECDSA_SIGN)
+      {
+         //Point to the buffer where to format the message
+         message = (TlsCertificateVerify *) (context->txBuffer + context->txBufferLen);
+
+         //Format CertificateVerify message
+         error = tlsFormatCertificateVerify(context, message, &length);
+
+         //Check status code
+         if(!error)
+         {
+            //Debug message
+            TRACE_INFO("Sending CertificateVerify message (%" PRIuSIZE " bytes)...\r\n", length);
+            TRACE_DEBUG_ARRAY("  ", message, length);
+
+            //Send handshake message
+            error = tlsSendHandshakeMessage(context, message, length,
+               TLS_TYPE_CERTIFICATE_VERIFY);
+         }
+      }
+   }
+
+   //Check status code
+   if(error == NO_ERROR || error == ERROR_WOULD_BLOCK || error == ERROR_TIMEOUT)
+   {
+      //Prepare to send ChangeCipherSpec message...
+      context->state = TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC;
+   }
+
+   //Return status code
+   return error;
+}
+
+
+/**
  * @brief Send ChangeCipherSpec message
  *
  * The change cipher spec message is sent by both the client and the
@@ -219,18 +277,15 @@ error_t tlsSendChangeCipherSpec(TlsContext *context)
       tlsFreeEncryptionEngine(&context->encryptionEngine);
 #endif
 
-      //Initialize encryption engine
+      //Inform the record layer that subsequent records will be protected
+      //under the newly negotiated encryption algorithm
       error = tlsInitEncryptionEngine(context, &context->encryptionEngine,
-         context->entity);
+         context->entity, NULL);
    }
 
    //Check status code
    if(!error)
    {
-      //Inform the record layer that subsequent records will be protected
-      //under the newly negotiated encryption algorithm
-      context->changeCipherSpecSent = TRUE;
-
       //Prepare to send a Finished message to the peer...
       if(context->entity == TLS_CONNECTION_END_CLIENT)
          context->state = TLS_STATE_CLIENT_FINISHED;
@@ -452,6 +507,54 @@ error_t tlsFormatCertificate(TlsContext *context,
 
 
 /**
+ * @brief Format CertificateVerify message
+ * @param[in] context Pointer to the TLS context
+ * @param[out] message Buffer where to format the CertificateVerify message
+ * @param[out] length Length of the resulting CertificateVerify message
+ * @return Error code
+ **/
+
+error_t tlsFormatCertificateVerify(TlsContext *context,
+   TlsCertificateVerify *message, size_t *length)
+{
+   error_t error;
+
+   //Length of the handshake message
+   *length = 0;
+
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
+   //SSL 3.0, TLS 1.0 or TLS 1.1 currently selected?
+   if(context->version <= TLS_VERSION_1_1)
+   {
+      //In TLS version prior to 1.2, the digitally-signed element combines
+      //MD5 and SHA-1
+      error = tlsGenerateSignature(context, message, length);
+   }
+   else
+#endif
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //TLS 1.2 currently selected?
+   if(context->version == TLS_VERSION_1_2)
+   {
+      //In TLS 1.2, the MD5/SHA-1 combination in the digitally-signed element
+      //has been replaced with a single hash. The signed element now includes
+      //a field that explicitly specifies the hash algorithm used
+      error = tls12GenerateSignature(context, message, length);
+   }
+   else
+#endif
+   //Invalid TLS version?
+   {
+      //Report an error
+      error = ERROR_INVALID_VERSION;
+   }
+
+   //Return status code
+   return error;
+}
+
+
+/**
  * @brief Format ChangeCipherSpec message
  * @param[in] context Pointer to the TLS context
  * @param[out] message Buffer where to format the ChangeCipherSpec message
@@ -532,6 +635,176 @@ error_t tlsFormatAlert(TlsContext *context, uint8_t level,
 
 
 /**
+ * @brief Format SignatureAlgorithms extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] cipherSuiteTypes Types of cipher suites proposed by the client
+ * @param[in] p Output stream where to write the SignatureAlgorithms extension
+ * @param[out] written Total number of bytes that have been written
+ * @return Error code
+ **/
+
+error_t tlsFormatSignatureAlgorithmsExtension(TlsContext *context,
+   uint_t cipherSuiteTypes, uint8_t *p, size_t *written)
+{
+   size_t n = 0;
+
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //Check whether TLS 1.2 is supported
+   if(context->versionMax >= TLS_VERSION_1_2)
+   {
+      TlsExtension *extension;
+      TlsSignHashAlgos *supportedSignAlgos;
+
+      //Add the SignatureAlgorithms extension
+      extension = (TlsExtension *) p;
+      //Type of the extension
+      extension->type = HTONS(TLS_EXT_SIGNATURE_ALGORITHMS);
+
+      //Point to the list of the hash/signature algorithm pairs that
+      //the server is able to verify
+      supportedSignAlgos = (TlsSignHashAlgos *) extension->value;
+
+      //Enumerate the hash/signature algorithm pairs in descending
+      //order of preference
+      n = 0;
+
+#if (TLS_ED25519_SUPPORT == ENABLED)
+      //Ed25519 signature algorithm (PureEdDSA mode)
+      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ED25519;
+      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
+#endif
+
+#if (TLS_ED448_SUPPORT == ENABLED)
+      //Ed448 signature algorithm (PureEdDSA mode)
+      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ED448;
+      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
+#endif
+
+#if (TLS_RSA_PSS_SIGN_SUPPORT == ENABLED)
+#if (TLS_SHA256_SUPPORT == ENABLED)
+      //RSASSA-PSS RSAE signature algorithm with SHA-256
+      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA256;
+      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
+#endif
+#if (TLS_SHA384_SUPPORT == ENABLED)
+      //RSASSA-PSS RSAE signature algorithm with SHA-384
+      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA384;
+      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
+#endif
+#if (TLS_SHA512_SUPPORT == ENABLED)
+      //RSASSA-PSS RSAE signature algorithm with SHA-512
+      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA512;
+      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
+#endif
+#endif
+
+#if (TLS_RSA_SIGN_SUPPORT == ENABLED)
+#if (TLS_MD5_SUPPORT == ENABLED)
+      //RSASSA-PKCS1-v1_5 signature algorithm with MD5
+      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
+      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_MD5;
+#endif
+#if (TLS_SHA1_SUPPORT == ENABLED)
+      //RSASSA-PKCS1-v1_5 signature algorithm with SHA-1
+      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
+      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA1;
+#endif
+#if (TLS_SHA224_SUPPORT == ENABLED)
+      //RSASSA-PKCS1-v1_5 signature algorithm with SHA-224
+      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
+      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA224;
+#endif
+#if (TLS_SHA256_SUPPORT == ENABLED)
+      //RSASSA-PKCS1-v1_5 signature algorithm with SHA-256
+      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
+      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA256;
+#endif
+#if (TLS_SHA384_SUPPORT == ENABLED)
+      //RSASSA-PKCS1-v1_5 signature algorithm with SHA-384
+      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
+      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA384;
+#endif
+#if (TLS_SHA512_SUPPORT == ENABLED)
+      //RSASSA-PKCS1-v1_5 signature algorithm with SHA-512
+      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
+      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA512;
+#endif
+#endif
+
+#if (TLS_DSA_SIGN_SUPPORT == ENABLED)
+#if (TLS_SHA1_SUPPORT == ENABLED)
+      //DSA signature algorithm with SHA-1
+      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_DSA;
+      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA1;
+#endif
+#if (TLS_SHA224_SUPPORT == ENABLED)
+      //DSA signature algorithm with SHA-224
+      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_DSA;
+      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA224;
+#endif
+#if (TLS_SHA256_SUPPORT == ENABLED)
+      //DSA signature algorithm with SHA-256
+      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_DSA;
+      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA256;
+#endif
+#endif
+
+#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED)
+      //Any ECC cipher suite proposed by the client?
+      if((cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_ECC) != 0)
+      {
+#if (TLS_SHA1_SUPPORT == ENABLED)
+         //ECDSA signature algorithm with SHA-1
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA1;
+#endif
+#if (TLS_SHA224_SUPPORT == ENABLED)
+         //ECDSA signature algorithm with SHA-224
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA224;
+#endif
+#if (TLS_SHA256_SUPPORT == ENABLED)
+         //ECDSA signature algorithm with SHA-256
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA256;
+#endif
+#if (TLS_SHA384_SUPPORT == ENABLED)
+         //ECDSA signature algorithm with SHA-384
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA384;
+#endif
+#if (TLS_SHA512_SUPPORT == ENABLED)
+         //ECDSA signature algorithm with SHA-512
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA512;
+#endif
+      }
+#endif
+
+      //Compute the length, in bytes, of the list
+      n *= sizeof(TlsSignHashAlgo);
+      //Fix the length of the list
+      supportedSignAlgos->length = htons(n);
+
+      //Consider the 2-byte length field that precedes the list
+      n += sizeof(TlsSignHashAlgos);
+      //Fix the length of the extension
+      extension->length = htons(n);
+
+      //Compute the length, in bytes, of the SignatureAlgorithms extension
+      n += sizeof(TlsExtension);
+   }
+#endif
+
+   //Total number of bytes that have been written
+   *written = n;
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
  * @brief Parse Certificate message
  * @param[in] context Pointer to the TLS context
  * @param[in] message Incoming Certificate message to parse
@@ -549,10 +822,6 @@ error_t tlsParseCertificate(TlsContext *context,
    TRACE_INFO("Certificate message received (%" PRIuSIZE " bytes)...\r\n", length);
    TRACE_DEBUG_ARRAY("  ", message, length);
 
-   //Check the length of the Certificate message
-   if(length < sizeof(TlsCertificate))
-      return ERROR_DECODING_FAILED;
-
    //TLS operates as a client or a server?
    if(context->entity == TLS_CONNECTION_END_CLIENT)
    {
@@ -566,6 +835,10 @@ error_t tlsParseCertificate(TlsContext *context,
       if(context->state != TLS_STATE_CLIENT_CERTIFICATE)
          return ERROR_UNEXPECTED_MESSAGE;
    }
+
+   //Check the length of the Certificate message
+   if(length < sizeof(TlsCertificate))
+      return ERROR_DECODING_FAILED;
 
    //Get the size occupied by the certificate list
    n = LOAD24BE(message->certificateListLen);
@@ -636,6 +909,66 @@ error_t tlsParseCertificate(TlsContext *context,
 
 
 /**
+ * @brief Parse CertificateVerify message
+ *
+ * The CertificateVerify message is used to provide explicit verification
+ * of a client certificate. This message is only sent following a client
+ * certificate that has signing capability
+ *
+ * @param[in] context Pointer to the TLS context
+ * @param[in] message Incoming CertificateVerify message to parse
+ * @param[in] length Message length
+ * @return Error code
+ **/
+
+error_t tlsParseCertificateVerify(TlsContext *context,
+   const TlsCertificateVerify *message, size_t length)
+{
+   error_t error;
+
+   //Debug message
+   TRACE_INFO("CertificateVerify message received (%" PRIuSIZE " bytes)...\r\n", length);
+   TRACE_DEBUG_ARRAY("  ", message, length);
+
+   //Check current state
+   if(context->state != TLS_STATE_CLIENT_CERTIFICATE_VERIFY)
+      return ERROR_UNEXPECTED_MESSAGE;
+
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
+   //SSL 3.0, TLS 1.0 or TLS 1.1 currently selected?
+   if(context->version <= TLS_VERSION_1_1)
+   {
+      //In TLS version prior to 1.2, the digitally-signed element combines
+      //MD5 and SHA-1
+      error = tlsVerifySignature(context, message, length);
+   }
+   else
+#endif
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //TLS 1.2 currently selected?
+   if(context->version == TLS_VERSION_1_2)
+   {
+      //In TLS 1.2, the MD5/SHA-1 combination in the digitally-signed element
+      //has been replaced with a single hash. The signed element now includes
+      //a field that explicitly specifies the hash algorithm used
+      error = tls12VerifySignature(context, message, length);
+   }
+   else
+#endif
+   //Invalid TLS version?
+   {
+      //Report an error
+      error = ERROR_INVALID_VERSION;
+   }
+
+   //Prepare to receive a ChangeCipherSpec message...
+   context->state = TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC;
+   //Return status code
+   return error;
+}
+
+
+/**
  * @brief Parse ChangeCipherSpec message
  * @param[in] context Pointer to the TLS context
  * @param[in] message Incoming ChangeCipherSpec message to parse
@@ -674,10 +1007,6 @@ error_t tlsParseChangeCipherSpec(TlsContext *context,
          return ERROR_UNEXPECTED_MESSAGE;
    }
 
-   //Inform the record layer that subsequent records will be protected
-   //under the newly negotiated encryption algorithm
-   context->changeCipherSpecReceived = TRUE;
-
    //Release decryption engine first
    tlsFreeEncryptionEngine(&context->decryptionEngine);
 
@@ -686,7 +1015,7 @@ error_t tlsParseChangeCipherSpec(TlsContext *context,
    {
       //Initialize decryption engine using server write keys
       error = tlsInitEncryptionEngine(context, &context->decryptionEngine,
-         TLS_CONNECTION_END_SERVER);
+         TLS_CONNECTION_END_SERVER, NULL);
       //Any error to report?
       if(error)
          return error;
@@ -698,7 +1027,7 @@ error_t tlsParseChangeCipherSpec(TlsContext *context,
    {
       //Initialize decryption engine using client write keys
       error = tlsInitEncryptionEngine(context, &context->decryptionEngine,
-         TLS_CONNECTION_END_CLIENT);
+         TLS_CONNECTION_END_CLIENT, NULL);
       //Any error to report?
       if(error)
          return error;

@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.2
+ * @version 1.8.6
  **/
 
 //Switch to the appropriate trace level
@@ -525,7 +525,7 @@ error_t tlsParseRawPublicKey(TlsContext *context, const uint8_t *p,
 
 bool_t tlsIsCertificateAcceptable(const TlsCertDesc *cert,
    const uint8_t *certTypes, size_t numCertTypes, const TlsSignHashAlgos *signHashAlgos,
-   const TlsEllipticCurveList *curveList, const TlsCertAuthorities *certAuthorities)
+   const TlsSupportedGroupList *curveList, const TlsCertAuthorities *certAuthorities)
 {
    size_t i;
    size_t n;
@@ -533,50 +533,151 @@ bool_t tlsIsCertificateAcceptable(const TlsCertDesc *cert,
    bool_t acceptable;
 
    //Make sure that a valid certificate has been loaded
-   if(!cert->certChain || !cert->certChainLen)
+   if(cert->certChain == NULL || cert->certChainLen == 0)
       return FALSE;
 
-   //This flag tells whether the certificate is acceptable
-   acceptable = TRUE;
-
-   //Filter out certificates with unsupported type
-   if(numCertTypes > 0)
+#if (TLS_RSA_SIGN_SUPPORT == ENABLED || TLS_RSA_PSS_SIGN_SUPPORT == ENABLED)
+   //RSA certificate?
+   if(cert->type == TLS_CERT_RSA_SIGN)
    {
-      //Loop through the list of supported certificate types
-      for(acceptable = FALSE, i = 0; i < numCertTypes; i++)
+      //This flag tells whether the certificate is acceptable
+      acceptable = TRUE;
+
+      //Filter out certificates with unsupported type
+      if(numCertTypes > 0)
       {
-         //Check whether the certificate type is acceptable
-         if(certTypes[i] == cert->type)
+         //Loop through the list of supported certificate types
+         for(acceptable = FALSE, i = 0; i < numCertTypes; i++)
          {
-            acceptable = TRUE;
-            break;
+            //Check whether the certificate type is acceptable
+            if(certTypes[i] == TLS_CERT_RSA_SIGN)
+            {
+               acceptable = TRUE;
+               break;
+            }
+         }
+      }
+
+      //Filter out certificates that are signed with an unsupported
+      //hash/signature algorithm
+      if(acceptable && signHashAlgos != NULL)
+      {
+         //Retrieve the number of items in the list
+         n = ntohs(signHashAlgos->length) / sizeof(TlsSignHashAlgo);
+
+         //Loop through the list of supported hash/signature algorithm pairs
+         for(acceptable = FALSE, i = 0; i < n; i++)
+         {
+#if (TLS_RSA_SIGN_SUPPORT == ENABLED)
+            //RSASSA-PKCS1-v1_5 signature scheme?
+            if(signHashAlgos->value[i].signature == TLS_SIGN_ALGO_RSA &&
+               signHashAlgos->value[i].hash == cert->hashAlgo)
+            {
+               acceptable = TRUE;
+               break;
+            }
+            else
+#endif
+#if (TLS_RSA_PSS_SIGN_SUPPORT == ENABLED)
+            //RSASSA-PSS RSAE signature scheme with SHA-256?
+            if(signHashAlgos->value[i].signature == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA256 &&
+               signHashAlgos->value[i].hash == TLS_HASH_ALGO_INTRINSIC)
+            {
+               acceptable = TRUE;
+               break;
+            }
+            //RSASSA-PSS RSAE signature scheme with SHA-384?
+            else if(signHashAlgos->value[i].signature == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA384 &&
+               signHashAlgos->value[i].hash == TLS_HASH_ALGO_INTRINSIC)
+            {
+               acceptable = TRUE;
+               break;
+            }
+            //RSASSA-PSS RSAE signature scheme with SHA-512?
+            else if(signHashAlgos->value[i].signature == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA512 &&
+               signHashAlgos->value[i].hash == TLS_HASH_ALGO_INTRINSIC)
+            {
+               acceptable = TRUE;
+               break;
+            }
+            else
+#endif
+            //Unknown RSA signature scheme?
+            {
+               //Just for sanity
+               acceptable = FALSE;
+            }
          }
       }
    }
-
-   //Filter out certificates that are signed with an unsupported
-   //hash/signature algorithm
-   if(acceptable && signHashAlgos != NULL)
+   else
+#endif
+#if (TLS_DSA_SIGN_SUPPORT == ENABLED)
+   //DSA certificate?
+   if(cert->type == TLS_CERT_DSS_SIGN)
    {
-      //Retrieve the number of items in the list
-      n = ntohs(signHashAlgos->length) / sizeof(TlsSignHashAlgo);
+      //This flag tells whether the certificate is acceptable
+      acceptable = TRUE;
 
-      //Loop through the list of supported hash/signature algorithm pairs
-      for(acceptable = FALSE, i = 0; i < n; i++)
+      //Filter out certificates with unsupported type
+      if(numCertTypes > 0)
       {
-         //The certificate must be signed using a valid hash/signature algorithm pair
-         if(signHashAlgos->value[i].signature == cert->signAlgo &&
-            signHashAlgos->value[i].hash == cert->hashAlgo)
+         //Loop through the list of supported certificate types
+         for(acceptable = FALSE, i = 0; i < numCertTypes; i++)
          {
-            acceptable = TRUE;
-            break;
+            //Check whether the certificate type is acceptable
+            if(certTypes[i] == TLS_CERT_DSS_SIGN)
+            {
+               acceptable = TRUE;
+               break;
+            }
+         }
+      }
+
+      //Filter out certificates that are signed with an unsupported
+      //hash/signature algorithm
+      if(acceptable && signHashAlgos != NULL)
+      {
+         //Retrieve the number of items in the list
+         n = ntohs(signHashAlgos->length) / sizeof(TlsSignHashAlgo);
+
+         //Loop through the list of supported hash/signature algorithm pairs
+         for(acceptable = FALSE, i = 0; i < n; i++)
+         {
+            //The certificate must be signed using a valid hash algorithm
+            if(signHashAlgos->value[i].signature == TLS_SIGN_ALGO_DSA &&
+               signHashAlgos->value[i].hash == cert->hashAlgo)
+            {
+               acceptable = TRUE;
+               break;
+            }
          }
       }
    }
-
-   //Check whether the certificate contains an ECDSA public key
+   else
+#endif
+#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED)
+   //ECDSA certificate?
    if(cert->type == TLS_CERT_ECDSA_SIGN)
    {
+      //This flag tells whether the certificate is acceptable
+      acceptable = TRUE;
+
+      //Filter out certificates with unsupported type
+      if(numCertTypes > 0)
+      {
+         //Loop through the list of supported certificate types
+         for(acceptable = FALSE, i = 0; i < numCertTypes; i++)
+         {
+            //Check whether the certificate type is acceptable
+            if(certTypes[i] == TLS_CERT_ECDSA_SIGN)
+            {
+               acceptable = TRUE;
+               break;
+            }
+         }
+      }
+
       //Filter out ECDSA certificates that use an unsupported elliptic curve
       if(acceptable && curveList != NULL)
       {
@@ -594,6 +695,90 @@ bool_t tlsIsCertificateAcceptable(const TlsCertDesc *cert,
             }
          }
       }
+
+      //Filter out certificates that are signed with an unsupported
+      //hash/signature algorithm
+      if(acceptable && signHashAlgos != NULL)
+      {
+         //Retrieve the number of items in the list
+         n = ntohs(signHashAlgos->length) / sizeof(TlsSignHashAlgo);
+
+         //Loop through the list of supported hash/signature algorithm pairs
+         for(acceptable = FALSE, i = 0; i < n; i++)
+         {
+            //The certificate must be signed using a valid hash algorithm
+            if(signHashAlgos->value[i].signature == TLS_SIGN_ALGO_ECDSA &&
+               signHashAlgos->value[i].hash == cert->hashAlgo)
+            {
+               acceptable = TRUE;
+               break;
+            }
+         }
+      }
+   }
+   else
+#endif
+#if (TLS_ED25519_SUPPORT == ENABLED || TLS_ED448_SUPPORT == ENABLED)
+   //EdDSA certificate?
+   if(cert->type == TLS_CERT_ED25519_SIGN ||
+      cert->type == TLS_CERT_ED448_SIGN)
+   {
+      //Filter out certificates with unsupported type
+      for(acceptable = FALSE, i = 0; i < numCertTypes; i++)
+      {
+         //Check whether the certificate type is acceptable
+         if(certTypes[i] == TLS_CERT_ECDSA_SIGN)
+         {
+            acceptable = TRUE;
+            break;
+         }
+      }
+
+      //Make sure EdDSA signature scheme is supported
+      if(acceptable && signHashAlgos != NULL)
+      {
+         //Retrieve the number of items in the list
+         n = ntohs(signHashAlgos->length) / sizeof(TlsSignHashAlgo);
+
+         //Loop through the list of supported signature schemes
+         for(acceptable = FALSE, i = 0; i < n; i++)
+         {
+            //Ed25519 certificate?
+            if(cert->type == TLS_CERT_ED25519_SIGN)
+            {
+               //Check whether Ed25519 signature scheme is supported
+               if(signHashAlgos->value[i].signature == TLS_SIGN_ALGO_ED25519 &&
+                  signHashAlgos->value[i].hash == TLS_HASH_ALGO_INTRINSIC)
+               {
+                  acceptable = TRUE;
+                  break;
+               }
+            }
+            //Ed448 certificate?
+            else if(cert->type == TLS_CERT_ED448_SIGN)
+            {
+               //Check whether Ed448 signature scheme is supported
+               if(signHashAlgos->value[i].signature == TLS_SIGN_ALGO_ED448 &&
+                  signHashAlgos->value[i].hash == TLS_HASH_ALGO_INTRINSIC)
+               {
+                  acceptable = TRUE;
+                  break;
+               }
+            }
+         }
+      }
+      else
+      {
+         //The certificate is not acceptable
+         acceptable = FALSE;
+      }
+   }
+   else
+#endif
+   //Unsupported certificate type?
+   {
+      //The certificate is not acceptable
+      acceptable = FALSE;
    }
 
    //Filter out certificates that are issued by a non trusted CA
@@ -805,10 +990,10 @@ bool_t tlsIsCertificateValid(const X509CertificateInfo *certInfo,
 
 error_t tlsGetCertificateType(const X509CertificateInfo *certInfo,
    TlsCertificateType *certType, TlsSignatureAlgo *certSignAlgo,
-   TlsHashAlgo *certHashAlgo, TlsEcNamedCurve *namedCurve)
+   TlsHashAlgo *certHashAlgo, TlsNamedGroup *namedCurve)
 {
-   const X509SubjectPublicKeyInfo *subjectPublicKeyInfo;
-   const X509SignatureId *signatureAlgo;
+   size_t oidLen;
+   const uint8_t *oid;
 
    //Check parameters
    if(certInfo == NULL || certType == NULL || certSignAlgo == NULL ||
@@ -818,46 +1003,69 @@ error_t tlsGetCertificateType(const X509CertificateInfo *certInfo,
       return ERROR_INVALID_PARAMETER;
    }
 
-   //Point to the subject's public key
-   subjectPublicKeyInfo = &certInfo->subjectPublicKeyInfo;
+   //Point to the public key identifier
+   oid = certInfo->subjectPublicKeyInfo.oid;
+   oidLen = certInfo->subjectPublicKeyInfo.oidLen;
 
-#if (TLS_RSA_SIGN_SUPPORT == ENABLED || TLS_RSA_SUPPORT == ENABLED || \
-   TLS_DHE_RSA_SUPPORT == ENABLED || TLS_ECDHE_RSA_SUPPORT == ENABLED || \
-   TLS_RSA_PSK_SUPPORT == ENABLED)
+#if (TLS_RSA_SIGN_SUPPORT == ENABLED || TLS_RSA_PSS_SIGN_SUPPORT == ENABLED || \
+   TLS_RSA_SUPPORT == ENABLED || TLS_DHE_RSA_SUPPORT == ENABLED || \
+   TLS_ECDHE_RSA_SUPPORT == ENABLED || TLS_RSA_PSK_SUPPORT == ENABLED)
    //RSA public key?
-   if(!oidComp(subjectPublicKeyInfo->oid, subjectPublicKeyInfo->oidLen,
-      RSA_ENCRYPTION_OID, sizeof(RSA_ENCRYPTION_OID)))
+   if(!oidComp(oid, oidLen, RSA_ENCRYPTION_OID, sizeof(RSA_ENCRYPTION_OID)))
    {
       //Save certificate type
       *certType = TLS_CERT_RSA_SIGN;
       //Elliptic curve cryptography is not used
-      *namedCurve = TLS_EC_CURVE_NONE;
+      *namedCurve = TLS_GROUP_NONE;
    }
    else
 #endif
 #if (TLS_DSA_SIGN_SUPPORT == ENABLED || TLS_DHE_DSS_SUPPORT == ENABLED)
    //DSA public key?
-   if(!oidComp(subjectPublicKeyInfo->oid, subjectPublicKeyInfo->oidLen,
-      DSA_OID, sizeof(DSA_OID)))
+   if(!oidComp(oid, oidLen, DSA_OID, sizeof(DSA_OID)))
    {
       //Save certificate type
       *certType = TLS_CERT_DSS_SIGN;
       //Elliptic curve cryptography is not used
-      *namedCurve = TLS_EC_CURVE_NONE;
+      *namedCurve = TLS_GROUP_NONE;
    }
    else
 #endif
 #if (TLS_ECDSA_SIGN_SUPPORT == ENABLED || TLS_ECDHE_ECDSA_SUPPORT == ENABLED)
    //EC public key?
-   if(!oidComp(subjectPublicKeyInfo->oid, subjectPublicKeyInfo->oidLen,
-      EC_PUBLIC_KEY_OID, sizeof(EC_PUBLIC_KEY_OID)))
+   if(!oidComp(oid, oidLen, EC_PUBLIC_KEY_OID, sizeof(EC_PUBLIC_KEY_OID)))
    {
+      const X509EcParameters *params;
+
+      //Point to the EC parameters
+      params = &certInfo->subjectPublicKeyInfo.ecParams;
+
       //Save certificate type
       *certType = TLS_CERT_ECDSA_SIGN;
-
       //Retrieve the named curve that has been used to generate the EC public key
-      *namedCurve = tlsGetNamedCurve(subjectPublicKeyInfo->ecParams.namedCurve,
-         subjectPublicKeyInfo->ecParams.namedCurveLen);
+      *namedCurve = tlsGetNamedCurve(params->namedCurve, params->namedCurveLen);
+   }
+   else
+#endif
+#if (TLS_ED25519_SUPPORT == ENABLED)
+   //Ed25519 public key?
+   if(!oidComp(oid, oidLen, ED25519_OID, sizeof(ED25519_OID)))
+   {
+      //Save certificate type
+      *certType = TLS_CERT_ED25519_SIGN;
+      //No named curve applicable
+      *namedCurve = TLS_GROUP_NONE;
+   }
+   else
+#endif
+#if (TLS_ED448_SUPPORT == ENABLED)
+   //Ed448 public key?
+   if(!oidComp(oid, oidLen, ED448_OID, sizeof(ED448_OID)))
+   {
+      //Save certificate type
+      *certType = TLS_CERT_ED448_SIGN;
+      //No named curve applicable
+      *namedCurve = TLS_GROUP_NONE;
    }
    else
 #endif
@@ -868,45 +1076,46 @@ error_t tlsGetCertificateType(const X509CertificateInfo *certInfo,
    }
 
    //Point to the signature algorithm
-   signatureAlgo = &certInfo->signatureAlgo;
+   oid = certInfo->signatureAlgo.data;
+   oidLen = certInfo->signatureAlgo.length;
 
    //Retrieve the signature algorithm that has been used to sign the certificate
-   if(signatureAlgo->data == NULL)
+   if(oid == NULL || oidLen == 0)
    {
       //Invalid certificate
       return ERROR_BAD_CERTIFICATE;
    }
-#if (TLS_RSA_SIGN_SUPPORT == ENABLED)
-   else if(!oidComp(signatureAlgo->data, signatureAlgo->length,
-      MD5_WITH_RSA_ENCRYPTION_OID, sizeof(MD5_WITH_RSA_ENCRYPTION_OID)))
+#if (TLS_RSA_SIGN_SUPPORT == ENABLED || TLS_RSA_PSS_SIGN_SUPPORT == ENABLED)
+   else if(!oidComp(oid, oidLen, MD5_WITH_RSA_ENCRYPTION_OID,
+      sizeof(MD5_WITH_RSA_ENCRYPTION_OID)))
    {
       //MD5 with RSA signature algorithm
       *certSignAlgo = TLS_SIGN_ALGO_RSA;
       *certHashAlgo = TLS_HASH_ALGO_MD5;
    }
-   else if(!oidComp(signatureAlgo->data, signatureAlgo->length,
-      SHA1_WITH_RSA_ENCRYPTION_OID, sizeof(SHA1_WITH_RSA_ENCRYPTION_OID)))
+   else if(!oidComp(oid, oidLen, SHA1_WITH_RSA_ENCRYPTION_OID,
+      sizeof(SHA1_WITH_RSA_ENCRYPTION_OID)))
    {
       //SHA-1 with RSA signature algorithm
       *certSignAlgo = TLS_SIGN_ALGO_RSA;
       *certHashAlgo = TLS_HASH_ALGO_SHA1;
    }
-   else if(!oidComp(signatureAlgo->data, signatureAlgo->length,
-      SHA256_WITH_RSA_ENCRYPTION_OID, sizeof(SHA256_WITH_RSA_ENCRYPTION_OID)))
+   else if(!oidComp(oid, oidLen, SHA256_WITH_RSA_ENCRYPTION_OID,
+      sizeof(SHA256_WITH_RSA_ENCRYPTION_OID)))
    {
       //SHA-256 with RSA signature algorithm
       *certSignAlgo = TLS_SIGN_ALGO_RSA;
       *certHashAlgo = TLS_HASH_ALGO_SHA256;
    }
-   else if(!oidComp(signatureAlgo->data, signatureAlgo->length,
-      SHA384_WITH_RSA_ENCRYPTION_OID, sizeof(SHA384_WITH_RSA_ENCRYPTION_OID)))
+   else if(!oidComp(oid, oidLen, SHA384_WITH_RSA_ENCRYPTION_OID,
+      sizeof(SHA384_WITH_RSA_ENCRYPTION_OID)))
    {
       //SHA-384 with RSA signature algorithm
       *certSignAlgo = TLS_SIGN_ALGO_RSA;
       *certHashAlgo = TLS_HASH_ALGO_SHA384;
    }
-   else if(!oidComp(signatureAlgo->data, signatureAlgo->length,
-      SHA512_WITH_RSA_ENCRYPTION_OID, sizeof(SHA512_WITH_RSA_ENCRYPTION_OID)))
+   else if(!oidComp(oid, oidLen, SHA512_WITH_RSA_ENCRYPTION_OID,
+      sizeof(SHA512_WITH_RSA_ENCRYPTION_OID)))
    {
       //SHA-512 with RSA signature algorithm
       *certSignAlgo = TLS_SIGN_ALGO_RSA;
@@ -914,22 +1123,22 @@ error_t tlsGetCertificateType(const X509CertificateInfo *certInfo,
    }
 #endif
 #if (TLS_DSA_SIGN_SUPPORT == ENABLED)
-   else if(!oidComp(signatureAlgo->data, signatureAlgo->length,
-      DSA_WITH_SHA1_OID, sizeof(DSA_WITH_SHA1_OID)))
+   else if(!oidComp(oid, oidLen, DSA_WITH_SHA1_OID,
+      sizeof(DSA_WITH_SHA1_OID)))
    {
       //DSA with SHA-1 signature algorithm
       *certSignAlgo = TLS_SIGN_ALGO_DSA;
       *certHashAlgo = TLS_HASH_ALGO_SHA1;
    }
-   else if(!oidComp(signatureAlgo->data, signatureAlgo->length,
-      DSA_WITH_SHA224_OID, sizeof(DSA_WITH_SHA224_OID)))
+   else if(!oidComp(oid, oidLen, DSA_WITH_SHA224_OID,
+      sizeof(DSA_WITH_SHA224_OID)))
    {
       //DSA with SHA-224 signature algorithm
       *certSignAlgo = TLS_SIGN_ALGO_DSA;
       *certHashAlgo = TLS_HASH_ALGO_SHA224;
    }
-   else if(!oidComp(signatureAlgo->data, signatureAlgo->length,
-      DSA_WITH_SHA256_OID, sizeof(DSA_WITH_SHA256_OID)))
+   else if(!oidComp(oid, oidLen, DSA_WITH_SHA256_OID,
+      sizeof(DSA_WITH_SHA256_OID)))
    {
       //DSA with SHA-256 signature algorithm
       *certSignAlgo = TLS_SIGN_ALGO_DSA;
@@ -937,40 +1146,56 @@ error_t tlsGetCertificateType(const X509CertificateInfo *certInfo,
    }
 #endif
 #if (TLS_ECDSA_SIGN_SUPPORT == ENABLED)
-   else if(!oidComp(signatureAlgo->data, signatureAlgo->length,
-      ECDSA_WITH_SHA1_OID, sizeof(ECDSA_WITH_SHA1_OID)))
+   else if(!oidComp(oid, oidLen, ECDSA_WITH_SHA1_OID,
+      sizeof(ECDSA_WITH_SHA1_OID)))
    {
       //ECDSA with SHA-1 signature algorithm
       *certSignAlgo = TLS_SIGN_ALGO_ECDSA;
       *certHashAlgo = TLS_HASH_ALGO_SHA1;
    }
-   else if(!oidComp(signatureAlgo->data, signatureAlgo->length,
-      ECDSA_WITH_SHA224_OID, sizeof(ECDSA_WITH_SHA224_OID)))
+   else if(!oidComp(oid, oidLen, ECDSA_WITH_SHA224_OID,
+      sizeof(ECDSA_WITH_SHA224_OID)))
    {
       //ECDSA with SHA-224 signature algorithm
       *certSignAlgo = TLS_SIGN_ALGO_ECDSA;
       *certHashAlgo = TLS_HASH_ALGO_SHA224;
    }
-   else if(!oidComp(signatureAlgo->data, signatureAlgo->length,
-      ECDSA_WITH_SHA256_OID, sizeof(ECDSA_WITH_SHA256_OID)))
+   else if(!oidComp(oid, oidLen, ECDSA_WITH_SHA256_OID,
+      sizeof(ECDSA_WITH_SHA256_OID)))
    {
       //ECDSA with SHA-256 signature algorithm
       *certSignAlgo = TLS_SIGN_ALGO_ECDSA;
       *certHashAlgo = TLS_HASH_ALGO_SHA256;
    }
-   else if(!oidComp(signatureAlgo->data, signatureAlgo->length,
-      ECDSA_WITH_SHA384_OID, sizeof(ECDSA_WITH_SHA384_OID)))
+   else if(!oidComp(oid, oidLen, ECDSA_WITH_SHA384_OID,
+      sizeof(ECDSA_WITH_SHA384_OID)))
    {
       //ECDSA with SHA-384 signature algorithm
       *certSignAlgo = TLS_SIGN_ALGO_ECDSA;
       *certHashAlgo = TLS_HASH_ALGO_SHA384;
    }
-   else if(!oidComp(signatureAlgo->data, signatureAlgo->length,
-      ECDSA_WITH_SHA512_OID, sizeof(ECDSA_WITH_SHA512_OID)))
+   else if(!oidComp(oid, oidLen, ECDSA_WITH_SHA512_OID,
+      sizeof(ECDSA_WITH_SHA512_OID)))
    {
       //ECDSA with SHA-512 signature algorithm
       *certSignAlgo = TLS_SIGN_ALGO_ECDSA;
       *certHashAlgo = TLS_HASH_ALGO_SHA512;
+   }
+#endif
+#if (TLS_ED25519_SUPPORT == ENABLED)
+   else if(!oidComp(oid, oidLen, ED25519_OID, sizeof(ED25519_OID)))
+   {
+      //Ed25519 signature algorithm
+      *certSignAlgo = TLS_SIGN_ALGO_ED25519;
+      *certHashAlgo = TLS_HASH_ALGO_INTRINSIC;
+   }
+#endif
+#if (TLS_ED448_SUPPORT == ENABLED)
+   else if(!oidComp(oid, oidLen, ED448_OID, sizeof(ED448_OID)))
+   {
+      //Ed448 signature algorithm
+      *certSignAlgo = TLS_SIGN_ALGO_ED448;
+      *certHashAlgo = TLS_HASH_ALGO_INTRINSIC;
    }
 #endif
    else
@@ -995,13 +1220,18 @@ error_t tlsReadSubjectPublicKey(TlsContext *context,
    const X509SubjectPublicKeyInfo *subjectPublicKeyInfo)
 {
    error_t error;
+   size_t oidLen;
+   const uint8_t *oid;
 
-#if (TLS_RSA_SIGN_SUPPORT == ENABLED || TLS_RSA_SUPPORT == ENABLED || \
-   TLS_DHE_RSA_SUPPORT == ENABLED || TLS_ECDHE_RSA_SUPPORT == ENABLED || \
-   TLS_RSA_PSK_SUPPORT == ENABLED)
+   //Retrieve public key identifier
+   oid = subjectPublicKeyInfo->oid;
+   oidLen = subjectPublicKeyInfo->oidLen;
+
+#if (TLS_RSA_SIGN_SUPPORT == ENABLED || TLS_RSA_PSS_SIGN_SUPPORT == ENABLED || \
+   TLS_RSA_SUPPORT == ENABLED || TLS_DHE_RSA_SUPPORT == ENABLED || \
+   TLS_ECDHE_RSA_SUPPORT == ENABLED || TLS_RSA_PSK_SUPPORT == ENABLED)
    //RSA public key?
-   if(!oidComp(subjectPublicKeyInfo->oid, subjectPublicKeyInfo->oidLen,
-      RSA_ENCRYPTION_OID, sizeof(RSA_ENCRYPTION_OID)))
+   if(!oidComp(oid, oidLen, RSA_ENCRYPTION_OID, sizeof(RSA_ENCRYPTION_OID)))
    {
       uint_t k;
 
@@ -1034,8 +1264,7 @@ error_t tlsReadSubjectPublicKey(TlsContext *context,
 #endif
 #if (TLS_DSA_SIGN_SUPPORT == ENABLED || TLS_DHE_DSS_SUPPORT == ENABLED)
    //DSA public key?
-   if(!oidComp(subjectPublicKeyInfo->oid, subjectPublicKeyInfo->oidLen,
-      DSA_OID, sizeof(DSA_OID)))
+   if(!oidComp(oid, oidLen, DSA_OID, sizeof(DSA_OID)))
    {
       uint_t k;
 
@@ -1068,14 +1297,25 @@ error_t tlsReadSubjectPublicKey(TlsContext *context,
 #endif
 #if (TLS_ECDSA_SIGN_SUPPORT == ENABLED || TLS_ECDHE_ECDSA_SUPPORT == ENABLED)
    //EC public key?
-   if(!oidComp(subjectPublicKeyInfo->oid, subjectPublicKeyInfo->oidLen,
-      EC_PUBLIC_KEY_OID, sizeof(EC_PUBLIC_KEY_OID)))
+   if(!oidComp(oid, oidLen, EC_PUBLIC_KEY_OID, sizeof(EC_PUBLIC_KEY_OID)) ||
+      !oidComp(oid, oidLen, ED25519_OID, sizeof(ED25519_OID)) ||
+      !oidComp(oid, oidLen, ED448_OID, sizeof(ED448_OID)))
    {
       const EcCurveInfo *curveInfo;
 
-      //Retrieve EC domain parameters
-      curveInfo = x509GetCurveInfo(subjectPublicKeyInfo->ecParams.namedCurve,
-         subjectPublicKeyInfo->ecParams.namedCurveLen);
+      //Ed25519 or Ed448 public key?
+      if(!oidComp(oid, oidLen, ED25519_OID, sizeof(ED25519_OID)) ||
+         !oidComp(oid, oidLen, ED448_OID, sizeof(ED448_OID)))
+      {
+         //Retrieve EC domain parameters
+         curveInfo = x509GetCurveInfo(oid, oidLen);
+      }
+      else
+      {
+         //Retrieve EC domain parameters
+         curveInfo = x509GetCurveInfo(subjectPublicKeyInfo->ecParams.namedCurve,
+            subjectPublicKeyInfo->ecParams.namedCurveLen);
+      }
 
       //Make sure the specified elliptic curve is supported
       if(curveInfo != NULL)

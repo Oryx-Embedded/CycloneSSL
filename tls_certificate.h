@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.2
+ * @version 1.8.6
  **/
 
 #ifndef _TLS_CERTIFICATE_H
@@ -53,7 +53,7 @@ error_t tlsParseRawPublicKey(TlsContext *context, const uint8_t *p,
 
 bool_t tlsIsCertificateAcceptable(const TlsCertDesc *cert,
    const uint8_t *certTypes, size_t numCertTypes, const TlsSignHashAlgos *signHashAlgos,
-   const TlsEllipticCurveList *curveList, const TlsCertAuthorities *certAuthorities);
+   const TlsSupportedGroupList *curveList, const TlsCertAuthorities *certAuthorities);
 
 bool_t tlsIsCertificateValid(const X509CertificateInfo *certInfo,
    const char_t *trustedCaList, size_t trustedCaListLen,
@@ -61,7 +61,7 @@ bool_t tlsIsCertificateValid(const X509CertificateInfo *certInfo,
 
 error_t tlsGetCertificateType(const X509CertificateInfo *certInfo,
    TlsCertificateType *certType, TlsSignatureAlgo *certSignAlgo,
-   TlsHashAlgo *certHashAlgo, TlsEcNamedCurve *namedCurve);
+   TlsHashAlgo *certHashAlgo, TlsNamedGroup *namedCurve);
 
 error_t tlsReadSubjectPublicKey(TlsContext *context,
    const X509SubjectPublicKeyInfo *subjectPublicKeyInfo);

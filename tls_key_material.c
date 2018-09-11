@@ -1,6 +1,6 @@
 /**
  * @file tls_key_material.c
- * @brief Key meterial generation
+ * @brief Key material generation
  *
  * @section License
  *
@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.2
+ * @version 1.8.6
  **/
 
 //Switch to the appropriate trace level
@@ -160,7 +160,7 @@ error_t tlsGenerateMasterSecret(TlsContext *context)
    {
       //TLS 1.2 PRF uses SHA-256 or a stronger hash algorithm as the core
       //function in its construction
-      error = tlsPrf2(context->cipherSuite.prfHashAlgo,
+      error = tls12Prf(context->cipherSuite.prfHashAlgo,
          context->premasterSecret, context->premasterSecretLen,
          "master secret", context->random, 64,
          context->masterSecret, TLS_MASTER_SECRET_SIZE);
@@ -244,7 +244,7 @@ error_t tlsGenerateExtendedMasterSecret(TlsContext *context)
          hashAlgo->final(hashContext, NULL);
 
          //Compute the extended master secret (refer to RFC 7627, section 4)
-         error = tlsPrf2(hashAlgo, context->premasterSecret,
+         error = tls12Prf(hashAlgo, context->premasterSecret,
             context->premasterSecretLen, "extended master secret",
             hashContext->digest, hashAlgo->digestSize,
             context->masterSecret, TLS_MASTER_SECRET_SIZE);
@@ -422,7 +422,7 @@ error_t tlsGenerateKeyBlock(TlsContext *context, size_t keyBlockLen)
    {
       //TLS 1.2 PRF uses SHA-256 or a stronger hash algorithm
       //as the core function in its construction
-      error = tlsPrf2(context->cipherSuite.prfHashAlgo,
+      error = tls12Prf(context->cipherSuite.prfHashAlgo,
          context->masterSecret, TLS_MASTER_SECRET_SIZE, "key expansion",
          context->random, 64, context->keyBlock, keyBlockLen);
    }
@@ -522,10 +522,19 @@ error_t tlsExportKeyingMaterial(TlsContext *context, const char_t *label,
    //TLS 1.2 currently selected?
    if(context->version == TLS_VERSION_1_2)
    {
-      //TLS 1.2 PRF uses SHA-256 or a stronger hash algorithm as the core
-      //function in its construction
-      error = tlsPrf2(context->cipherSuite.prfHashAlgo, context->masterSecret,
-         TLS_MASTER_SECRET_SIZE, label, seed, n, output, outputLen);
+      //Make sure the PRF hash algorithm is valid
+      if(context->cipherSuite.prfHashAlgo != NULL)
+      {
+         //TLS 1.2 PRF uses SHA-256 or a stronger hash algorithm as the core
+         //function in its construction
+         error = tls12Prf(context->cipherSuite.prfHashAlgo, context->masterSecret,
+            TLS_MASTER_SECRET_SIZE, label, seed, n, output, outputLen);
+      }
+      else
+      {
+         //Invalid PRF hash algorithm
+         error = ERROR_FAILURE;
+      }
    }
    else
 #endif
@@ -581,7 +590,7 @@ error_t tlsPrf(const uint8_t *secret, size_t secretLen, const char_t *label,
    //Successful memory allocation?
    if(hmacContext != NULL)
    {
-      //Compute the length of the label
+      //Retrieve the length of the label
       labelLen = strlen(label);
 
       //The secret is partitioned into two halves S1 and S2
@@ -684,7 +693,7 @@ error_t tlsPrf(const uint8_t *secret, size_t secretLen, const char_t *label,
  * @return Error code
  **/
 
-error_t tlsPrf2(const HashAlgo *hash, const uint8_t *secret,
+error_t tls12Prf(const HashAlgo *hash, const uint8_t *secret,
    size_t secretLen, const char_t *label, const uint8_t *seed,
    size_t seedLen, uint8_t *output, size_t outputLen)
 {
@@ -701,7 +710,7 @@ error_t tlsPrf2(const HashAlgo *hash, const uint8_t *secret,
    //Successful memory allocation?
    if(hmacContext != NULL)
    {
-      //Compute the length of the label
+      //Retrieve the length of the label
       labelLen = strlen(label);
 
       //First compute A(1) = HMAC_hash(secret, label + seed)

@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.2
+ * @version 1.8.6
  **/
 
 #ifndef _TLS_CLIENT_H
@@ -40,16 +40,12 @@
 //TLS client specific functions
 error_t tlsSendClientHello(TlsContext *context);
 error_t tlsSendClientKeyExchange(TlsContext *context);
-error_t tlsSendCertificateVerify(TlsContext *context);
 
 error_t tlsFormatClientHello(TlsContext *context,
    TlsClientHello *message, size_t *length);
 
 error_t tlsFormatClientKeyExchange(TlsContext *context,
    TlsClientKeyExchange *message, size_t *length);
-
-error_t tlsFormatCertificateVerify(TlsContext *context,
-   TlsCertificateVerify *message, size_t *length);
 
 error_t tlsParseHelloRequest(TlsContext *context,
    const TlsHelloRequest *message, size_t length);

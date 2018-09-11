@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.2
+ * @version 1.8.6
  **/
 
 //Switch to the appropriate trace level
@@ -153,6 +153,57 @@ error_t dtlsFormatCookie(TlsContext *context, uint8_t *p, size_t *written)
 
    //Successful processing
    return NO_ERROR;
+}
+
+
+/**
+ * @brief Cookie verification
+ * @param[in] context Pointer to the TLS context
+ * @param[in] cookie Pointer to the client's cookie
+ * @param[in] params Client's parameters
+ * @return Error code
+ **/
+
+error_t dtlsVerifyCookie(TlsContext *context, const DtlsCookie *cookie,
+   const DtlsClientParameters *params)
+{
+   error_t error;
+
+   //Any registered callbacks?
+   if(context->cookieVerifyCallback != NULL &&
+      context->cookieGenerateCallback != NULL)
+   {
+      //Verify that the cookie is valid
+      error = context->cookieVerifyCallback(context->cookieHandle,
+         params, cookie->value, cookie->length);
+
+      //Invalid cookie?
+      if(error == ERROR_WRONG_COOKIE)
+      {
+         //Set the cookie size limit (32 or 255 bytes depending on DTLS version)
+         context->cookieLen = DTLS_MAX_COOKIE_SIZE;
+
+         //The DTLS server should generate cookies in such a way that they can
+         //be verified without retaining any per-client state on the server
+         error = context->cookieGenerateCallback(context->cookieHandle,
+            params, context->cookie, &context->cookieLen);
+
+         //Check status code
+         if(!error)
+         {
+            //Send a HelloVerifyRequest message to the DTLS client
+            context->state = TLS_STATE_HELLO_VERIFY_REQUEST;
+         }
+      }
+   }
+   else
+   {
+      //The server may be configured not to perform a cookie exchange
+      error = NO_ERROR;
+   }
+
+   //Return status code
+   return error;
 }
 
 
@@ -293,6 +344,55 @@ error_t dtlsParseHelloVerifyRequest(TlsContext *context,
 
 
 /**
+ * @brief Parse SupportedVersions extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] supportedVersionList Pointer to the SupportedVersions extension
+ * @return Error code
+ **/
+
+error_t dtlsParseClientSupportedVersionsExtension(TlsContext *context,
+   const DtlsSupportedVersionList *supportedVersionList)
+{
+   error_t error;
+   uint_t i;
+   uint_t j;
+   uint_t n;
+
+   //Supported DTLS versions
+   const uint16_t supportedVersions[] =
+   {
+      DTLS_VERSION_1_2,
+      DTLS_VERSION_1_0
+   };
+
+   //Initialize status code
+   error = ERROR_VERSION_NOT_SUPPORTED;
+
+   //Retrieve the number of items in the list
+   n = supportedVersionList->length / sizeof(uint16_t);
+
+   //Loop through the list of DTLS versions supported by the server
+   for(i = 0; i < arraysize(supportedVersions) && error; i++)
+   {
+      //The extension contains a list of DTLS versions supported by the client
+      for(j = 0; j < n && error; j++)
+      {
+         //Servers must only select a version of DTLS present in that extension
+         //and must ignore any unknown versions
+         if(ntohs(supportedVersionList->value[j]) == supportedVersions[i])
+         {
+            //Set the DTLS version to be used
+            error = dtlsSelectVersion(context, supportedVersions[i]);
+         }
+      }
+   }
+
+   //Return status code
+   return error;
+}
+
+
+/**
  * @brief Initialize sliding window
  * @param[in] context Pointer to the TLS context
  * @return Error code
@@ -324,7 +424,7 @@ error_t dtlsCheckReplayWindow(TlsContext *context, DtlsSequenceNumber *seqNum)
    error_t error;
 
 #if (DTLS_REPLAY_DETECTION_SUPPORT == ENABLED)
-   //Check whteher anti-replay mechanism is enabled
+   //Check whether anti-replay mechanism is enabled
    if(context->replayDetectionEnabled)
    {
       uint_t j;

@@ -29,7 +29,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.2
+ * @version 1.8.6
  **/
 
 //Switch to the appropriate trace level
@@ -115,9 +115,9 @@ TlsContext *tlsInit(void)
       ecdhInit(&context->ecdhContext);
 #endif
 
-#if (TLS_RSA_SIGN_SUPPORT == ENABLED || TLS_RSA_SUPPORT == ENABLED || \
-   TLS_DHE_RSA_SUPPORT == ENABLED || TLS_ECDHE_RSA_SUPPORT == ENABLED || \
-   TLS_RSA_PSK_SUPPORT == ENABLED)
+#if (TLS_RSA_SIGN_SUPPORT == ENABLED || TLS_RSA_PSS_SIGN_SUPPORT == ENABLED || \
+   TLS_RSA_SUPPORT == ENABLED || TLS_DHE_RSA_SUPPORT == ENABLED || \
+   TLS_ECDHE_RSA_SUPPORT == ENABLED || TLS_RSA_PSK_SUPPORT == ENABLED)
       //Initialize peer's RSA public key
       rsaInitPublicKey(&context->peerRsaPublicKey);
 #endif
@@ -134,26 +134,34 @@ TlsContext *tlsInit(void)
       ecInit(&context->peerEcPublicKey);
 #endif
 
-      //Set the maximum fragment length
-      context->maxFragLen = TLS_MAX_RECORD_LENGTH;
-      //Maximum number of plaintext data the TX buffer can hold
+      //Maximum number of plaintext data the TX and RX buffers can hold
       context->txBufferMaxLen = TLS_MAX_RECORD_LENGTH;
+      context->rxBufferMaxLen = TLS_MAX_RECORD_LENGTH;
+
+#if (TLS_MAX_FRAG_LEN_SUPPORT == ENABLED)
+      //Maximum fragment length
+      context->maxFragLen = TLS_MAX_RECORD_LENGTH;
+#endif
+#if (TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)
+      //Maximum record size the peer is willing to receive
+      context->recordSizeLimit = TLS_MAX_RECORD_LENGTH;
+#endif
 
 #if (DTLS_SUPPORT == ENABLED)
       //Calculate the required size for the TX buffer
-      context->txBufferSize = TLS_MAX_RECORD_LENGTH + sizeof(DtlsRecord) +
+      context->txBufferSize = context->txBufferMaxLen + sizeof(DtlsRecord) +
          TLS_MAX_RECORD_OVERHEAD;
 
       //Calculate the required size for the RX buffer
-      context->rxBufferSize = TLS_MAX_RECORD_LENGTH + sizeof(DtlsRecord) +
+      context->rxBufferSize = context->rxBufferMaxLen + sizeof(DtlsRecord) +
          TLS_MAX_RECORD_OVERHEAD;
 #else
       //Calculate the required size for the TX buffer
-      context->txBufferSize = TLS_MAX_RECORD_LENGTH + sizeof(TlsRecord) +
+      context->txBufferSize = context->txBufferMaxLen + sizeof(TlsRecord) +
          TLS_MAX_RECORD_OVERHEAD;
 
       //Calculate the required size for the RX buffer
-      context->rxBufferSize = TLS_MAX_RECORD_LENGTH + sizeof(TlsRecord) +
+      context->rxBufferSize = context->rxBufferMaxLen + sizeof(TlsRecord) +
          TLS_MAX_RECORD_OVERHEAD;
 #endif
    }
@@ -457,19 +465,23 @@ error_t tlsSetClientAuthMode(TlsContext *context, TlsClientAuthMode mode)
  * @return Error code
  **/
 
-error_t tlsSetBufferSize(TlsContext *context,
-   size_t txBufferSize, size_t rxBufferSize)
+error_t tlsSetBufferSize(TlsContext *context, size_t txBufferSize,
+   size_t rxBufferSize)
 {
    //Invalid TLS context?
    if(context == NULL)
       return ERROR_INVALID_PARAMETER;
 
    //Check parameters
-   if(txBufferSize < 512 || rxBufferSize < 512)
+   if(txBufferSize < TLS_MIN_RECORD_LENGTH ||
+      rxBufferSize < TLS_MIN_RECORD_LENGTH)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
-   //Maximum number of plaintext data the TX buffer can hold
+   //Maximum number of plaintext data the TX and RX buffers can hold
    context->txBufferMaxLen = txBufferSize;
+   context->rxBufferMaxLen = rxBufferSize;
 
 #if (DTLS_SUPPORT == ENABLED)
    //Calculate the required size for the TX buffer
@@ -503,6 +515,7 @@ error_t tlsSetBufferSize(TlsContext *context,
 
 error_t tlsSetMaxFragmentLength(TlsContext *context, size_t maxFragLen)
 {
+#if (TLS_MAX_FRAG_LEN_SUPPORT == ENABLED)
    //Invalid TLS context?
    if(context == NULL)
       return ERROR_INVALID_PARAMETER;
@@ -520,13 +533,17 @@ error_t tlsSetMaxFragmentLength(TlsContext *context, size_t maxFragLen)
 
    //Successful processing
    return NO_ERROR;
+#else
+   //Not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
 }
 
 
 /**
  * @brief Specify the list of allowed cipher suites
  * @param[in] context Pointer to the TLS context
- * @param[in] cipherSuites Pointer to the cipher suite list
+ * @param[in] cipherSuites List of allowed cipher suites (most preferred first)
  * @param[in] length Number of cipher suites in the list
  * @return Error code
  **/
@@ -1021,7 +1038,7 @@ error_t tlsAddCertificate(TlsContext *context, const char_t *certChain,
    TlsCertificateType certType;
    TlsSignatureAlgo certSignAlgo;
    TlsHashAlgo certHashAlgo;
-   TlsEcNamedCurve namedCurve;
+   TlsNamedGroup namedCurve;
 
    //Invalid TLS context?
    if(context == NULL)
@@ -1419,12 +1436,17 @@ error_t tlsWrite(TlsContext *context, const void *data,
          {
             //Calculate the number of bytes to write at a time
             n = MIN(length - totalLength, context->txBufferMaxLen);
-
             //The record length must not exceed 16384 bytes
             n = MIN(n, TLS_MAX_RECORD_LENGTH);
+
+#if (TLS_MAX_FRAG_LEN_SUPPORT == ENABLED)
             //Do not exceed the negotiated maximum fragment length
             n = MIN(n, context->maxFragLen);
-
+#endif
+#if (TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)
+            //Maximum record size the peer is willing to receive
+            n = MIN(n, context->recordSizeLimit);
+#endif
             //Send application data
             error = tlsWriteProtocolData(context, data, n,
                TLS_TYPE_APPLICATION_DATA);
@@ -1987,9 +2009,9 @@ void tlsFree(TlsContext *context)
       ecdhFree(&context->ecdhContext);
 #endif
 
-#if (TLS_RSA_SIGN_SUPPORT == ENABLED || TLS_RSA_SUPPORT == ENABLED || \
-   TLS_DHE_RSA_SUPPORT == ENABLED || TLS_ECDHE_RSA_SUPPORT == ENABLED || \
-   TLS_RSA_PSK_SUPPORT == ENABLED)
+#if (TLS_RSA_SIGN_SUPPORT == ENABLED || TLS_RSA_PSS_SIGN_SUPPORT == ENABLED || \
+   TLS_RSA_SUPPORT == ENABLED || TLS_DHE_RSA_SUPPORT == ENABLED || \
+   TLS_ECDHE_RSA_SUPPORT == ENABLED || TLS_RSA_PSK_SUPPORT == ENABLED)
       //Release peer's RSA public key
       rsaFreePublicKey(&context->peerRsaPublicKey);
 #endif

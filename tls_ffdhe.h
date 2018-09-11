@@ -1,6 +1,6 @@
 /**
- * @file tls_handshake_misc.h
- * @brief Helper functions for TLS handshake
+ * @file tls_ffdhe.h
+ * @brief FFDHE key exchange
  *
  * @section License
  *
@@ -26,8 +26,8 @@
  * @version 1.8.6
  **/
 
-#ifndef _TLS_HANDSHAKE_MISC_H
-#define _TLS_HANDSHAKE_MISC_H
+#ifndef _TLS_FFDHE_H
+#define _TLS_FFDHE_H
 
 //Dependencies
 #include "tls.h"
@@ -37,18 +37,27 @@
    extern "C" {
 #endif
 
+
+/**
+ * @brief FFDHE parameters
+ **/
+
+typedef struct
+{
+   const char_t *name;   ///<Group name
+   const uint8_t p[512]; ///<Prime modulus
+   size_t pLen;          ///<Length of the prime modulus, in bytes
+   uint8_t g;            ///<Generator
+} TlsFfdheGroup;
+
+
 //TLS related functions
-error_t tlsSendHandshakeMessage(TlsContext *context,
-   const void *data, size_t length, TlsMessageType type);
+const TlsFfdheGroup *tlsGetFfdheGroup(uint16_t namedGroup);
 
-error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
-   size_t length, TlsHelloExtensions *extensions);
+error_t tlsSelectFfdheGroup(TlsContext *context,
+   const TlsSupportedGroupList *groupList);
 
-error_t tlsCheckDuplicateExtension(uint16_t type, const uint8_t *p,
-   size_t length);
-
-bool_t tlsIsAlpnProtocolSupported(TlsContext *context,
-   const char_t *protocol, size_t length);
+error_t tlsLoadFfdheParameters(DhParameters *params, uint16_t namedGroup);
 
 //C++ guard
 #ifdef __cplusplus

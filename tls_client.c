@@ -29,7 +29,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.2
+ * @version 1.8.6
  **/
 
 //Switch to the appropriate trace level
@@ -185,69 +185,8 @@ error_t tlsSendClientKeyExchange(TlsContext *context)
       if(!error)
       {
          //Prepare to send CertificateVerify message...
-         context->state = TLS_STATE_CERTIFICATE_VERIFY;
+         context->state = TLS_STATE_CLIENT_CERTIFICATE_VERIFY;
       }
-   }
-
-   //Return status code
-   return error;
-}
-
-
-/**
- * @brief Send CertificateVerify message
- *
- * The CertificateVerify message is used to provide explicit verification
- * of a client certificate. This message is only sent following a client
- * certificate that has signing capability
- *
- * @param[in] context Pointer to the TLS context
- * @return Error code
- **/
-
-error_t tlsSendCertificateVerify(TlsContext *context)
-{
-   error_t error;
-   size_t length;
-   TlsCertificateVerify *message;
-
-   //Initialize status code
-   error = NO_ERROR;
-
-   //The CertificateVerify message is only sent following a client
-   //certificate that has signing capability
-   if(context->cert != NULL)
-   {
-      //Check certificate type
-      if(context->cert->type == TLS_CERT_RSA_SIGN ||
-         context->cert->type == TLS_CERT_DSS_SIGN ||
-         context->cert->type == TLS_CERT_ECDSA_SIGN)
-      {
-         //Point to the buffer where to format the message
-         message = (TlsCertificateVerify *) (context->txBuffer + context->txBufferLen);
-
-         //Format CertificateVerify message
-         error = tlsFormatCertificateVerify(context, message, &length);
-
-         //Check status code
-         if(!error)
-         {
-            //Debug message
-            TRACE_INFO("Sending CertificateVerify message (%" PRIuSIZE " bytes)...\r\n", length);
-            TRACE_DEBUG_ARRAY("  ", message, length);
-
-            //Send handshake message
-            error = tlsSendHandshakeMessage(context, message, length,
-               TLS_TYPE_CERTIFICATE_VERIFY);
-         }
-      }
-   }
-
-   //Check status code
-   if(error == NO_ERROR || error == ERROR_WOULD_BLOCK || error == ERROR_TIMEOUT)
-   {
-      //Prepare to send ChangeCipherSpec message...
-      context->state = TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC;
    }
 
    //Return status code
@@ -269,11 +208,8 @@ error_t tlsFormatClientHello(TlsContext *context,
    error_t error;
    size_t n;
    uint8_t *p;
-   bool_t eccCipherSuite;
+   uint_t cipherSuiteTypes;
    TlsExtensionList *extensionList;
-
-   //This flag tells whether any ECC cipher suite is proposed by the client
-   eccCipherSuite = FALSE;
 
    //Get the highest version supported by the implementation
    context->clientVersion = context->versionMax;
@@ -340,7 +276,7 @@ error_t tlsFormatClientHello(TlsContext *context,
 #endif
 
    //Format the list of cipher suites supported by the client
-   error = tlsFormatCipherSuites(context, &eccCipherSuite, p, &n);
+   error = tlsFormatCipherSuites(context, &cipherSuiteTypes, p, &n);
    //Any error to report?
    if(error)
       return error;
@@ -369,6 +305,20 @@ error_t tlsFormatClientHello(TlsContext *context,
 
    //Point to the first extension of the list
    p += sizeof(TlsExtensionList);
+
+   //In TLS 1.2, the client can indicate its version preferences in the
+   //SupportedVersions extension
+   error = tlsFormatClientSupportedVersionsExtension(context, p, &n);
+   //Any error to report?
+   if(error)
+      return error;
+
+   //Fix the length of the extension list
+   extensionList->length += (uint16_t) n;
+   //Point to the next field
+   p += n;
+   //Adjust the length of the message
+   *length += n;
 
 #if (TLS_SNI_SUPPORT == ENABLED)
    //In order to provide the server name, clients may include a ServerName
@@ -402,44 +352,54 @@ error_t tlsFormatClientHello(TlsContext *context,
    *length += n;
 #endif
 
-   //A client that proposes ECC cipher suites in its ClientHello message
-   //should send the EllipticCurves extension
-   if(eccCipherSuite)
-   {
-      //Format EllipticCurves extension
-      error = tlsFormatEllipticCurvesExtension(context, p, &n);
-      //Any error to report?
-      if(error)
-         return error;
+#if (TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)
+   //The value of RecordSizeLimit is the maximum size of record in octets
+   //that the endpoint is willing to receive
+   error = tlsFormatClientRecordSizeLimitExtension(context, p, &n);
+   //Any error to report?
+   if(error)
+      return error;
 
-      //Fix the length of the extension list
-      extensionList->length += (uint16_t) n;
-      //Point to the next field
-      p += n;
-      //Adjust the length of the message
-      *length += n;
-   }
+   //Fix the length of the extension list
+   extensionList->length += (uint16_t) n;
+   //Point to the next field
+   p += n;
+   //Adjust the length of the message
+   *length += n;
+#endif
+
+   //A client that proposes ECC/FFDHE cipher suites in its ClientHello message
+   //should send the SupportedGroups extension
+   error = tlsFormatSupportedGroupsExtension(context, cipherSuiteTypes, p, &n);
+   //Any error to report?
+   if(error)
+      return error;
+
+   //Fix the length of the extension list
+   extensionList->length += (uint16_t) n;
+   //Point to the next field
+   p += n;
+   //Adjust the length of the message
+   *length += n;
 
    //A client that proposes ECC cipher suites in its ClientHello message
    //should send the EcPointFormats extension
-   if(eccCipherSuite)
-   {
-      //Format EcPointFormats extension
-      error = tlsFormatClientEcPointFormatsExtension(context, p, &n);
-      //Any error to report?
-      if(error)
-         return error;
+   error = tlsFormatClientEcPointFormatsExtension(context, cipherSuiteTypes,
+      p, &n);
+   //Any error to report?
+   if(error)
+      return error;
 
-      //Fix the length of the extension list
-      extensionList->length += (uint16_t) n;
-      //Point to the next field
-      p += n;
-      //Adjust the length of the message
-      *length += n;
-   }
+   //Fix the length of the extension list
+   extensionList->length += (uint16_t) n;
+   //Point to the next field
+   p += n;
+   //Adjust the length of the message
+   *length += n;
 
    //Include the SignatureAlgorithms extension only if TLS 1.2 is supported
-   error = tlsFormatSignatureAlgorithmsExtension(context, eccCipherSuite, p, &n);
+   error = tlsFormatSignatureAlgorithmsExtension(context, cipherSuiteTypes,
+      p, &n);
    //Any error to report?
    if(error)
       return error;
@@ -626,240 +586,6 @@ error_t tlsFormatClientKeyExchange(TlsContext *context,
 
 
 /**
- * @brief Format CertificateVerify message
- * @param[in] context Pointer to the TLS context
- * @param[out] message Buffer where to format the CertificateVerify message
- * @param[out] length Length of the resulting CertificateVerify message
- * @return Error code
- **/
-
-error_t tlsFormatCertificateVerify(TlsContext *context,
-   TlsCertificateVerify *message, size_t *length)
-{
-   error_t error;
-
-   //Length of the handshake message
-   *length = 0;
-
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
-   //SSL 3.0, TLS 1.0 or TLS 1.1 currently selected?
-   if(context->version <= TLS_VERSION_1_1)
-   {
-      TlsDigitalSignature *signature;
-
-      //Point to the digitally-signed element
-      signature = (TlsDigitalSignature *) message;
-
-#if (TLS_RSA_SIGN_SUPPORT == ENABLED)
-      //The client's certificate contains a valid RSA public key?
-      if(context->cert->type == TLS_CERT_RSA_SIGN)
-      {
-         RsaPrivateKey privateKey;
-
-         //Initialize RSA private key
-         rsaInitPrivateKey(&privateKey);
-
-         //Digest all the handshake messages starting at ClientHello (using MD5)
-         error = tlsFinalizeHandshakeHash(context, MD5_HASH_ALGO,
-            context->handshakeMd5Context, "", context->clientVerifyData);
-
-         //Check status code
-         if(!error)
-         {
-            //Digest all the handshake messages starting at ClientHello (using SHA-1)
-            error = tlsFinalizeHandshakeHash(context, SHA1_HASH_ALGO,
-               context->handshakeSha1Context, "", context->clientVerifyData + MD5_DIGEST_SIZE);
-         }
-
-         //Check status code
-         if(!error)
-         {
-            //Decode the PEM structure that holds the RSA private key
-            error = pemImportRsaPrivateKey(context->cert->privateKey,
-               context->cert->privateKeyLen, &privateKey);
-         }
-
-         //Check status code
-         if(!error)
-         {
-            //Generate a RSA signature using the client's private key
-            error = tlsGenerateRsaSignature(&privateKey,
-               context->clientVerifyData, signature->value, length);
-         }
-
-         //Release previously allocated resources
-         rsaFreePrivateKey(&privateKey);
-      }
-      else
-#endif
-#if (TLS_DSA_SIGN_SUPPORT == ENABLED)
-      //The client's certificate contains a valid DSA public key?
-      if(context->cert->type == TLS_CERT_DSS_SIGN)
-      {
-         //Digest all the handshake messages starting at ClientHello
-         error = tlsFinalizeHandshakeHash(context, SHA1_HASH_ALGO,
-            context->handshakeSha1Context, "", context->clientVerifyData);
-
-         //Check status code
-         if(!error)
-         {
-            //Generate a DSA signature using the client's private key
-            error = tlsGenerateDsaSignature(context, context->clientVerifyData,
-               SHA1_DIGEST_SIZE, signature->value, length);
-         }
-      }
-      else
-#endif
-#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED)
-      //The client's certificate contains a valid ECDSA public key?
-      if(context->cert->type == TLS_CERT_ECDSA_SIGN)
-      {
-         //Digest all the handshake messages starting at ClientHello
-         error = tlsFinalizeHandshakeHash(context, SHA1_HASH_ALGO,
-            context->handshakeSha1Context, "", context->clientVerifyData);
-
-         //Check status code
-         if(!error)
-         {
-            //Generate an ECDSA signature using the client's private key
-            error = tlsGenerateEcdsaSignature(context, context->clientVerifyData,
-               SHA1_DIGEST_SIZE, signature->value, length);
-         }
-      }
-      else
-#endif
-      //Invalid signature algorithm?
-      {
-         //Report an error
-         error = ERROR_UNSUPPORTED_SIGNATURE_ALGO;
-      }
-
-      //Length of the signature
-      signature->length = htons(*length);
-      //Total length of the digitally-signed element
-      *length += sizeof(TlsDigitalSignature);
-   }
-   else
-#endif
-#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
-   //TLS 1.2 currently selected?
-   if(context->version == TLS_VERSION_1_2)
-   {
-      TlsDigitalSignature2 *signature;
-      const HashAlgo *hashAlgo;
-
-      //Point to the digitally-signed element
-      signature = (TlsDigitalSignature2 *) message;
-
-      //Retrieve the hash algorithm to be used for signing
-      hashAlgo = tlsGetHashAlgo(context->signHashAlgo);
-
-      //Digest all the handshake messages starting at ClientHello
-      if(hashAlgo == SHA1_HASH_ALGO)
-      {
-         //Use SHA-1 hash algorithm
-         error = tlsFinalizeHandshakeHash(context, SHA1_HASH_ALGO,
-            context->handshakeSha1Context, "", context->clientVerifyData);
-      }
-      else if(hashAlgo == context->cipherSuite.prfHashAlgo)
-      {
-         //Use PRF hash algorithm (SHA-256 or SHA-384)
-         error = tlsFinalizeHandshakeHash(context, hashAlgo,
-            context->handshakeHashContext, "", context->clientVerifyData);
-      }
-      else
-      {
-         //The specified hash algorithm is not supported
-         error = ERROR_UNSUPPORTED_SIGNATURE_ALGO;
-      }
-
-      //Handshake message hash successfully computed?
-      if(!error)
-      {
-#if (TLS_RSA_SIGN_SUPPORT == ENABLED)
-         //The client's certificate contains a valid RSA public key?
-         if(context->cert->type == TLS_CERT_RSA_SIGN)
-         {
-            RsaPrivateKey privateKey;
-
-            //Initialize RSA private key
-            rsaInitPrivateKey(&privateKey);
-
-            //Set the relevant signature algorithm
-            signature->algorithm.signature = TLS_SIGN_ALGO_RSA;
-            signature->algorithm.hash = context->signHashAlgo;
-
-            //Decode the PEM structure that holds the RSA private key
-            error = pemImportRsaPrivateKey(context->cert->privateKey,
-               context->cert->privateKeyLen, &privateKey);
-
-            //Check status code
-            if(!error)
-            {
-               //Use the signature algorithm defined in PKCS #1 v1.5
-               error = rsassaPkcs1v15Sign(&privateKey, hashAlgo,
-                  context->clientVerifyData, signature->value, length);
-            }
-
-            //Release previously allocated resources
-            rsaFreePrivateKey(&privateKey);
-         }
-         else
-#endif
-#if (TLS_DSA_SIGN_SUPPORT == ENABLED)
-         //The client's certificate contains a valid DSA public key?
-         if(context->cert->type == TLS_CERT_DSS_SIGN)
-         {
-            //Set the relevant signature algorithm
-            signature->algorithm.signature = TLS_SIGN_ALGO_DSA;
-            signature->algorithm.hash = context->signHashAlgo;
-
-            //Generate a DSA signature using the client's private key
-            error = tlsGenerateDsaSignature(context, context->clientVerifyData,
-               hashAlgo->digestSize, signature->value, length);
-         }
-         else
-#endif
-#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED)
-         //The client's certificate contains a valid ECDSA public key?
-         if(context->cert->type == TLS_CERT_ECDSA_SIGN)
-         {
-            //Set the relevant signature algorithm
-            signature->algorithm.signature = TLS_SIGN_ALGO_ECDSA;
-            signature->algorithm.hash = context->signHashAlgo;
-
-            //Generate an ECDSA signature using the client's private key
-            error = tlsGenerateEcdsaSignature(context, context->clientVerifyData,
-               hashAlgo->digestSize, signature->value, length);
-         }
-         else
-#endif
-         //Invalid signature algorithm?
-         {
-            //Report an error
-            error = ERROR_UNSUPPORTED_SIGNATURE_ALGO;
-         }
-      }
-
-      //Length of the signature
-      signature->length = htons(*length);
-      //Length of the digitally-signed element
-      *length += sizeof(TlsDigitalSignature2);
-   }
-   else
-#endif
-   //Invalid TLS version?
-   {
-      //Report an error
-      error = ERROR_INVALID_VERSION;
-   }
-
-   //Return status code
-   return error;
-}
-
-
-/**
  * @brief Parse HelloRequest message
  *
  * HelloRequest is a simple notification that the client should begin the
@@ -880,6 +606,10 @@ error_t tlsParseHelloRequest(TlsContext *context,
    //Debug message
    TRACE_INFO("HelloRequest message received (%" PRIuSIZE " bytes)...\r\n", length);
    TRACE_DEBUG_ARRAY("  ", message, length);
+
+   //Check TLS version
+   if(context->version > TLS_VERSION_1_2)
+      return ERROR_UNEXPECTED_MESSAGE;
 
    //The HelloRequest message does not contain any data
    if(length != 0)
@@ -905,7 +635,7 @@ error_t tlsParseHelloRequest(TlsContext *context,
          //If the connection's secure_renegotiation flag is set to FALSE, it
          //is recommended that clients refuse this renegotiation request (refer
          //to RFC 5746, section 4.2)
-         error = tlsSendAlert(context, TLS_ALERT_LEVEL_WARNING,
+         error = tlsSendAlert(context, TLS_ALERT_LEVEL_FATAL,
             TLS_ALERT_NO_RENEGOTIATION);
       }
    }
@@ -948,13 +678,13 @@ error_t tlsParseServerHello(TlsContext *context,
    TRACE_INFO("ServerHello message received (%" PRIuSIZE " bytes)...\r\n", length);
    TRACE_DEBUG_ARRAY("  ", message, length);
 
-   //Check the length of the ServerHello message
-   if(length < sizeof(TlsServerHello))
-      return ERROR_DECODING_FAILED;
-
    //Check current state
    if(context->state != TLS_STATE_SERVER_HELLO)
       return ERROR_UNEXPECTED_MESSAGE;
+
+   //Check the length of the ServerHello message
+   if(length < sizeof(TlsServerHello))
+      return ERROR_DECODING_FAILED;
 
    //Point to the session ID
    p = message->sessionId;
@@ -995,7 +725,8 @@ error_t tlsParseServerHello(TlsContext *context,
    length -= sizeof(TlsCompressMethod);
 
    //Parse the list of extensions offered by the server
-   error = tlsParseHelloExtensions(context, p, length, &extensions);
+   error = tlsParseHelloExtensions(TLS_TYPE_SERVER_HELLO, p, length,
+      &extensions);
    //Any error to report?
    if(error)
       return error;
@@ -1178,6 +909,27 @@ error_t tlsParseServerHello(TlsContext *context,
    }
 #endif
 
+#if (TLS_SNI_SUPPORT == ENABLED)
+   //ServerName extension found?
+   if(extensions.serverNameList != NULL)
+   {
+      //When the server includes a ServerName extension, the data field of
+      //this extension may be empty
+      error = tlsParseServerSniExtension(context, extensions.serverNameList);
+      //Any error to report?
+      if(error)
+         return error;
+   }
+#endif
+
+#if (TLS_MAX_FRAG_LEN_SUPPORT == ENABLED && TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)
+   //A client must treat receipt of both MaxFragmentLength and RecordSizeLimit
+   //extensions as a fatal error, and it should generate an illegal_parameter
+   //alert (refer to RFC 8449, section 5)
+   if(extensions.maxFragLen != NULL && extensions.recordSizeLimit != NULL)
+      return ERROR_ILLEGAL_PARAMETER;
+#endif
+
 #if (TLS_MAX_FRAG_LEN_SUPPORT == ENABLED)
    //MaxFragmentLength extension found?
    if(extensions.maxFragLen != NULL)
@@ -1186,6 +938,20 @@ error_t tlsParseServerHello(TlsContext *context,
       //extension may accept the requested maximum fragment length by including
       //an extension of type MaxFragmentLength in the ServerHello
       error = tlsParseServerMaxFragLenExtension(context, extensions.maxFragLen);
+      //Any error to report?
+      if(error)
+         return error;
+   }
+#endif
+
+#if (TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)
+   //RecordSizeLimit extension found?
+   if(extensions.recordSizeLimit != NULL)
+   {
+      //The value of RecordSizeLimit is the maximum size of record in octets
+      //that the peer is willing to receive
+      error = tlsParseServerRecordSizeLimitExtension(context,
+         extensions.recordSizeLimit);
       //Any error to report?
       if(error)
          return error;
@@ -1342,6 +1108,10 @@ error_t tlsParseServerKeyExchange(TlsContext *context,
    TRACE_INFO("ServerKeyExchange message received (%" PRIuSIZE " bytes)...\r\n", length);
    TRACE_DEBUG_ARRAY("  ", message, length);
 
+   //Check TLS version
+   if(context->version > TLS_VERSION_1_2)
+      return ERROR_UNEXPECTED_MESSAGE;
+
    //Check current state
    if(context->state != TLS_STATE_SERVER_KEY_EXCHANGE)
       return ERROR_UNEXPECTED_MESSAGE;
@@ -1398,15 +1168,38 @@ error_t tlsParseServerKeyExchange(TlsContext *context,
       length -= paramsLen;
    }
 
-   //Non-anonymous Diffie-Hellman and ECDH key exchange method?
+   //For non-anonymous Diffie-Hellman and ECDH key exchanges, the signature
+   //over the server's key exchange parameters shall be verified
    if(context->keyExchMethod == TLS_KEY_EXCH_DHE_RSA ||
       context->keyExchMethod == TLS_KEY_EXCH_DHE_DSS ||
       context->keyExchMethod == TLS_KEY_EXCH_ECDHE_RSA ||
       context->keyExchMethod == TLS_KEY_EXCH_ECDHE_ECDSA)
    {
-      //For non-anonymous Diffie-Hellman and ECDH key exchanges, the signature
-      //over the server's key exchange parameters shall be verified
-      error = tlsVerifyServerKeySignature(context, p, length, params, paramsLen, &n);
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
+      //SSL 3.0, TLS 1.0 or TLS 1.1 currently selected?
+      if(context->version <= TLS_VERSION_1_1)
+      {
+         //Signature verification
+         error = tlsVerifyServerKeySignature(context,
+            (TlsDigitalSignature *) p, length, params, paramsLen, &n);
+      }
+      else
+#endif
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+      //TLS 1.2 currently selected?
+      if(context->version == TLS_VERSION_1_2)
+      {
+         //Signature verification
+         error = tls12VerifyServerKeySignature(context,
+            (Tls12DigitalSignature *) p, length, params, paramsLen, &n);
+      }
+      else
+#endif
+      {
+         //Report an error
+         error = ERROR_INVALID_VERSION;
+      }
+
       //Any error to report?
       if(error)
          return error;
@@ -1596,7 +1389,7 @@ error_t tlsParseCertificateRequest(TlsContext *context,
             //The hash and signature algorithms used in the signature of the
             //CertificateVerify message must be one of those present in the
             //SupportedSignatureAlgorithms field
-            if(tlsSelectSignHashAlgo(context, context->certs[j].signAlgo,
+            if(tlsSelectSignHashAlgo(context, &context->certs[j],
                supportedSignAlgos))
             {
                acceptable = FALSE;
@@ -1641,9 +1434,9 @@ error_t tlsParseServerHelloDone(TlsContext *context,
    TRACE_INFO("ServerHelloDone message received (%" PRIuSIZE " bytes)...\r\n", length);
    TRACE_DEBUG_ARRAY("  ", message, length);
 
-   //The ServerHelloDone message does not contain any data
-   if(length != 0)
-      return ERROR_DECODING_FAILED;
+   //Check TLS version
+   if(context->version > TLS_VERSION_1_2)
+      return ERROR_UNEXPECTED_MESSAGE;
 
    //Check key exchange method
    if(context->keyExchMethod == TLS_KEY_EXCH_RSA ||
@@ -1690,6 +1483,10 @@ error_t tlsParseServerHelloDone(TlsContext *context,
       if(context->state != TLS_STATE_SERVER_HELLO_DONE)
          return ERROR_UNEXPECTED_MESSAGE;
    }
+
+   //The ServerHelloDone message does not contain any data
+   if(length != 0)
+      return ERROR_DECODING_FAILED;
 
    //Prepare to send client Certificate message...
    context->state = TLS_STATE_CLIENT_CERTIFICATE;

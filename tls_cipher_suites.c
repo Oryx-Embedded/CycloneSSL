@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.2
+ * @version 1.8.6
  **/
 
 //Switch to the appropriate trace level
@@ -1228,39 +1228,54 @@ bool_t tlsIsCipherSuiteSupported(uint16_t identifier, uint16_t version,
 
 
 /**
- * @brief Check whether the specified identifier matches an ECC cipher suite
+ * @brief Check whether the specified identifier matches an ECC/FFDHE cipher suite
  * @param[in] identifier Cipher suite identifier
- * @return TRUE if the specified cipher suite is supported, else FALSE
+ * @return Cipher suite type
  **/
 
-bool_t tlsIsEccCipherSuite(uint16_t identifier)
+TlsCipherSuiteType tlsGetCipherSuiteType(uint16_t identifier)
 {
    uint_t i;
+   TlsCipherSuiteType type;
 
-   //Parse the list of supported cipher suites
+   //Initialize type
+   type = TLS_CIPHER_SUITE_TYPE_UNKNOWN;
+
+   //Loop through the list of supported cipher suites
    for(i = 0; i < arraysize(tlsSupportedCipherSuites); i++)
    {
-      //The current cipher suite matches the specified identifier?
+      //Compare cipher suite identifier against the specified value
       if(tlsSupportedCipherSuites[i].identifier == identifier)
       {
-         //ECC cipher suite?
+         //Check key exchange mechanism
          switch(tlsSupportedCipherSuites[i].keyExchMethod)
          {
-         case TLS_KEY_EXCH_ECDH_RSA:
-         case TLS_KEY_EXCH_ECDH_ECDSA:
          case TLS_KEY_EXCH_ECDH_ANON:
          case TLS_KEY_EXCH_ECDHE_RSA:
          case TLS_KEY_EXCH_ECDHE_ECDSA:
          case TLS_KEY_EXCH_ECDHE_PSK:
-            return TRUE;
+            //ECC cipher suite
+            type = TLS_CIPHER_SUITE_TYPE_ECC;
+            break;
+         case TLS_KEY_EXCH_DH_ANON:
+         case TLS_KEY_EXCH_DHE_RSA:
+         case TLS_KEY_EXCH_DHE_DSS:
+         case TLS_KEY_EXCH_DHE_PSK:
+            //FFDHE cipher suite
+            type = TLS_CIPHER_SUITE_TYPE_FFDHE;
+            break;
          default:
-            return FALSE;
+            //Just for sanity
+            break;
          }
+
+         //We are done
+         break;
       }
    }
 
-   //Unknown cipher suite
-   return FALSE;
+   //Return cipher suite type
+   return type;
 }
 
 #endif

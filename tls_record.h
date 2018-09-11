@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.2
+ * @version 1.8.6
  **/
 
 #ifndef _TLS_RECORD_H
@@ -56,6 +56,8 @@ error_t tlsEncryptRecord(TlsContext *context,
 error_t tlsDecryptRecord(TlsContext *context,
    TlsEncryptionEngine *decryptionEngine, void *record);
 
+void tlsSetRecordType(TlsContext *context, void *record, uint8_t type);
+uint8_t tlsGetRecordType(TlsContext *context, void *record);
 void tlsSetRecordLength(TlsContext *context, void *record, size_t length);
 size_t tlsGetRecordLength(TlsContext *context, void *record);
 uint8_t *tlsGetRecordData(TlsContext *context, void *record);
@@ -63,8 +65,11 @@ uint8_t *tlsGetRecordData(TlsContext *context, void *record);
 error_t tlsComputeMac(TlsContext *context, TlsEncryptionEngine *encryptionEngine,
    void *record, const uint8_t *data, size_t dataLen, uint8_t *mac);
 
-void tlsFormatAdditionalData(TlsContext *context,
-   const TlsSequenceNumber *seqNum, const void *record, uint8_t *aad);
+void tlsFormatAad(TlsContext *context, TlsEncryptionEngine *encryptionEngine,
+   const void *record, uint8_t *aad, size_t *aadLen);
+
+void tlsFormatNonce(TlsContext *context, TlsEncryptionEngine *encryptionEngine,
+   const void *record, const uint8_t *recordIv, uint8_t *nonce, size_t *nonceLen);
 
 void tlsIncSequenceNumber(TlsSequenceNumber *seqNum);
 

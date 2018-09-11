@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.2
+ * @version 1.8.6
  **/
 
 #ifndef _TLS_MISC_H
@@ -47,10 +47,11 @@ error_t tlsSelectCipherSuite(TlsContext *context, uint16_t identifier);
 error_t tlsSelectCompressMethod(TlsContext *context, uint8_t identifier);
 
 error_t tlsSelectNamedCurve(TlsContext *context,
-   const TlsEllipticCurveList *curveList);
+   const TlsSupportedGroupList *groupList);
 
 error_t tlsInitEncryptionEngine(TlsContext *context,
-   TlsEncryptionEngine *encryptionEngine, TlsConnectionEnd entity);
+   TlsEncryptionEngine *encryptionEngine, TlsConnectionEnd entity,
+   const uint8_t *secret);
 
 void tlsFreeEncryptionEngine(TlsEncryptionEngine *encryptionEngine);
 
@@ -66,7 +67,7 @@ error_t tlsReadEcPoint(const EcDomainParameters *params,
 const char_t *tlsGetVersionName(uint16_t version);
 const HashAlgo *tlsGetHashAlgo(uint8_t hashAlgoId);
 const EcCurveInfo *tlsGetCurveInfo(uint16_t namedCurve);
-TlsEcNamedCurve tlsGetNamedCurve(const uint8_t *oid, size_t length);
+TlsNamedGroup tlsGetNamedCurve(const uint8_t *oid, size_t length);
 
 size_t tlsComputeEncryptionOverhead(TlsEncryptionEngine *encryptionEngine,
    size_t payloadLen);

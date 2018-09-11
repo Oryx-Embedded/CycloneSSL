@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.2
+ * @version 1.8.6
  **/
 
 #ifndef _DTLS_MISC_H
@@ -143,6 +143,17 @@ typedef __start_packed struct
 
 
 /**
+ * @brief List of supported versions
+ **/
+
+typedef __start_packed struct
+{
+   uint8_t length;   //0
+   uint16_t value[]; //1
+} __end_packed DtlsSupportedVersionList;
+
+
+/**
  * @brief DTLS record
  **/
 
@@ -237,6 +248,9 @@ uint16_t dtlsTranslateVersion(uint16_t version);
 
 error_t dtlsFormatCookie(TlsContext *context, uint8_t *p, size_t *written);
 
+error_t dtlsVerifyCookie(TlsContext *context, const DtlsCookie *cookie,
+   const DtlsClientParameters *params);
+
 error_t dtlsSendHelloVerifyRequest(TlsContext *context);
 
 error_t dtlsFormatHelloVerifyRequest(TlsContext *context,
@@ -244,6 +258,9 @@ error_t dtlsFormatHelloVerifyRequest(TlsContext *context,
 
 error_t dtlsParseHelloVerifyRequest(TlsContext *context,
    const DtlsHelloVerifyRequest *message, size_t length);
+
+error_t dtlsParseClientSupportedVersionsExtension(TlsContext *context,
+   const DtlsSupportedVersionList *supportedVersionList);
 
 void dtlsInitReplayWindow(TlsContext *context);
 error_t dtlsCheckReplayWindow(TlsContext *context, DtlsSequenceNumber *seqNum);

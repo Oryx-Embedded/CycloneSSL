@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.2
+ * @version 1.8.6
  **/
 
 #ifndef _TLS_SERVER_H
@@ -60,9 +60,6 @@ error_t tlsParseClientHello(TlsContext *context,
 
 error_t tlsParseClientKeyExchange(TlsContext *context,
    const TlsClientKeyExchange *message, size_t length);
-
-error_t tlsParseCertificateVerify(TlsContext *context,
-   const TlsCertificateVerify *message, size_t length);
 
 //C++ guard
 #ifdef __cplusplus

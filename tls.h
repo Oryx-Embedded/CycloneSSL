@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.2
+ * @version 1.8.6
  **/
 
 #ifndef _TLS_H
@@ -46,6 +46,34 @@ struct _TlsContext;
 #include "pkc/dh.h"
 #include "ecc/ecdh.h"
 #include "aead/gcm.h"
+
+
+/*
+ * CycloneSSL Open is licensed under GPL version 2. In particular:
+ *
+ * - If you link your program to CycloneSSL Open, the result is a derivative
+ *   work that can only be distributed under the same GPL license terms.
+ *
+ * - If additions or changes to CycloneSSL Open are made, the result is a
+ *   derivative work that can only be distributed under the same license terms.
+ *
+ * - The GPL license requires that you make the source code available to
+ *   whoever you make the binary available to.
+ *
+ * - If you sell or distribute a hardware product that runs CycloneSSL Open,
+ *   the GPL license requires you to provide public and full access to all
+ *   source code on a nondiscriminatory basis.
+ *
+ * If you fully understand and accept the terms of the GPL license, then edit
+ * the os_port_config.h header and add the following directive:
+ *
+ * #define GPL_LICENSE_TERMS_ACCEPTED
+ */
+
+#ifndef GPL_LICENSE_TERMS_ACCEPTED
+   #error Before compiling CycloneSSL Open, you must accept the terms of the GPL license
+#endif
+
 
 //TLS version numbers
 #define SSL_VERSION_3_0 0x0300
@@ -116,6 +144,13 @@ struct _TlsContext;
    #error TLS_MAX_FRAG_LEN_SUPPORT parameter is not valid
 #endif
 
+//Record size limit extension
+#ifndef TLS_RECORD_SIZE_LIMIT_SUPPORT
+   #define TLS_RECORD_SIZE_LIMIT_SUPPORT DISABLED
+#elif (TLS_RECORD_SIZE_LIMIT_SUPPORT != ENABLED && TLS_RECORD_SIZE_LIMIT_SUPPORT != DISABLED)
+   #error TLS_RECORD_SIZE_LIMIT_SUPPORT parameter is not valid
+#endif
+
 //ALPN (Application-Layer Protocol Negotiation) extension
 #ifndef TLS_ALPN_SUPPORT
    #define TLS_ALPN_SUPPORT DISABLED
@@ -125,7 +160,7 @@ struct _TlsContext;
 
 //Extended master secret extension
 #ifndef TLS_EXT_MASTER_SECRET_SUPPORT
-   #define TLS_EXT_MASTER_SECRET_SUPPORT DISABLED
+   #define TLS_EXT_MASTER_SECRET_SUPPORT ENABLED
 #elif (TLS_EXT_MASTER_SECRET_SUPPORT != ENABLED && TLS_EXT_MASTER_SECRET_SUPPORT != DISABLED)
    #error TLS_EXT_MASTER_SECRET_SUPPORT parameter is not valid
 #endif
@@ -247,6 +282,13 @@ struct _TlsContext;
    #define TLS_RSA_SIGN_SUPPORT ENABLED
 #elif (TLS_RSA_SIGN_SUPPORT != ENABLED && TLS_RSA_SIGN_SUPPORT != DISABLED)
    #error TLS_RSA_SIGN_SUPPORT parameter is not valid
+#endif
+
+//RSA-PSS signature capability
+#ifndef TLS_RSA_PSS_SIGN_SUPPORT
+   #define TLS_RSA_PSS_SIGN_SUPPORT DISABLED
+#elif (TLS_RSA_PSS_SIGN_SUPPORT != ENABLED && TLS_RSA_PSS_SIGN_SUPPORT != DISABLED)
+   #error TLS_RSA_PSS_SIGN_SUPPORT parameter is not valid
 #endif
 
 //DSA signature capability
@@ -410,6 +452,34 @@ struct _TlsContext;
    #error TLS_SHA512_SUPPORT parameter is not valid
 #endif
 
+//FFDHE key exchange mechanism
+#ifndef TLS_FFDHE_SUPPORT
+   #define TLS_FFDHE_SUPPORT DISABLED
+#elif (TLS_FFDHE_SUPPORT != ENABLED && TLS_FFDHE_SUPPORT != DISABLED)
+   #error TLS_FFDHE_SUPPORT parameter is not valid
+#endif
+
+//ffdhe2048 group support
+#ifndef TLS_FFDHE2048_SUPPORT
+   #define TLS_FFDHE2048_SUPPORT ENABLED
+#elif (TLS_FFDHE2048_SUPPORT != ENABLED && TLS_FFDHE2048_SUPPORT != DISABLED)
+   #error TLS_FFDHE2048_SUPPORT parameter is not valid
+#endif
+
+//ffdhe3072 group support
+#ifndef TLS_FFDHE3072_SUPPORT
+   #define TLS_FFDHE3072_SUPPORT DISABLED
+#elif (TLS_FFDHE3072_SUPPORT != ENABLED && TLS_FFDHE3072_SUPPORT != DISABLED)
+   #error TLS_FFDHE3072_SUPPORT parameter is not valid
+#endif
+
+//ffdhe4096 group support
+#ifndef TLS_FFDHE4096_SUPPORT
+   #define TLS_FFDHE4096_SUPPORT DISABLED
+#elif (TLS_FFDHE4096_SUPPORT != ENABLED && TLS_FFDHE4096_SUPPORT != DISABLED)
+   #error TLS_FFDHE4096_SUPPORT parameter is not valid
+#endif
+
 //secp160k1 elliptic curve support (weak)
 #ifndef TLS_SECP160K1_SUPPORT
    #define TLS_SECP160K1_SUPPORT DISABLED
@@ -522,6 +592,20 @@ struct _TlsContext;
    #error TLS_CURVE448_SUPPORT parameter is not valid
 #endif
 
+//Ed25519 elliptic curve support
+#ifndef TLS_ED25519_SUPPORT
+   #define TLS_ED25519_SUPPORT DISABLED
+#elif (TLS_ED25519_SUPPORT != ENABLED && TLS_ED25519_SUPPORT != DISABLED)
+   #error TLS_ED25519_SUPPORT parameter is not valid
+#endif
+
+//Ed448 elliptic curve support
+#ifndef TLS_ED448_SUPPORT
+   #define TLS_ED448_SUPPORT DISABLED
+#elif (TLS_ED448_SUPPORT != ENABLED && TLS_ED448_SUPPORT != DISABLED)
+   #error TLS_ED448_SUPPORT parameter is not valid
+#endif
+
 //Certificate key usage verification
 #ifndef TLS_CERT_KEY_USAGE_SUPPORT
    #define TLS_CERT_KEY_USAGE_SUPPORT ENABLED
@@ -614,6 +698,8 @@ struct _TlsContext;
    (TlsSocketSendCallback) socketSend, (TlsSocketReceiveCallback) socketReceive, \
    (TlsSocketHandle) socket)
 
+//Minimum plaintext record length
+#define TLS_MIN_RECORD_LENGTH 512
 //Maximum plaintext record length
 #define TLS_MAX_RECORD_LENGTH 16384
 //Data overhead caused by record encryption
@@ -628,7 +714,7 @@ struct _TlsContext;
 
 
 /**
- * @brief TLS transport procotols
+ * @brief TLS transport protocols
  **/
 
 typedef enum
@@ -709,9 +795,9 @@ typedef enum
    TLS_TYPE_SERVER_HELLO         = 2,
    TLS_TYPE_HELLO_VERIFY_REQUEST = 3,
    TLS_TYPE_NEW_SESSION_TICKET   = 4,
-   TLS_TYPE_END_OF_EARLY_DATA    = 5,  //RFC draft
-   TLS_TYPE_HELLO_RETRY_REQUEST  = 6,  //RFC draft
-   TLS_TYPE_ENCRYPTED_EXTENSIONS = 8,  //RFC draft
+   TLS_TYPE_END_OF_EARLY_DATA    = 5,
+   TLS_TYPE_HELLO_RETRY_REQUEST  = 6,
+   TLS_TYPE_ENCRYPTED_EXTENSIONS = 8,
    TLS_TYPE_CERTIFICATE          = 11,
    TLS_TYPE_SERVER_KEY_EXCHANGE  = 12,
    TLS_TYPE_CERTIFICATE_REQUEST  = 13,
@@ -722,8 +808,8 @@ typedef enum
    TLS_TYPE_CERTIFICATE_URL      = 21,
    TLS_TYPE_CERTIFICATE_STATUS   = 22,
    TLS_TYPE_SUPPLEMENTAL_DATA    = 23,
-   TLS_TYPE_KEY_UPDATE           = 24, //RFC draft
-   TLS_TYPE_MESSAGE_HASH         = 254 //RFC draft
+   TLS_TYPE_KEY_UPDATE           = 24,
+   TLS_TYPE_MESSAGE_HASH         = 254
 } TlsMessageType;
 
 
@@ -846,7 +932,9 @@ typedef enum
    TLS_CERT_FORTEZZA_DMS     = 20,
    TLS_CERT_ECDSA_SIGN       = 64,
    TLS_CERT_RSA_FIXED_ECDH   = 65,
-   TLS_CERT_ECDSA_FIXED_ECDH = 66
+   TLS_CERT_ECDSA_FIXED_ECDH = 66,
+   TLS_CERT_ED25519_SIGN     = 256, //For internal use only
+   TLS_CERT_ED448_SIGN       = 257  //For internal use only
 } TlsCertificateType;
 
 
@@ -856,13 +944,14 @@ typedef enum
 
 typedef enum
 {
-   TLS_HASH_ALGO_NONE   = 0,
-   TLS_HASH_ALGO_MD5    = 1,
-   TLS_HASH_ALGO_SHA1   = 2,
-   TLS_HASH_ALGO_SHA224 = 3,
-   TLS_HASH_ALGO_SHA256 = 4,
-   TLS_HASH_ALGO_SHA384 = 5,
-   TLS_HASH_ALGO_SHA512 = 6
+   TLS_HASH_ALGO_NONE      = 0,
+   TLS_HASH_ALGO_MD5       = 1,
+   TLS_HASH_ALGO_SHA1      = 2,
+   TLS_HASH_ALGO_SHA224    = 3,
+   TLS_HASH_ALGO_SHA256    = 4,
+   TLS_HASH_ALGO_SHA384    = 5,
+   TLS_HASH_ALGO_SHA512    = 6,
+   TLS_HASH_ALGO_INTRINSIC = 8
 } TlsHashAlgo;
 
 
@@ -872,12 +961,15 @@ typedef enum
 
 typedef enum
 {
-   TLS_SIGN_ALGO_ANONYMOUS = 0,
-   TLS_SIGN_ALGO_RSA       = 1,
-   TLS_SIGN_ALGO_DSA       = 2,
-   TLS_SIGN_ALGO_ECDSA     = 3,
-   TLS_SIGN_ALGO_ED25519   = 7,
-   TLS_SIGN_ALGO_ED448     = 8
+   TLS_SIGN_ALGO_ANONYMOUS           = 0,
+   TLS_SIGN_ALGO_RSA                 = 1,
+   TLS_SIGN_ALGO_DSA                 = 2,
+   TLS_SIGN_ALGO_ECDSA               = 3,
+   TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA256 = 4,
+   TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA384 = 5,
+   TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA512 = 6,
+   TLS_SIGN_ALGO_ED25519             = 7,
+   TLS_SIGN_ALGO_ED448               = 8
 } TlsSignatureAlgo;
 
 
@@ -897,7 +989,7 @@ typedef enum
    TLS_EXT_CLIENT_AUTHZ              = 7,
    TLS_EXT_SERVER_AUTHZ              = 8,
    TLS_EXT_CERT_TYPE                 = 9,
-   TLS_EXT_ELLIPTIC_CURVES           = 10,
+   TLS_EXT_SUPPORTED_GROUPS          = 10,
    TLS_EXT_EC_POINT_FORMATS          = 11,
    TLS_EXT_SRP                       = 12,
    TLS_EXT_SIGNATURE_ALGORITHMS      = 13,
@@ -912,17 +1004,18 @@ typedef enum
    TLS_EXT_ENCRYPT_THEN_MAC          = 22,
    TLS_EXT_EXTENDED_MASTER_SECRET    = 23,
    TLS_EXT_CACHED_INFO               = 25,
+   TLS_EXT_RECORD_SIZE_LIMIT         = 28,
    TLS_EXT_SESSION_TICKET            = 35,
-   TLS_EXT_PRE_SHARED_KEY            = 41,   //RFC draft
-   TLS_EXT_EARLY_DATA                = 42,   //RFC draft
-   TLS_EXT_SUPPORTED_VERSIONS        = 43,   //RFC draft
-   TLS_EXT_COOKIE                    = 44,   //RFC draft
-   TLS_EXT_PSK_KEY_EXCHANGE_MODES    = 45,   //RFC draft
-   TLS_EXT_CERTIFICATE_AUTHORITIES   = 47,   //RFC draft
-   TLS_EXT_OID_FILTERS               = 48,   //RFC draft
-   TLS_EXT_POST_HANDSHAKE_AUTH       = 49,   //RFC draft
-   TLS_EXT_SIGNATURE_ALGORITHMS_CERT = 50,   //RFC draft
-   TLS_EXT_KEY_SHARE                 = 51,   //RFC draft
+   TLS_EXT_PRE_SHARED_KEY            = 41,
+   TLS_EXT_EARLY_DATA                = 42,
+   TLS_EXT_SUPPORTED_VERSIONS        = 43,
+   TLS_EXT_COOKIE                    = 44,
+   TLS_EXT_PSK_KEY_EXCHANGE_MODES    = 45,
+   TLS_EXT_CERTIFICATE_AUTHORITIES   = 47,
+   TLS_EXT_OID_FILTERS               = 48,
+   TLS_EXT_POST_HANDSHAKE_AUTH       = 49,
+   TLS_EXT_SIGNATURE_ALGORITHMS_CERT = 50,
+   TLS_EXT_KEY_SHARE                 = 51,
    TLS_EXT_RENEGOTIATION_INFO        = 65281
 } TlsExtensionType;
 
@@ -943,58 +1036,59 @@ typedef enum
 
 typedef enum
 {
-   TLS_MAX_FRAGMENT_LENGHT_512  = 1,
-   TLS_MAX_FRAGMENT_LENGHT_1024 = 2,
-   TLS_MAX_FRAGMENT_LENGHT_2048 = 3,
-   TLS_MAX_FRAGMENT_LENGHT_4096 = 4
+   TLS_MAX_FRAGMENT_LENGTH_512  = 1,
+   TLS_MAX_FRAGMENT_LENGTH_1024 = 2,
+   TLS_MAX_FRAGMENT_LENGTH_2048 = 3,
+   TLS_MAX_FRAGMENT_LENGTH_4096 = 4
 } TlsMaxFragmentLength;
 
 
 /**
- * @brief EC named curves
+ * @brief Named groups
  **/
 
 typedef enum
 {
-   TLS_EC_CURVE_NONE                     = 0,
-   TLS_EC_CURVE_SECT163K1                = 1,     //RFC 4492
-   TLS_EC_CURVE_SECT163R1                = 2,     //RFC 4492
-   TLS_EC_CURVE_SECT163R2                = 3,     //RFC 4492
-   TLS_EC_CURVE_SECT193R1                = 4,     //RFC 4492
-   TLS_EC_CURVE_SECT193R2                = 5,     //RFC 4492
-   TLS_EC_CURVE_SECT233K1                = 6,     //RFC 4492
-   TLS_EC_CURVE_SECT233R1                = 7,     //RFC 4492
-   TLS_EC_CURVE_SECT239K1                = 8,     //RFC 4492
-   TLS_EC_CURVE_SECT283K1                = 9,     //RFC 4492
-   TLS_EC_CURVE_SECT283R1                = 10,    //RFC 4492
-   TLS_EC_CURVE_SECT409K1                = 11,    //RFC 4492
-   TLS_EC_CURVE_SECT409R1                = 12,    //RFC 4492
-   TLS_EC_CURVE_SECT571K1                = 13,    //RFC 4492
-   TLS_EC_CURVE_SECT571R1                = 14,    //RFC 4492
-   TLS_EC_CURVE_SECP160K1                = 15,    //RFC 4492
-   TLS_EC_CURVE_SECP160R1                = 16,    //RFC 4492
-   TLS_EC_CURVE_SECP160R2                = 17,    //RFC 4492
-   TLS_EC_CURVE_SECP192K1                = 18,    //RFC 4492
-   TLS_EC_CURVE_SECP192R1                = 19,    //RFC 4492
-   TLS_EC_CURVE_SECP224K1                = 20,    //RFC 4492
-   TLS_EC_CURVE_SECP224R1                = 21,    //RFC 4492
-   TLS_EC_CURVE_SECP256K1                = 22,    //RFC 4492
-   TLS_EC_CURVE_SECP256R1                = 23,    //RFC 4492
-   TLS_EC_CURVE_SECP384R1                = 24,    //RFC 4492
-   TLS_EC_CURVE_SECP521R1                = 25,    //RFC 4492
-   TLS_EC_CURVE_BRAINPOOLP256R1          = 26,    //RFC 7027
-   TLS_EC_CURVE_BRAINPOOLP384R1          = 27,    //RFC 7027
-   TLS_EC_CURVE_BRAINPOOLP512R1          = 28,    //RFC 7027
-   TLS_EC_CURVE_ECDH_X25519              = 29,    //RFC draft
-   TLS_EC_CURVE_ECDH_X448                = 30,    //RFC draft
-   TLS_EC_CURVE_FFDHE2048                = 256,   //RFC 7919
-   TLS_EC_CURVE_FFDHE3072                = 257,   //RFC 7919
-   TLS_EC_CURVE_FFDHE4096                = 258,   //RFC 7919
-   TLS_EC_CURVE_FFDHE6144                = 259,   //RFC 7919
-   TLS_EC_CURVE_FFDHE8192                = 260,   //RFC 7919
-   TLS_EC_CURVE_ARBITRARY_EXPLICIT_PRIME = 65281, //RFC 4492
-   TLS_EC_CURVE_ARBITRARY_EXPLICIT_CHAR2 = 65282  //RFC 4492
-} TlsEcNamedCurve;
+   TLS_GROUP_NONE                 = 0,
+   TLS_GROUP_SECT163K1            = 1,     //RFC 4492
+   TLS_GROUP_SECT163R1            = 2,     //RFC 4492
+   TLS_GROUP_SECT163R2            = 3,     //RFC 4492
+   TLS_GROUP_SECT193R1            = 4,     //RFC 4492
+   TLS_GROUP_SECT193R2            = 5,     //RFC 4492
+   TLS_GROUP_SECT233K1            = 6,     //RFC 4492
+   TLS_GROUP_SECT233R1            = 7,     //RFC 4492
+   TLS_GROUP_SECT239K1            = 8,     //RFC 4492
+   TLS_GROUP_SECT283K1            = 9,     //RFC 4492
+   TLS_GROUP_SECT283R1            = 10,    //RFC 4492
+   TLS_GROUP_SECT409K1            = 11,    //RFC 4492
+   TLS_GROUP_SECT409R1            = 12,    //RFC 4492
+   TLS_GROUP_SECT571K1            = 13,    //RFC 4492
+   TLS_GROUP_SECT571R1            = 14,    //RFC 4492
+   TLS_GROUP_SECP160K1            = 15,    //RFC 4492
+   TLS_GROUP_SECP160R1            = 16,    //RFC 4492
+   TLS_GROUP_SECP160R2            = 17,    //RFC 4492
+   TLS_GROUP_SECP192K1            = 18,    //RFC 4492
+   TLS_GROUP_SECP192R1            = 19,    //RFC 4492
+   TLS_GROUP_SECP224K1            = 20,    //RFC 4492
+   TLS_GROUP_SECP224R1            = 21,    //RFC 4492
+   TLS_GROUP_SECP256K1            = 22,    //RFC 4492
+   TLS_GROUP_SECP256R1            = 23,    //RFC 4492
+   TLS_GROUP_SECP384R1            = 24,    //RFC 4492
+   TLS_GROUP_SECP521R1            = 25,    //RFC 4492
+   TLS_GROUP_BRAINPOOLP256R1      = 26,    //RFC 7027
+   TLS_GROUP_BRAINPOOLP384R1      = 27,    //RFC 7027
+   TLS_GROUP_BRAINPOOLP512R1      = 28,    //RFC 7027
+   TLS_GROUP_ECDH_X25519          = 29,    //RFC 8422
+   TLS_GROUP_ECDH_X448            = 30,    //RFC 8422
+   TLS_GROUP_FFDHE2048            = 256,   //RFC 7919
+   TLS_GROUP_FFDHE3072            = 257,   //RFC 7919
+   TLS_GROUP_FFDHE4096            = 258,   //RFC 7919
+   TLS_GROUP_FFDHE6144            = 259,   //RFC 7919
+   TLS_GROUP_FFDHE8192            = 260,   //RFC 7919
+   TLS_GROUP_FFDHE_MAX            = 511,   //RFC 7919
+   TLS_GROUP_EXPLICIT_PRIME_CURVE = 65281, //RFC 4492
+   TLS_GROUP_EXPLICIT_CHAR2_CURVE = 65282  //RFC 4492
+} TlsNamedGroup;
 
 
 /**
@@ -1003,9 +1097,9 @@ typedef enum
 
 typedef enum
 {
-   TLS_EC_POINT_FORMAT_UNCOMPRESSED              = 0,
-   TLS_EC_POINT_FORMAT_ANSIX962_COMPRESSED_PRIME = 1,
-   TLS_EC_POINT_FORMAT_ANSIX962_COMPRESSED_CHAR2 = 2
+   TLS_EC_POINT_FORMAT_UNCOMPRESSED               = 0,
+   TLS_EC_POINT_FORMAT_ANSI_X962_COMPRESSED_PRIME = 1,
+   TLS_EC_POINT_FORMAT_ANSI_X962_COMPRESSED_CHAR2 = 2
 } TlsEcPointFormat;
 
 
@@ -1037,7 +1131,7 @@ typedef enum
    TLS_STATE_SERVER_HELLO_DONE         = 7,
    TLS_STATE_CLIENT_CERTIFICATE        = 8,
    TLS_STATE_CLIENT_KEY_EXCHANGE       = 9,
-   TLS_STATE_CERTIFICATE_VERIFY        = 10,
+   TLS_STATE_CLIENT_CERTIFICATE_VERIFY = 10,
    TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC = 11,
    TLS_STATE_CLIENT_FINISHED           = 12,
    TLS_STATE_SERVER_CHANGE_CIPHER_SPEC = 13,
@@ -1168,6 +1262,17 @@ typedef __start_packed struct
 
 
 /**
+ * @brief List of supported versions
+ **/
+
+typedef __start_packed struct
+{
+   uint8_t length;   //0
+   uint16_t value[]; //1
+} __end_packed TlsSupportedVersionList;
+
+
+/**
  * @brief Server name
  **/
 
@@ -1213,14 +1318,14 @@ typedef __start_packed struct
 
 
 /**
- * @brief List of supported elliptic curves
+ * @brief List of supported groups
  **/
 
 typedef __start_packed struct
 {
    uint16_t length;  //0-1
    uint16_t value[]; //2
-} __end_packed TlsEllipticCurveList;
+} __end_packed TlsSupportedGroupList;
 
 
 /**
@@ -1298,7 +1403,7 @@ typedef __start_packed struct
    TlsSignHashAlgo algorithm; //0-1
    uint16_t length;           //2-3
    uint8_t value[];           //4
-} __end_packed TlsDigitalSignature2;
+} __end_packed Tls12DigitalSignature;
 
 
 /**
@@ -1564,14 +1669,14 @@ typedef struct
 
 typedef struct
 {
-   const char_t *certChain;    ///<End entity certificate chain (PEM format)
-   size_t certChainLen;        ///<Length of the certificate chain
-   const char_t *privateKey;   ///<Private key (PEM format)
-   size_t privateKeyLen;       ///<Length of the private key
-   TlsCertificateType type;    ///<End entity certificate type
-   TlsSignatureAlgo signAlgo;  ///<Signature algorithm used to sign the end entity certificate
-   TlsHashAlgo hashAlgo;       ///<Hash algorithm used to sign the end entity certificate
-   TlsEcNamedCurve namedCurve; ///<Named curve used to generate the EC public key
+   const char_t *certChain;   ///<End entity certificate chain (PEM format)
+   size_t certChainLen;       ///<Length of the certificate chain
+   const char_t *privateKey;  ///<Private key (PEM format)
+   size_t privateKeyLen;      ///<Length of the private key
+   TlsCertificateType type;   ///<End entity certificate type
+   TlsSignatureAlgo signAlgo; ///<Signature algorithm used to sign the end entity certificate
+   TlsHashAlgo hashAlgo;      ///<Hash algorithm used to sign the end entity certificate
+   TlsNamedGroup namedCurve;  ///<Named curve used to generate the EC public key
 } TlsCertDesc;
 
 
@@ -1581,25 +1686,32 @@ typedef struct
 
 typedef struct
 {
-   const TlsServerNameList *serverNameList;       ///<ServerName extension
-   const uint8_t *maxFragLen;                     ///<MaxFragmentLength extension
-   const TlsEllipticCurveList *ellipticCurveList; ///<EllipticCurves extension
-   const TlsEcPointFormatList *ecPointFormatList; ///<EcPointFormats extension
-   const TlsSignHashAlgos *signAlgoList;          ///<SignatureAlgorithms extension
+   const TlsSupportedVersionList *supportedVersionList; ///<SupportedVersions extension (ClientHello)
+   const uint8_t *selectedVersion;                      ///<SupportedVersions extension (ServerHello)
+   const TlsServerNameList *serverNameList;             ///<ServerName extension
+   const TlsSupportedGroupList *supportedGroupList;     ///<SupportedGroups extension
+   const TlsEcPointFormatList *ecPointFormatList;       ///<EcPointFormats extension
+   const TlsSignHashAlgos *signAlgoList;                ///<SignatureAlgorithms extension
+#if (TLS_MAX_FRAG_LEN_SUPPORT == ENABLED)
+   const uint8_t *maxFragLen;                           ///<MaxFragmentLength extension
+#endif
+#if (TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)
+   const uint8_t *recordSizeLimit;                      ///<RecordSizeLimit extension
+#endif
 #if (TLS_ALPN_SUPPORT == ENABLED)
-   const TlsProtocolNameList *protocolNameList;   ///<ALPN extension
+   const TlsProtocolNameList *protocolNameList;         ///<ALPN extension
 #endif
 #if (TLS_RAW_PUBLIC_KEY_SUPPORT == ENABLED)
-   const TlsCertTypeList *clientCertTypeList;     ///<ClientCertType extension
+   const TlsCertTypeList *clientCertTypeList;           ///<ClientCertType extension
    const uint8_t *clientCertType;
-   const TlsCertTypeList *serverCertTypeList;     ///<ServerCertType extension
+   const TlsCertTypeList *serverCertTypeList;           ///<ServerCertType extension
    const uint8_t *serverCertType;
 #endif
 #if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
-   const uint8_t *extendedMasterSecret;           ///<ExtendedMasterSecret extension
+   const uint8_t *extendedMasterSecret;                 ///<ExtendedMasterSecret extension
 #endif
 #if (TLS_SECURE_RENEGOTIATION_SUPPORT == ENABLED)
-   const TlsRenegoInfo *renegoInfo;               ///<RenegotiationInfo extension
+   const TlsRenegoInfo *renegoInfo;                     ///<RenegotiationInfo extension
 #endif
 } TlsHelloExtensions;
 
@@ -1686,22 +1798,19 @@ struct _TlsContext
    uint8_t compressMethod;                  ///<Negotiated compression algorithm
    TlsCipherSuiteInfo cipherSuite;          ///<Negotiated cipher suite
    TlsKeyExchMethod keyExchMethod;          ///<Key exchange method
+   TlsSignatureAlgo signAlgo;               ///<Signature algorithm to be used
    TlsHashAlgo signHashAlgo;                ///<Hash algorithm used for signing
-   uint16_t namedCurve;                     ///<Named curve
+   uint16_t namedGroup;                     ///<ECDHE and FFDHE named group
 
    TlsCertificateType peerCertType;         ///<Peer's certificate type
    TlsClientAuthMode clientAuthMode;        ///<Client authentication mode
    bool_t clientCertRequested;              ///<This flag tells whether the client certificate is requested
 
    bool_t resume;                           ///<The connection is established by resuming a session
-   bool_t changeCipherSpecSent;             ///<A ChangeCipherSpec message has been sent
-   bool_t changeCipherSpecReceived;         ///<A ChangeCipherSpec message has been received from the peer
    bool_t fatalAlertSent;                   ///<A fatal alert message has been sent
    bool_t fatalAlertReceived;               ///<A fatal alert message has been received from the peer
    bool_t closeNotifySent;                  ///<A closure alert has been sent
    bool_t closeNotifyReceived;              ///<A closure alert has been received from the peer
-
-   size_t maxFragLen;                       ///<Maximum plaintext fragment length
 
    uint8_t *txBuffer;                       ///<TX buffer
    size_t txBufferSize;                     ///<TX buffer size
@@ -1714,6 +1823,7 @@ struct _TlsContext
 
    uint8_t *rxBuffer;                       ///<RX buffer
    size_t rxBufferSize;                     ///<RX buffer size
+   size_t rxBufferMaxLen;                   ///<Maximum number of plaintext data the RX buffer can hold
    TlsContentType rxBufferType;             ///<Type of data that resides in the RX buffer
    size_t rxBufferLen;                      ///<Number of bytes available for reading
    size_t rxBufferPos;                      ///<Current position in RX buffer
@@ -1764,9 +1874,9 @@ struct _TlsContext
    bool_t ecPointFormatsExtReceived;        ///<The EcPointFormats extension has been received
 #endif
 
-#if (TLS_RSA_SIGN_SUPPORT == ENABLED || TLS_RSA_SUPPORT == ENABLED || \
-   TLS_DHE_RSA_SUPPORT == ENABLED || TLS_ECDHE_RSA_SUPPORT == ENABLED || \
-   TLS_RSA_PSK_SUPPORT == ENABLED)
+#if (TLS_RSA_SIGN_SUPPORT == ENABLED || TLS_RSA_PSS_SIGN_SUPPORT == ENABLED || \
+   TLS_RSA_SUPPORT == ENABLED || TLS_DHE_RSA_SUPPORT == ENABLED || \
+   TLS_ECDHE_RSA_SUPPORT == ENABLED || TLS_RSA_PSK_SUPPORT == ENABLED)
    RsaPublicKey peerRsaPublicKey;           ///<Peer's RSA public key
 #endif
 
@@ -1789,7 +1899,13 @@ struct _TlsContext
 #endif
 
 #if (TLS_MAX_FRAG_LEN_SUPPORT == ENABLED)
+   size_t maxFragLen;                       ///<Maximum plaintext fragment length
    bool_t maxFragLenExtReceived;            ///<The MaxFragmentLength extension has been received
+#endif
+
+#if (TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)
+   size_t recordSizeLimit;                  ///<Maximum record size the peer is willing to receive
+   bool_t recordSizeLimitExtReceived;       ///<The RecordSizeLimit extension has been received
 #endif
 
 #if (TLS_ALPN_SUPPORT == ENABLED)
@@ -1803,16 +1919,16 @@ struct _TlsContext
 #endif
 
 #if (TLS_RAW_PUBLIC_KEY_SUPPORT == ENABLED)
-   bool_t clientCertTypeExtReceived;        ///<The ClientCertType extension has been received
-   bool_t serverCertTypeExtReceived;        ///<The ServerCertType extension has been received
    TlsCertificateFormat certFormat;         ///<Certificate format
    TlsCertificateFormat peerCertFormat;     ///<Peer's certificate format
    TlsRpkVerifyCallback rpkVerifyCallback;  ///<Raw public key verification callback function
+   bool_t clientCertTypeExtReceived;        ///<The ClientCertType extension has been received
+   bool_t serverCertTypeExtReceived;        ///<The ServerCertType extension has been received
 #endif
 
 #if (TLS_SECURE_RENEGOTIATION_SUPPORT == ENABLED)
-   bool_t secureRenegoEnabled;              ///<Secure renegociation enabled
-   bool_t secureRenegoFlag;                 ///<Secure renegociation flag
+   bool_t secureRenegoEnabled;              ///<Secure renegotiation enabled
+   bool_t secureRenegoFlag;                 ///<Secure renegotiation flag
 #endif
 
 #if (TLS_FALLBACK_SCSV_SUPPORT == ENABLED)
@@ -1884,8 +2000,8 @@ const char_t *tlsGetServerName(TlsContext *context);
 error_t tlsSetCache(TlsContext *context, TlsCache *cache);
 error_t tlsSetClientAuthMode(TlsContext *context, TlsClientAuthMode mode);
 
-error_t tlsSetBufferSize(TlsContext *context,
-   size_t txBufferSize, size_t rxBufferSize);
+error_t tlsSetBufferSize(TlsContext *context, size_t txBufferSize,
+   size_t rxBufferSize);
 
 error_t tlsSetMaxFragmentLength(TlsContext *context, size_t maxFragLen);
 

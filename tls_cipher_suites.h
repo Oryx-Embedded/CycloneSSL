@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.2
+ * @version 1.8.6
  **/
 
 #ifndef _TLS_CIPHER_SUITES_H
@@ -401,9 +401,27 @@ typedef enum
    TLS_SRP_SHA_DSS_WITH_AES_128_CBC_SHA          = 0xC01F, //RFC 5054
    TLS_SRP_SHA_DSS_WITH_AES_256_CBC_SHA          = 0xC022, //RFC 5054
 
+   TLS_AES_128_GCM_SHA256                        = 0x1301, //RFC 8446
+   TLS_AES_256_GCM_SHA384                        = 0x1302, //RFC 8446
+   TLS_CHACHA20_POLY1305_SHA256                  = 0x1303, //RFC 8446
+   TLS_AES_128_CCM_SHA256                        = 0x1304, //RFC 8446
+   TLS_AES_128_CCM_8_SHA256                      = 0x1305, //RFC 8446
+
    TLS_EMPTY_RENEGOTIATION_INFO_SCSV             = 0x00FF, //RFC 5746
    TLS_FALLBACK_SCSV                             = 0x5600  //RFC 7507
 } TlsCipherSuiteList;
+
+
+/**
+ * @brief Cipher suite types
+ **/
+
+typedef enum
+{
+   TLS_CIPHER_SUITE_TYPE_UNKNOWN = 0,
+   TLS_CIPHER_SUITE_TYPE_ECC     = 1,
+   TLS_CIPHER_SUITE_TYPE_FFDHE   = 2,
+} TlsCipherSuiteType;
 
 
 //List of supported cipher suites
@@ -416,7 +434,7 @@ const char_t *tlsGetCipherSuiteName(uint16_t identifier);
 bool_t tlsIsCipherSuiteSupported(uint16_t identifier, uint16_t version,
    TlsTransportProtocol transportProtocol);
 
-bool_t tlsIsEccCipherSuite(uint16_t identifier);
+TlsCipherSuiteType tlsGetCipherSuiteType(uint16_t identifier);
 
 //C++ guard
 #ifdef __cplusplus

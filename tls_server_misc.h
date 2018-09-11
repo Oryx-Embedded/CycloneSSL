@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.2
+ * @version 1.8.6
  **/
 
 #ifndef _TLS_SERVER_MISC_H
@@ -42,6 +42,9 @@ error_t tlsFormatServerSniExtension(TlsContext *context,
    uint8_t *p, size_t *written);
 
 error_t tlsFormatServerMaxFragLenExtension(TlsContext *context,
+   uint8_t *p, size_t *written);
+
+error_t tlsFormatServerRecordSizeLimitExtension(TlsContext *context,
    uint8_t *p, size_t *written);
 
 error_t tlsFormatServerEcPointFormatsExtension(TlsContext *context,
@@ -69,13 +72,39 @@ error_t tlsFormatServerKeyParams(TlsContext *context,
    uint8_t *p, size_t *written);
 
 error_t tlsGenerateServerKeySignature(TlsContext *context,
-   uint8_t *p, const uint8_t *params, size_t paramsLen, size_t *written);
+   TlsDigitalSignature *signature, const uint8_t *params,
+   size_t paramsLen, size_t *written);
+
+error_t tls12GenerateServerKeySignature(TlsContext *context,
+   Tls12DigitalSignature *signature, const uint8_t *params,
+   size_t paramsLen, size_t *written);
+
+error_t tlsCheckSignalingCipherSuiteValues(TlsContext *context,
+   const TlsCipherSuites *cipherSuites);
+
+error_t tlsNegotiateVersion(TlsContext *context, uint16_t clientVersion,
+   const TlsSupportedVersionList *supportedVersionList);
+
+error_t tlsNegotiateCipherSuite(TlsContext *context,
+   const TlsCipherSuites *cipherSuites, const TlsHelloExtensions *extensions);
+
+error_t tlsSelectCipherSuiteParams(TlsContext *context,
+   const TlsHelloExtensions *extensions);
+
+error_t tlsParseCompressMethods(TlsContext *context,
+   const TlsCompressMethods *compressMethods);
+
+error_t tlsParseClientSupportedVersionsExtension(TlsContext *context,
+   const TlsSupportedVersionList *supportedVersionList);
 
 error_t tlsParseClientSniExtension(TlsContext *context,
    const TlsServerNameList *serverNameList);
 
 error_t tlsParseClientMaxFragLenExtension(TlsContext *context,
    const uint8_t *maxFragLen);
+
+error_t tlsParseClientRecordSizeLimitExtension(TlsContext *context,
+   const uint8_t *recordSizeLimit);
 
 error_t tlsParseClientEcPointFormatsExtension(TlsContext *context,
    const TlsEcPointFormatList *ecPointFormatList);
@@ -88,6 +117,12 @@ error_t tlsParseClientCertTypeListExtension(TlsContext *context,
 
 error_t tlsParseServerCertTypeListExtension(TlsContext *context,
    const TlsCertTypeList *serverCertTypeList);
+
+error_t tlsParseClientEmsExtension(TlsContext *context,
+   const uint8_t *extendedMasterSecret);
+
+error_t tlsParseClientRenegoInfoExtension(TlsContext *context,
+   const TlsRenegoInfo *renegoInfo);
 
 error_t tlsParsePskIdentity(TlsContext *context,
    const uint8_t *p, size_t length, size_t *consumed);

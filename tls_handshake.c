@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.2
+ * @version 1.8.6
  **/
 
 //Switch to the appropriate trace level
@@ -153,7 +153,7 @@ error_t tlsClientHandshake(TlsContext *context)
             error = tlsSendClientKeyExchange(context);
             break;
          //Sending CertificateVerify message?
-         case TLS_STATE_CERTIFICATE_VERIFY:
+         case TLS_STATE_CLIENT_CERTIFICATE_VERIFY:
             //This message is used to provide explicit verification of a client
             //certificate. This message is only sent following a client certificate
             //that has signing capability. When sent, it must immediately follow
@@ -169,7 +169,7 @@ error_t tlsClientHandshake(TlsContext *context)
             break;
          //Sending Finished message?
          case TLS_STATE_CLIENT_FINISHED:
-            //A Finished message is always sent immediately after a changeCipherSpec
+            //A Finished message is always sent immediately after a ChangeCipherSpec
             //message to verify that the key exchange and authentication processes
             //were successful
             error = tlsSendFinished(context);
@@ -324,7 +324,7 @@ error_t tlsServerHandshake(TlsContext *context)
             break;
          //Sending Finished message?
          case TLS_STATE_SERVER_FINISHED:
-            //A Finished message is always sent immediately after a changeCipherSpec
+            //A Finished message is always sent immediately after a ChangeCipherSpec
             //message to verify that the key exchange and authentication processes
             //were successful
             error = tlsSendFinished(context);
@@ -333,7 +333,7 @@ error_t tlsServerHandshake(TlsContext *context)
          case TLS_STATE_CLIENT_HELLO:
          case TLS_STATE_CLIENT_CERTIFICATE:
          case TLS_STATE_CLIENT_KEY_EXCHANGE:
-         case TLS_STATE_CERTIFICATE_VERIFY:
+         case TLS_STATE_CLIENT_CERTIFICATE_VERIFY:
          case TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC:
          case TLS_STATE_CLIENT_FINISHED:
             //Parse incoming handshake message
@@ -415,6 +415,11 @@ error_t tlsParseClientMessage(TlsContext *context)
    //Check status code
    if(!error)
    {
+      //Advance data pointer
+      context->rxBufferPos += length;
+      //Number of bytes still pending in the receive buffer
+      context->rxBufferLen -= length;
+
       //Handshake message received?
       if(contentType == TLS_TYPE_HANDSHAKE)
       {
@@ -483,7 +488,7 @@ error_t tlsParseClientMessage(TlsContext *context)
             break;
          //Finished message received?
          case TLS_TYPE_FINISHED:
-            //A Finished message is always sent immediately after a changeCipherSpec
+            //A Finished message is always sent immediately after a ChangeCipherSpec
             //message to verify that the key exchange and authentication processes
             //were successful
             error = tlsParseFinished(context, message, n);
@@ -516,15 +521,10 @@ error_t tlsParseClientMessage(TlsContext *context)
       //Application data received?
       else
       {
-         //The client cannot transmit application data
-         //before the handshake is completed
+         //The client cannot transmit application data before the handshake is
+         //completed
          error = ERROR_UNEXPECTED_MESSAGE;
       }
-
-      //Advance data pointer
-      context->rxBufferPos += length;
-      //Number of bytes still pending in the receive buffer
-      context->rxBufferLen -= length;
    }
 
    //Return status code
@@ -568,6 +568,11 @@ error_t tlsParseServerMessage(TlsContext *context)
    //Check status code
    if(!error)
    {
+      //Advance data pointer
+      context->rxBufferPos += length;
+      //Number of bytes still pending in the receive buffer
+      context->rxBufferLen -= length;
+
       //Handshake message received?
       if(contentType == TLS_TYPE_HANDSHAKE)
       {
@@ -650,7 +655,7 @@ error_t tlsParseServerMessage(TlsContext *context)
             break;
          //Finished message received?
          case TLS_TYPE_FINISHED:
-            //A Finished message is always sent immediately after a changeCipherSpec
+            //A Finished message is always sent immediately after a ChangeCipherSpec
             //message to verify that the key exchange and authentication processes
             //were successful
             error = tlsParseFinished(context, message, n);
@@ -681,15 +686,10 @@ error_t tlsParseServerMessage(TlsContext *context)
       //Application data received?
       else
       {
-         //The server cannot transmit application data
-         //before the handshake is completed
+         //The server cannot transmit application data before the handshake is
+         //completed
          error = ERROR_UNEXPECTED_MESSAGE;
       }
-
-      //Advance data pointer
-      context->rxBufferPos += length;
-      //Number of bytes still pending in the receive buffer
-      context->rxBufferLen -= length;
    }
 
    //Return status code

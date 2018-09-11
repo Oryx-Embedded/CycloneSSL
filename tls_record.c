@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.2
+ * @version 1.8.6
  **/
 
 //Switch to the appropriate trace level
@@ -104,9 +104,15 @@ error_t tlsWriteProtocolData(TlsContext *context,
 
          //The record length must not exceed 16384 bytes
          n = MIN(n, TLS_MAX_RECORD_LENGTH);
+
+#if (TLS_MAX_FRAG_LEN_SUPPORT == ENABLED)
          //Do not exceed the negotiated maximum fragment length
          n = MIN(n, context->maxFragLen);
-
+#endif
+#if (TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)
+         //Maximum record size the peer is willing to receive
+         n = MIN(n, context->recordSizeLimit);
+#endif
          //Send TLS record
          error = tlsWriteRecord(context, p, n, context->txBufferType);
 
@@ -330,6 +336,10 @@ error_t tlsWriteRecord(TlsContext *context, const uint8_t *data,
    error_t error;
    size_t n;
    TlsRecord *record;
+   TlsEncryptionEngine *encryptionEngine;
+
+   //Point to the encryption engine
+   encryptionEngine = &context->encryptionEngine;
 
    //Point to the TLS record
    record = (TlsRecord *) context->txBuffer;
@@ -356,10 +366,11 @@ error_t tlsWriteRecord(TlsContext *context, const uint8_t *data,
          TRACE_DEBUG_ARRAY("  ", record, length + sizeof(TlsRecord));
 
          //Protect record payload?
-         if(context->changeCipherSpecSent)
+         if(encryptionEngine->cipherMode != CIPHER_MODE_NULL ||
+            encryptionEngine->hashAlgo != NULL)
          {
             //Encrypt TLS record
-            error = tlsEncryptRecord(context, &context->encryptionEngine, record);
+            error = tlsEncryptRecord(context, encryptionEngine, record);
          }
 
          //Check status code
@@ -425,6 +436,10 @@ error_t tlsReadRecord(TlsContext *context, uint8_t *data,
    error_t error;
    size_t n;
    TlsRecord *record;
+   TlsEncryptionEngine *decryptionEngine;
+
+   //Point to the decryption engine
+   decryptionEngine = &context->decryptionEngine;
 
    //Point to the buffer where to store the incoming TLS record
    record = (TlsRecord *) data;
@@ -531,10 +546,11 @@ error_t tlsReadRecord(TlsContext *context, uint8_t *data,
          if(!error)
          {
             //Record payload protected?
-            if(context->changeCipherSpecReceived)
+            if(decryptionEngine->cipherMode != CIPHER_MODE_NULL ||
+               decryptionEngine->hashAlgo != NULL)
             {
                //Decrypt TLS record
-               error = tlsDecryptRecord(context, &context->decryptionEngine, record);
+               error = tlsDecryptRecord(context, decryptionEngine, record);
             }
          }
 
@@ -742,37 +758,39 @@ error_t tlsEncryptRecord(TlsContext *context,
       else
 #endif
 #if (TLS_CCM_CIPHER_SUPPORT == ENABLED || TLS_CCM_8_CIPHER_SUPPORT == ENABLED || \
-   TLS_GCM_CIPHER_SUPPORT == ENABLED)
-      //CCM or GCM AEAD cipher?
+   TLS_GCM_CIPHER_SUPPORT == ENABLED || TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
+      //AEAD cipher?
       if(encryptionEngine->cipherMode == CIPHER_MODE_CCM ||
-         encryptionEngine->cipherMode == CIPHER_MODE_GCM)
+         encryptionEngine->cipherMode == CIPHER_MODE_GCM ||
+         encryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
       {
          uint8_t *tag;
+         size_t aadLen;
          size_t nonceLen;
-         uint8_t nonce[12];
          uint8_t aad[13];
+         uint8_t nonce[12];
 
          //Additional data to be authenticated
-         tlsFormatAdditionalData(context, &encryptionEngine->seqNum, record, aad);
+         tlsFormatAad(context, encryptionEngine, record, aad, &aadLen);
 
-         //Determine the total length of the nonce
-         nonceLen = encryptionEngine->fixedIvLen + encryptionEngine->recordIvLen;
-         //The salt is the implicit part of the nonce and is not sent in the packet
-         memcpy(nonce, encryptionEngine->iv, encryptionEngine->fixedIvLen);
+         //Check the length of the nonce explicit part
+         if(encryptionEngine->recordIvLen != 0)
+         {
+            //Make room for the explicit nonce at the beginning of the record
+            memmove(data + encryptionEngine->recordIvLen, data, length);
 
-         //The explicit part of the nonce is chosen by the sender
-         error = context->prngAlgo->read(context->prngContext,
-            nonce + encryptionEngine->fixedIvLen, encryptionEngine->recordIvLen);
-         //Any error to report?
-         if(error)
-            return error;
+            //The explicit part of the nonce is chosen by the sender and is
+            //carried in each TLS record
+            error = context->prngAlgo->read(context->prngContext, data,
+               encryptionEngine->recordIvLen);
+            //Any error to report?
+            if(error)
+               return error;
+         }
 
-         //Make room for the explicit nonce at the beginning of the record
-         memmove(data + encryptionEngine->recordIvLen, data, length);
-
-         //The explicit part of the nonce is carried in each TLS record
-         memcpy(data, nonce + encryptionEngine->fixedIvLen,
-            encryptionEngine->recordIvLen);
+         //Generate the nonce
+         tlsFormatNonce(context, encryptionEngine, record, data, nonce,
+            &nonceLen);
 
          //Point to the plaintext
          data += encryptionEngine->recordIvLen;
@@ -785,7 +803,7 @@ error_t tlsEncryptRecord(TlsContext *context,
          {
             //Authenticated encryption using CCM
             error = ccmEncrypt(encryptionEngine->cipherAlgo,
-               encryptionEngine->cipherContext, nonce, nonceLen, aad, 13,
+               encryptionEngine->cipherContext, nonce, nonceLen, aad, aadLen,
                data, data, length, tag, encryptionEngine->authTagLen);
          }
          else
@@ -796,7 +814,18 @@ error_t tlsEncryptRecord(TlsContext *context,
          {
             //Authenticated encryption using GCM
             error = gcmEncrypt(encryptionEngine->gcmContext, nonce, nonceLen,
-               aad, 13, data, data, length, tag, encryptionEngine->authTagLen);
+               aad, aadLen, data, data, length, tag, encryptionEngine->authTagLen);
+         }
+         else
+#endif
+#if (TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
+         //ChaCha20Poly1305 AEAD cipher?
+         if(encryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
+         {
+            //Authenticated encryption using ChaCha20Poly1305
+            error = chacha20Poly1305Encrypt(encryptionEngine->encKey,
+               encryptionEngine->encKeyLen, nonce, nonceLen, aad, aadLen,
+               data, data, length, tag, encryptionEngine->authTagLen);
          }
          else
 #endif
@@ -812,49 +841,6 @@ error_t tlsEncryptRecord(TlsContext *context,
 
          //Compute the length of the resulting message
          length += encryptionEngine->recordIvLen + encryptionEngine->authTagLen;
-         //Fix length field
-         tlsSetRecordLength(context, record, length);
-
-         //Increment sequence number
-         tlsIncSequenceNumber(&encryptionEngine->seqNum);
-      }
-      else
-#endif
-#if (TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
-      //ChaCha20Poly1305 AEAD cipher?
-      if(encryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
-      {
-         size_t i;
-         uint8_t *tag;
-         uint8_t nonce[12];
-         uint8_t aad[13];
-
-         //Additional data to be authenticated
-         tlsFormatAdditionalData(context, &encryptionEngine->seqNum, record, aad);
-
-         //The 64-bit record sequence number is serialized as an 8-byte,
-         //big-endian value and padded on the left with four 0x00 bytes
-         memcpy(nonce + 4, aad, 8);
-         memset(nonce, 0, 4);
-
-         //The padded sequence number is XORed with the write IV to form
-         //the 96-bit nonce
-         for(i = 0; i < encryptionEngine->fixedIvLen; i++)
-            nonce[i] ^= encryptionEngine->iv[i];
-
-         //Point to the buffer where to store the authentication tag
-         tag = data + length;
-
-         //Authenticated encryption using ChaCha20Poly1305
-         error = chacha20Poly1305Encrypt(encryptionEngine->encKey,
-            encryptionEngine->encKeyLen, nonce, 12, aad, 13, data,
-            data, length, tag, encryptionEngine->authTagLen);
-         //Failed to encrypt data?
-         if(error)
-            return error;
-
-         //Compute the length of the resulting message
-         length += encryptionEngine->authTagLen;
          //Fix length field
          tlsSetRecordLength(context, record, length);
 
@@ -980,16 +966,18 @@ error_t tlsDecryptRecord(TlsContext *context,
       else
 #endif
 #if (TLS_CCM_CIPHER_SUPPORT == ENABLED || TLS_CCM_8_CIPHER_SUPPORT == ENABLED || \
-   TLS_GCM_CIPHER_SUPPORT == ENABLED)
-      //CCM or GCM AEAD cipher?
+   TLS_GCM_CIPHER_SUPPORT == ENABLED || TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
+      //AEAD cipher?
       if(decryptionEngine->cipherMode == CIPHER_MODE_CCM ||
-         decryptionEngine->cipherMode == CIPHER_MODE_GCM)
+         decryptionEngine->cipherMode == CIPHER_MODE_GCM ||
+         decryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
       {
          uint8_t *ciphertext;
          uint8_t *tag;
+         size_t aadLen;
          size_t nonceLen;
-         uint8_t nonce[12];
          uint8_t aad[13];
+         uint8_t nonce[12];
 
          //Make sure the message length is acceptable
          if(length < (decryptionEngine->recordIvLen + decryptionEngine->authTagLen))
@@ -1001,17 +989,11 @@ error_t tlsDecryptRecord(TlsContext *context,
          tlsSetRecordLength(context, record, length);
 
          //Additional data to be authenticated
-         tlsFormatAdditionalData(context, &decryptionEngine->seqNum, record, aad);
+         tlsFormatAad(context, decryptionEngine, record, aad, &aadLen);
 
-         //Determine the total length of the nonce
-         nonceLen = decryptionEngine->fixedIvLen + decryptionEngine->recordIvLen;
-
-         //The salt is the implicit part of the nonce and is not sent in the packet
-         memcpy(nonce, decryptionEngine->iv, decryptionEngine->fixedIvLen);
-
-         //The explicit part of the nonce is chosen by the sender
-         memcpy(nonce + decryptionEngine->fixedIvLen, data,
-            decryptionEngine->recordIvLen);
+         //Generate the nonce
+         tlsFormatNonce(context, decryptionEngine, record, data, nonce,
+            &nonceLen);
 
          //Point to the ciphertext
          ciphertext = data + decryptionEngine->recordIvLen;
@@ -1024,7 +1006,7 @@ error_t tlsDecryptRecord(TlsContext *context,
          {
             //Authenticated decryption using CCM
             error = ccmDecrypt(decryptionEngine->cipherAlgo,
-               decryptionEngine->cipherContext, nonce, nonceLen, aad, 13,
+               decryptionEngine->cipherContext, nonce, nonceLen, aad, aadLen,
                ciphertext, ciphertext, length, tag, decryptionEngine->authTagLen);
          }
          else
@@ -1035,7 +1017,19 @@ error_t tlsDecryptRecord(TlsContext *context,
          {
             //Authenticated decryption using GCM
             error = gcmDecrypt(decryptionEngine->gcmContext, nonce, nonceLen,
-               aad, 13, ciphertext, ciphertext, length, tag, decryptionEngine->authTagLen);
+               aad, aadLen, ciphertext, ciphertext, length, tag,
+               decryptionEngine->authTagLen);
+         }
+         else
+#endif
+#if (TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
+         //ChaCha20Poly1305 AEAD cipher?
+         if(decryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
+         {
+            //Authenticated decryption using ChaCha20Poly1305
+            error = chacha20Poly1305Decrypt(decryptionEngine->encKey,
+               decryptionEngine->encKeyLen, nonce, 12, aad, aadLen, data,
+               data, length, tag, decryptionEngine->authTagLen);
          }
          else
 #endif
@@ -1050,54 +1044,10 @@ error_t tlsDecryptRecord(TlsContext *context,
             return ERROR_BAD_RECORD_MAC;
 
          //Discard the explicit part of the nonce
-         memmove(data, data + decryptionEngine->recordIvLen, length);
-
-         //Increment sequence number
-         tlsIncSequenceNumber(&decryptionEngine->seqNum);
-      }
-      else
-#endif
-#if (TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
-      //ChaCha20Poly1305 AEAD cipher?
-      if(decryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
-      {
-         size_t i;
-         uint8_t *tag;
-         uint8_t nonce[12];
-         uint8_t aad[13];
-
-         //Make sure the message length is acceptable
-         if(length < decryptionEngine->authTagLen)
-            return ERROR_BAD_RECORD_MAC;
-
-         //Calculate the length of the ciphertext
-         length -= decryptionEngine->authTagLen;
-         //Fix the length field of the TLS record
-         tlsSetRecordLength(context, record, length);
-
-         //Additional data to be authenticated
-         tlsFormatAdditionalData(context, &decryptionEngine->seqNum, record, aad);
-
-         //The 64-bit record sequence number is serialized as an 8-byte,
-         //big-endian value and padded on the left with four 0x00 bytes
-         memcpy(nonce + 4, aad, 8);
-         memset(nonce, 0, 4);
-
-         //The padded sequence number is XORed with the read IV to form
-         //the 96-bit nonce
-         for(i = 0; i < decryptionEngine->fixedIvLen; i++)
-            nonce[i] ^= decryptionEngine->iv[i];
-
-         //Point to the authentication tag
-         tag = data + length;
-
-         //Authenticated decryption using ChaCha20Poly1305
-         error = chacha20Poly1305Decrypt(decryptionEngine->encKey,
-            decryptionEngine->encKeyLen, nonce, 12, aad, 13, data,
-            data, length, tag, decryptionEngine->authTagLen);
-         //Wrong authentication tag?
-         if(error)
-            return ERROR_BAD_RECORD_MAC;
+         if(decryptionEngine->recordIvLen != 0)
+         {
+            memmove(data, data + decryptionEngine->recordIvLen, length);
+         }
 
          //Increment sequence number
          tlsIncSequenceNumber(&decryptionEngine->seqNum);
@@ -1179,6 +1129,63 @@ error_t tlsDecryptRecord(TlsContext *context,
 
    //Successful decryption
    return NO_ERROR;
+}
+
+
+/**
+ * @brief Set TLS record type
+ * @param[in] context Pointer to the TLS context
+ * @param[in] record Pointer to the TLS record
+ * @param[in] type Record type
+ **/
+
+void tlsSetRecordType(TlsContext *context, void *record, uint8_t type)
+{
+#if (DTLS_SUPPORT == ENABLED)
+   //DTLS protocol?
+   if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_DATAGRAM)
+   {
+      //Set the type of the DTLS record
+      ((DtlsRecord *) record)->type = type;
+   }
+   else
+#endif
+   //TLS protocol?
+   {
+      //Set the type of the DTLS record
+      ((TlsRecord *) record)->type = type;
+   }
+}
+
+
+/**
+ * @brief Get TLS record type
+ * @param[in] context Pointer to the TLS context
+ * @param[in] record Pointer to the TLS record
+ * @return Record type
+ **/
+
+uint8_t tlsGetRecordType(TlsContext *context, void *record)
+{
+   uint8_t type;
+
+#if (DTLS_SUPPORT == ENABLED)
+   //DTLS protocol?
+   if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_DATAGRAM)
+   {
+      //Get the type of the DTLS record
+      type = ((DtlsRecord *) record)->type;
+   }
+   else
+#endif
+   //TLS protocol?
+   {
+      //Get the type of the TLS record
+      type = ((TlsRecord *) record)->type;
+   }
+
+   //Return the content type of the record
+   return type;
 }
 
 
@@ -1336,13 +1343,14 @@ error_t tlsComputeMac(TlsContext *context, TlsEncryptionEngine *encryptionEngine
 /**
  * @brief Format additional authenticated data (AAD)
  * @param[in] context Pointer to the TLS context
- * @param[in] seqNum Pointer to the sequence number
+ * @param[in] encryptionEngine Pointer to the encryption engine
  * @param[in] record Pointer to the TLS record
- * @param[out] aad Additional authenticated data
+ * @param[out] aad Pointer to the buffer where to store the resulting AAD
+ * @param[out] aadLen Length of the AAD, in bytes
  **/
 
-void tlsFormatAdditionalData(TlsContext *context,
-   const TlsSequenceNumber *seqNum, const void *record, uint8_t *aad)
+void tlsFormatAad(TlsContext *context, TlsEncryptionEngine *encryptionEngine,
+   const void *record, uint8_t *aad, size_t *aadLen)
 {
 #if (DTLS_SUPPORT == ENABLED)
    //DTLS protocol?
@@ -1358,20 +1366,106 @@ void tlsFormatAdditionalData(TlsContext *context,
       memcpy(aad + 2, &dtlsRecord->seqNum, 6);
       memcpy(aad + 8, &dtlsRecord->type, 3);
       memcpy(aad + 11, (void *) &dtlsRecord->length, 2);
+
+      //Length of the additional data, in bytes
+      *aadLen = 13;
    }
    else
 #endif
    //TLS protocol?
    {
-      const TlsRecord *tlsRecord;
+      //TLS 1.2 currently selected?
+      if(context->version <= TLS_VERSION_1_2)
+      {
+         //Additional data to be authenticated
+         memcpy(aad, &encryptionEngine->seqNum, 8);
+         memcpy(aad + 8, record, 5);
 
-      //Point to the TLS record
-      tlsRecord = (TlsRecord *) record;
+         //Length of the additional data, in bytes
+         *aadLen = 13;
+      }
+      //TLS 1.3 currently selected?
+      else
+      {
+         //The additional data input is the record header
+         memcpy(aad, record, 5);
 
-      //Additional data to be authenticated
-      memcpy(aad, seqNum, 8);
-      memcpy(aad + 8, tlsRecord, 5);
+         //Length of the additional data, in bytes
+         *aadLen = 5;
+      }
    }
+}
+
+
+/**
+ * @brief Format nonce
+ * @param[in] context Pointer to the TLS context
+ * @param[in] encryptionEngine Pointer to the encryption engine
+ * @param[in] record Pointer to the TLS record
+ * @param[in] recordIv Explicit part of the nonce
+ * @param[out] nonce Pointer to the buffer where to store the resulting nonce
+ * @param[out] nonceLen Length of the nonce, in bytes
+ **/
+
+void tlsFormatNonce(TlsContext *context, TlsEncryptionEngine *encryptionEngine,
+   const void *record, const uint8_t *recordIv, uint8_t *nonce, size_t *nonceLen)
+{
+   size_t i;
+   size_t n;
+
+   //Check the length of the nonce explicit part
+   if(encryptionEngine->recordIvLen != 0)
+   {
+      //Calculate the total length of the nonce
+      n = encryptionEngine->fixedIvLen + encryptionEngine->recordIvLen;
+
+      //The salt is the implicit part of the nonce and is not sent in the packet
+      memcpy(nonce, encryptionEngine->iv, encryptionEngine->fixedIvLen);
+
+      //The explicit part of the nonce is chosen by the sender
+      memcpy(nonce + encryptionEngine->fixedIvLen, recordIv,
+         encryptionEngine->recordIvLen);
+   }
+   else
+   {
+      //Calculate the total length of the nonce
+      n = encryptionEngine->fixedIvLen;
+
+#if (DTLS_SUPPORT == ENABLED)
+      //DTLS protocol?
+      if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_DATAGRAM)
+      {
+         const DtlsRecord *dtlsRecord;
+
+         //Point to the DTLS record
+         dtlsRecord = (DtlsRecord *) record;
+
+         //The 64-bit record sequence number is serialized as an 8-byte,
+         //big-endian value
+         memcpy(nonce + n - 8, (void *) &dtlsRecord->epoch, 2);
+         memcpy(nonce + n - 6, &dtlsRecord->seqNum, 6);
+      }
+      else
+#endif
+      //TLS protocol?
+      {
+         //The 64-bit record sequence number is serialized as an 8-byte,
+         //big-endian value
+         memcpy(nonce + n - 8, &encryptionEngine->seqNum, 8);
+      }
+
+      //The 64-bit record sequence number is padded on the left by zeros
+      memset(nonce, 0, n - 8);
+
+      //The padded sequence number is XORed with the IV to form the nonce
+      for(i = 0; i < n; i++)
+      {
+         nonce[i] ^= encryptionEngine->iv[i];
+      }
+   }
+
+   //Return the total length of the nonce
+   *nonceLen = n;
 }
 
 
