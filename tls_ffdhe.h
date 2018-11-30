@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.6
+ * @version 1.9.0
  **/
 
 #ifndef _TLS_FFDHE_H
@@ -52,12 +52,14 @@ typedef struct
 
 
 //TLS related functions
-const TlsFfdheGroup *tlsGetFfdheGroup(uint16_t namedGroup);
-
 error_t tlsSelectFfdheGroup(TlsContext *context,
    const TlsSupportedGroupList *groupList);
 
-error_t tlsLoadFfdheParameters(DhParameters *params, uint16_t namedGroup);
+const TlsFfdheGroup *tlsGetFfdheGroup(TlsContext *context,
+   uint16_t namedGroup);
+
+error_t tlsLoadFfdheParameters(DhParameters *params,
+   const TlsFfdheGroup *ffdheGroup);
 
 //C++ guard
 #ifdef __cplusplus

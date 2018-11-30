@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.6
+ * @version 1.9.0
  **/
 
 #ifndef _TLS_CIPHER_SUITES_H
@@ -46,7 +46,7 @@
 
 
 /**
- * @brief Cipher suite list
+ * @brief TLS cipher suites
  **/
 
 typedef enum
@@ -68,12 +68,12 @@ typedef enum
    TLS_RSA_WITH_AES_256_CBC_SHA                  = 0x0035, //RFC 3268
    TLS_RSA_WITH_AES_128_CBC_SHA256               = 0x003C, //RFC 5246
    TLS_RSA_WITH_AES_256_CBC_SHA256               = 0x003D, //RFC 5246
+   TLS_RSA_WITH_AES_128_GCM_SHA256               = 0x009C, //RFC 5288
+   TLS_RSA_WITH_AES_256_GCM_SHA384               = 0x009D, //RFC 5288
    TLS_RSA_WITH_AES_128_CCM                      = 0xC09C, //RFC 6655
    TLS_RSA_WITH_AES_256_CCM                      = 0xC09D, //RFC 6655
    TLS_RSA_WITH_AES_128_CCM_8                    = 0xC0A0, //RFC 6655
    TLS_RSA_WITH_AES_256_CCM_8                    = 0xC0A1, //RFC 6655
-   TLS_RSA_WITH_AES_128_GCM_SHA256               = 0x009C, //RFC 5288
-   TLS_RSA_WITH_AES_256_GCM_SHA384               = 0x009D, //RFC 5288
    TLS_RSA_WITH_CAMELLIA_128_CBC_SHA             = 0x0041, //RFC 5932
    TLS_RSA_WITH_CAMELLIA_256_CBC_SHA             = 0x0084, //RFC 5932
    TLS_RSA_WITH_CAMELLIA_128_CBC_SHA256          = 0x00BA, //RFC 5932
@@ -114,12 +114,12 @@ typedef enum
    TLS_DHE_RSA_WITH_AES_256_CBC_SHA              = 0x0039, //RFC 3268
    TLS_DHE_RSA_WITH_AES_128_CBC_SHA256           = 0x0067, //RFC 5246
    TLS_DHE_RSA_WITH_AES_256_CBC_SHA256           = 0x006B, //RFC 5246
+   TLS_DHE_RSA_WITH_AES_128_GCM_SHA256           = 0x009E, //RFC 5288
+   TLS_DHE_RSA_WITH_AES_256_GCM_SHA384           = 0x009F, //RFC 5288
    TLS_DHE_RSA_WITH_AES_128_CCM                  = 0xC09E, //RFC 6655
    TLS_DHE_RSA_WITH_AES_256_CCM                  = 0xC09F, //RFC 6655
    TLS_DHE_RSA_WITH_AES_128_CCM_8                = 0xC0A2, //RFC 6655
    TLS_DHE_RSA_WITH_AES_256_CCM_8                = 0xC0A3, //RFC 6655
-   TLS_DHE_RSA_WITH_AES_128_GCM_SHA256           = 0x009E, //RFC 5288
-   TLS_DHE_RSA_WITH_AES_256_GCM_SHA384           = 0x009F, //RFC 5288
    TLS_DHE_RSA_WITH_CAMELLIA_128_CBC_SHA         = 0x0045, //RFC 5932
    TLS_DHE_RSA_WITH_CAMELLIA_256_CBC_SHA         = 0x0088, //RFC 5932
    TLS_DHE_RSA_WITH_CAMELLIA_128_CBC_SHA256      = 0x00BE, //RFC 5932
@@ -260,12 +260,12 @@ typedef enum
    TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA          = 0xC00A, //RFC 4492
    TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256       = 0xC023, //RFC 5289
    TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384       = 0xC024, //RFC 5289
+   TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256       = 0xC02B, //RFC 5289
+   TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384       = 0xC02C, //RFC 5289
    TLS_ECDHE_ECDSA_WITH_AES_128_CCM              = 0xC0AC, //RFC 7251
    TLS_ECDHE_ECDSA_WITH_AES_256_CCM              = 0xC0AD, //RFC 7251
    TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8            = 0xC0AE, //RFC 7251
    TLS_ECDHE_ECDSA_WITH_AES_256_CCM_8            = 0xC0AF, //RFC 7251
-   TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256       = 0xC02B, //RFC 5289
-   TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384       = 0xC02C, //RFC 5289
    TLS_ECDHE_ECDSA_WITH_CAMELLIA_128_CBC_SHA256  = 0xC072, //RFC 6367
    TLS_ECDHE_ECDSA_WITH_CAMELLIA_256_CBC_SHA384  = 0xC073, //RFC 6367
    TLS_ECDHE_ECDSA_WITH_CAMELLIA_128_GCM_SHA256  = 0xC086, //RFC 6367
@@ -291,12 +291,12 @@ typedef enum
    TLS_PSK_WITH_AES_256_CBC_SHA                  = 0x008D, //RFC 4279
    TLS_PSK_WITH_AES_128_CBC_SHA256               = 0x00AE, //RFC 5487
    TLS_PSK_WITH_AES_256_CBC_SHA384               = 0x00AF, //RFC 5487
+   TLS_PSK_WITH_AES_128_GCM_SHA256               = 0x00A8, //RFC 5487
+   TLS_PSK_WITH_AES_256_GCM_SHA384               = 0x00A9, //RFC 5487
    TLS_PSK_WITH_AES_128_CCM                      = 0xC0A4, //RFC 6655
    TLS_PSK_WITH_AES_256_CCM                      = 0xC0A5, //RFC 6655
    TLS_PSK_WITH_AES_128_CCM_8                    = 0xC0A8, //RFC 6655
    TLS_PSK_WITH_AES_256_CCM_8                    = 0xC0A9, //RFC 6655
-   TLS_PSK_WITH_AES_128_GCM_SHA256               = 0x00A8, //RFC 5487
-   TLS_PSK_WITH_AES_256_GCM_SHA384               = 0x00A9, //RFC 5487
    TLS_PSK_WITH_CAMELLIA_128_CBC_SHA256          = 0xC094, //RFC 6367
    TLS_PSK_WITH_CAMELLIA_256_CBC_SHA384          = 0xC095, //RFC 6367
    TLS_PSK_WITH_CAMELLIA_128_GCM_SHA256          = 0xC08E, //RFC 6367
@@ -337,12 +337,12 @@ typedef enum
    TLS_DHE_PSK_WITH_AES_256_CBC_SHA              = 0x0091, //RFC 4279
    TLS_DHE_PSK_WITH_AES_128_CBC_SHA256           = 0x00B2, //RFC 5487
    TLS_DHE_PSK_WITH_AES_256_CBC_SHA384           = 0x00B3, //RFC 5487
+   TLS_DHE_PSK_WITH_AES_128_GCM_SHA256           = 0x00AA, //RFC 5487
+   TLS_DHE_PSK_WITH_AES_256_GCM_SHA384           = 0x00AB, //RFC 5487
    TLS_DHE_PSK_WITH_AES_128_CCM                  = 0xC0A6, //RFC 6655
    TLS_DHE_PSK_WITH_AES_256_CCM                  = 0xC0A7, //RFC 6655
    TLS_DHE_PSK_WITH_AES_128_CCM_8                = 0xC0AA, //RFC 6655
    TLS_DHE_PSK_WITH_AES_256_CCM_8                = 0xC0AB, //RFC 6655
-   TLS_DHE_PSK_WITH_AES_128_GCM_SHA256           = 0x00AA, //RFC 5487
-   TLS_DHE_PSK_WITH_AES_256_GCM_SHA384           = 0x00AB, //RFC 5487
    TLS_DHE_PSK_WITH_CAMELLIA_128_CBC_SHA256      = 0xC096, //RFC 6367
    TLS_DHE_PSK_WITH_CAMELLIA_256_CBC_SHA384      = 0xC097, //RFC 6367
    TLS_DHE_PSK_WITH_CAMELLIA_128_GCM_SHA256      = 0xC090, //RFC 6367
@@ -362,12 +362,10 @@ typedef enum
    TLS_ECDHE_PSK_WITH_AES_256_CBC_SHA            = 0xC036, //RFC 5489
    TLS_ECDHE_PSK_WITH_AES_128_CBC_SHA256         = 0xC037, //RFC 5489
    TLS_ECDHE_PSK_WITH_AES_256_CBC_SHA384         = 0xC038, //RFC 5489
-   TLS_ECDHE_PSK_WITH_AES_128_CCM_SHA256         = 0xD005, //RFC draft
-   TLS_ECDHE_PSK_WITH_AES_256_CCM_SHA384         = 0xD006, //RFC draft
-   TLS_ECDHE_PSK_WITH_AES_128_CCM_8_SHA256       = 0xD003, //RFC draft
-   TLS_ECDHE_PSK_WITH_AES_256_CCM_8_SHA256       = 0xD004, //RFC draft
-   TLS_ECDHE_PSK_WITH_AES_128_GCM_SHA256         = 0xD001, //RFC draft
-   TLS_ECDHE_PSK_WITH_AES_256_GCM_SHA384         = 0xD002, //RFC draft
+   TLS_ECDHE_PSK_WITH_AES_128_GCM_SHA256         = 0xD001, //RFC 8442
+   TLS_ECDHE_PSK_WITH_AES_256_GCM_SHA384         = 0xD002, //RFC 8442
+   TLS_ECDHE_PSK_WITH_AES_128_CCM_SHA256         = 0xD005, //RFC 8442
+   TLS_ECDHE_PSK_WITH_AES_128_CCM_8_SHA256       = 0xD003, //RFC 8442
    TLS_ECDHE_PSK_WITH_CAMELLIA_128_CBC_SHA256    = 0xC09A, //RFC 6367
    TLS_ECDHE_PSK_WITH_CAMELLIA_256_CBC_SHA384    = 0xC09B, //RFC 6367
    TLS_ECDHE_PSK_WITH_ARIA_128_CBC_SHA256        = 0xC070, //RFC 6209
@@ -392,20 +390,18 @@ typedef enum
    TLS_SRP_SHA_WITH_3DES_EDE_CBC_SHA             = 0xC01A, //RFC 5054
    TLS_SRP_SHA_WITH_AES_128_CBC_SHA              = 0xC01D, //RFC 5054
    TLS_SRP_SHA_WITH_AES_256_CBC_SHA              = 0xC020, //RFC 5054
-
    TLS_SRP_SHA_RSA_WITH_3DES_EDE_CBC_SHA         = 0xC01B, //RFC 5054
    TLS_SRP_SHA_RSA_WITH_AES_128_CBC_SHA          = 0xC01E, //RFC 5054
    TLS_SRP_SHA_RSA_WITH_AES_256_CBC_SHA          = 0xC021, //RFC 5054
-
    TLS_SRP_SHA_DSS_WITH_3DES_EDE_CBC_SHA         = 0xC01C, //RFC 5054
    TLS_SRP_SHA_DSS_WITH_AES_128_CBC_SHA          = 0xC01F, //RFC 5054
    TLS_SRP_SHA_DSS_WITH_AES_256_CBC_SHA          = 0xC022, //RFC 5054
 
    TLS_AES_128_GCM_SHA256                        = 0x1301, //RFC 8446
    TLS_AES_256_GCM_SHA384                        = 0x1302, //RFC 8446
-   TLS_CHACHA20_POLY1305_SHA256                  = 0x1303, //RFC 8446
    TLS_AES_128_CCM_SHA256                        = 0x1304, //RFC 8446
    TLS_AES_128_CCM_8_SHA256                      = 0x1305, //RFC 8446
+   TLS_CHACHA20_POLY1305_SHA256                  = 0x1303, //RFC 8446
 
    TLS_EMPTY_RENEGOTIATION_INFO_SCSV             = 0x00FF, //RFC 5746
    TLS_FALLBACK_SCSV                             = 0x5600  //RFC 7507
@@ -421,6 +417,7 @@ typedef enum
    TLS_CIPHER_SUITE_TYPE_UNKNOWN = 0,
    TLS_CIPHER_SUITE_TYPE_ECC     = 1,
    TLS_CIPHER_SUITE_TYPE_FFDHE   = 2,
+   TLS_CIPHER_SUITE_TYPE_TLS13   = 4
 } TlsCipherSuiteType;
 
 
@@ -431,7 +428,8 @@ extern const TlsCipherSuiteInfo tlsSupportedCipherSuites[];
 uint_t tlsGetNumSupportedCipherSuites(void);
 const char_t *tlsGetCipherSuiteName(uint16_t identifier);
 
-bool_t tlsIsCipherSuiteSupported(uint16_t identifier, uint16_t version,
+bool_t tlsIsCipherSuiteAcceptable(const TlsCipherSuiteInfo *cipherSuite,
+   uint16_t minVersion, uint16_t maxVersion,
    TlsTransportProtocol transportProtocol);
 
 TlsCipherSuiteType tlsGetCipherSuiteType(uint16_t identifier);

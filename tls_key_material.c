@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.6
+ * @version 1.9.0
  **/
 
 //Switch to the appropriate trace level
@@ -32,12 +32,13 @@
 //Dependencies
 #include <string.h>
 #include "tls.h"
-#include "tls_handshake_hash.h"
 #include "tls_key_material.h"
+#include "tls_transcript_hash.h"
+#include "tls13_key_material.h"
 #include "ssl_misc.h"
 #include "debug.h"
 
-//Check SSL library configuration
+//Check TLS library configuration
 #if (TLS_SUPPORT == ENABLED)
 
 
@@ -67,9 +68,9 @@ error_t tlsGenerateSessionKeys(TlsContext *context)
    //Debug message
    TRACE_DEBUG("Generating session keys...\r\n");
    TRACE_DEBUG("  Client random bytes:\r\n");
-   TRACE_DEBUG_ARRAY("    ", &context->clientRandom, 32);
+   TRACE_DEBUG_ARRAY("    ", context->clientRandom, 32);
    TRACE_DEBUG("  Server random bytes:\r\n");
-   TRACE_DEBUG_ARRAY("    ", &context->serverRandom, 32);
+   TRACE_DEBUG_ARRAY("    ", context->serverRandom, 32);
 
    //If a full handshake is being performed, the premaster secret shall be
    //first converted to the master secret
@@ -106,6 +107,12 @@ error_t tlsGenerateSessionKeys(TlsContext *context)
    //Debug message
    TRACE_DEBUG("  Master secret:\r\n");
    TRACE_DEBUG_ARRAY("    ", context->masterSecret, TLS_MASTER_SECRET_SIZE);
+
+#if (TLS_KEY_LOG_SUPPORT == ENABLED)
+   //Log master secret
+   tlsDumpSecret(context, "CLIENT_RANDOM", context->masterSecret,
+      TLS_MASTER_SECRET_SIZE);
+#endif
 
    //The master secret is used as an entropy source to generate the key material
    error = tlsGenerateKeyBlock(context, keyBlockLen);
@@ -198,14 +205,14 @@ error_t tlsGenerateExtendedMasterSecret(TlsContext *context)
       uint8_t sessionHash[MD5_DIGEST_SIZE + SHA1_DIGEST_SIZE];
 
       //Finalize MD5 hash computation
-      error = tlsFinalizeHandshakeHash(context, MD5_HASH_ALGO,
+      error = tlsFinalizeTranscriptHash(context, MD5_HASH_ALGO,
          context->handshakeMd5Context, "", sessionHash);
 
       //Check status code
       if(!error)
       {
          //Finalize SHA-1 hash computation
-         error = tlsFinalizeHandshakeHash(context, SHA1_HASH_ALGO,
+         error = tlsFinalizeTranscriptHash(context, SHA1_HASH_ALGO,
             context->handshakeSha1Context, "", sessionHash + MD5_DIGEST_SIZE);
       }
 
@@ -285,7 +292,7 @@ error_t tlsGeneratePskPremasterSecret(TlsContext *context)
 {
    error_t error;
 
-#if (TLS_PSK_SUPPORT == ENABLED)
+#if (TLS_PSK_KE_SUPPORT == ENABLED)
    //PSK key exchange method?
    if(context->keyExchMethod == TLS_KEY_EXCH_PSK)
    {
@@ -294,7 +301,8 @@ error_t tlsGeneratePskPremasterSecret(TlsContext *context)
       //Let N be the length of pre-shared key
       n = context->pskLen;
 
-      //Check whether the output buffer is large enough to hold the premaster secret
+      //Check whether the output buffer is large enough to hold the premaster
+      //secret
       if((n * 2 + 4) <= TLS_PREMASTER_SECRET_SIZE)
       {
          //The premaster secret is formed as follows: if the PSK is N octets
@@ -319,8 +327,8 @@ error_t tlsGeneratePskPremasterSecret(TlsContext *context)
    }
    else
 #endif
-#if (TLS_RSA_PSK_SUPPORT == ENABLED || TLS_DHE_PSK_SUPPORT == ENABLED || \
-   TLS_ECDHE_PSK_SUPPORT == ENABLED)
+#if (TLS_RSA_PSK_KE_SUPPORT == ENABLED || TLS_DHE_PSK_KE_SUPPORT == ENABLED || \
+   TLS_ECDHE_PSK_KE_SUPPORT == ENABLED)
    //RSA_PSK, DHE_PSK or ECDHE_PSK key exchange method?
    if(context->keyExchMethod == TLS_KEY_EXCH_RSA_PSK ||
       context->keyExchMethod == TLS_KEY_EXCH_DHE_PSK ||
@@ -331,7 +339,8 @@ error_t tlsGeneratePskPremasterSecret(TlsContext *context)
       //Let N be the length of pre-shared key
       n = context->pskLen;
 
-      //Check whether the output buffer is large enough to hold the premaster secret
+      //Check whether the output buffer is large enough to hold the premaster
+      //secret
       if((context->premasterSecretLen + n + 4) <= TLS_PREMASTER_SECRET_SIZE)
       {
          //The "other_secret" field comes from the Diffie-Hellman, ECDH or
@@ -533,6 +542,47 @@ error_t tlsExportKeyingMaterial(TlsContext *context, const char_t *label,
       else
       {
          //Invalid PRF hash algorithm
+         error = ERROR_FAILURE;
+      }
+   }
+   else
+#endif
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+   //TLS 1.3 currently selected?
+   if(context->version == TLS_VERSION_1_3)
+   {
+      const HashAlgo *hash;
+      uint8_t secret[TLS_MAX_HKDF_DIGEST_SIZE];
+      uint8_t digest[TLS_MAX_HKDF_DIGEST_SIZE];
+
+      //The hash function used by HKDF is the cipher suite hash algorithm
+      hash = context->cipherSuite.prfHashAlgo;
+
+      //Make sure the HKDF hash algorithm is valid
+      if(hash != NULL)
+      {
+         //Derive exporter master secret
+         error = tls13DeriveSecret(context, context->exporterMasterSecret,
+            hash->digestSize, label, "", 0, secret, hash->digestSize);
+
+         //Check status code
+         if(!error)
+         {
+            //Hash context_value input
+            error = hash->compute(contextValue, contextValueLen, digest);
+         }
+
+         //Check status code
+         if(!error)
+         {
+            //Export keying material
+            error = tls13HkdfExpandLabel(hash, secret, hash->digestSize,
+               "exporter", digest, hash->digestSize, output, outputLen);
+         }
+      }
+      else
+      {
+         //Invalid HKDF hash algorithm
          error = ERROR_FAILURE;
       }
    }
@@ -762,6 +812,66 @@ error_t tls12Prf(const HashAlgo *hash, const uint8_t *secret,
 #else
    //Not implemented
    return ERROR_NOT_IMPLEMENTED;
+#endif
+}
+
+
+/**
+ * @brief Dump secret key (for debugging purpose only)
+ * @param[in] context Pointer to the TLS context
+ * @param[in] label Identifying label (NULL-terminated string)
+ * @param[in] secret Pointer to the secret key
+ * @param[in] secretLen Length of the secret key, in bytes
+ * @return Error code
+ **/
+
+void tlsDumpSecret(TlsContext *context, const char_t *label,
+   const uint8_t *secret, size_t secretLen)
+{
+#if (TLS_KEY_LOG_SUPPORT == ENABLED)
+   //Any registered callback?
+   if(context->keyLogCallback != NULL)
+   {
+      size_t i;
+      size_t n;
+      char_t buffer[194];
+
+      //Retrieve the length of the label
+      n = strlen(label);
+
+      //Sanity check
+      if((n + 2 * secretLen + 67) <= sizeof(buffer))
+      {
+         //Copy the identifying label
+         strncpy(buffer, label, n);
+
+         //Append a space character
+         buffer[n++] = ' ';
+
+         //Convert the client random value to a hex string
+         for(i = 0; i < 32; i++)
+         {
+            //Format current byte
+            n += sprintf(buffer + n, "%02" PRIX8, context->clientRandom[i]);
+         }
+
+         //Append a space character
+         buffer[n++] = ' ';
+
+         //Convert the secret key to a hex string
+         for(i = 0; i < secretLen; i++)
+         {
+            //Format current byte
+            n += sprintf(buffer + n, "%02" PRIX8, secret[i]);
+         }
+
+         //Properly terminate the string with a NULL character
+         buffer[n] = '\0';
+
+         //Invoke user callback function
+         context->keyLogCallback(context, buffer);
+      }
+   }
 #endif
 }
 

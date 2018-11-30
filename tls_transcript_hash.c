@@ -1,6 +1,6 @@
 /**
- * @file tls_handshake_hash.c
- * @brief Handshake hash calculation/verification
+ * @file tls_transcript_hash.c
+ * @brief Transcript hash calculation
  *
  * @section License
  *
@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.6
+ * @version 1.9.0
  **/
 
 //Switch to the appropriate trace level
@@ -32,13 +32,14 @@
 //Dependencies
 #include <string.h>
 #include "tls.h"
-#include "tls_handshake_hash.h"
 #include "tls_client.h"
 #include "tls_key_material.h"
+#include "tls_transcript_hash.h"
+#include "tls13_key_material.h"
 #include "ssl_misc.h"
 #include "debug.h"
 
-//Check SSL library configuration
+//Check TLS library configuration
 #if (TLS_SUPPORT == ENABLED)
 
 
@@ -48,15 +49,8 @@
  * @return Error code
  **/
 
-error_t tlsInitHandshakeHash(TlsContext *context)
+error_t tlsInitTranscriptHash(TlsContext *context)
 {
-   //SHA-1 context already instantiated?
-   if(context->handshakeSha1Context != NULL)
-   {
-      tlsFreeMem(context->handshakeSha1Context);
-      context->handshakeSha1Context = NULL;
-   }
-
 #if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
    //MD5 context already instantiated?
    if(context->handshakeMd5Context != NULL)
@@ -66,7 +60,16 @@ error_t tlsInitHandshakeHash(TlsContext *context)
    }
 #endif
 
-#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //SHA-1 context already instantiated?
+   if(context->handshakeSha1Context != NULL)
+   {
+      tlsFreeMem(context->handshakeSha1Context);
+      context->handshakeSha1Context = NULL;
+   }
+#endif
+
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
    //Hash algorithm context already instantiated?
    if(context->handshakeHashContext != NULL)
    {
@@ -75,17 +78,8 @@ error_t tlsInitHandshakeHash(TlsContext *context)
    }
 #endif
 
-   //Allocate SHA-1 context
-   context->handshakeSha1Context = tlsAllocMem(sizeof(Sha1Context));
-   //Failed to allocate memory?
-   if(context->handshakeSha1Context == NULL)
-      return ERROR_OUT_OF_MEMORY;
-
-   //Initialize SHA-1 context
-   sha1Init(context->handshakeSha1Context);
-
 #if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
-   //SSL 3.0, TLS 1.0 or 1.1 currently selected?
+   //SSL 3.0, TLS 1.0 or TLS 1.1 currently selected?
    if(context->version <= TLS_VERSION_1_1)
    {
       //Allocate MD5 context
@@ -99,14 +93,32 @@ error_t tlsInitHandshakeHash(TlsContext *context)
    }
 #endif
 
-#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
-   //TLS 1.2 currently selected?
-   if(context->version == TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //SSL 3.0, TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
+   if(context->version <= TLS_VERSION_1_2)
+   {
+      //Allocate SHA-1 context
+      context->handshakeSha1Context = tlsAllocMem(sizeof(Sha1Context));
+      //Failed to allocate memory?
+      if(context->handshakeSha1Context == NULL)
+         return ERROR_OUT_OF_MEMORY;
+
+      //Initialize SHA-1 context
+      sha1Init(context->handshakeSha1Context);
+   }
+#endif
+
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+   //TLS 1.2 or 1.3 currently selected?
+   if(context->version >= TLS_VERSION_1_2)
    {
       const HashAlgo *hashAlgo;
 
       //Point to the hash algorithm to be used
       hashAlgo = context->cipherSuite.prfHashAlgo;
+      //Make sure the hash algorithm is valid
+      if(hashAlgo == NULL)
+         return ERROR_FAILURE;
 
       //Allocate hash algorithm context
       context->handshakeHashContext = tlsAllocMem(hashAlgo->contextSize);
@@ -123,13 +135,11 @@ error_t tlsInitHandshakeHash(TlsContext *context)
    //TLS operates as a client?
    if(context->entity == TLS_CONNECTION_END_CLIENT)
    {
-      error_t error;
-      size_t length;
-
 #if (DTLS_SUPPORT == ENABLED)
       //DTLS protocol?
       if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_DATAGRAM)
       {
+         size_t length;
          DtlsRecord *record;
 
          //Point to the DTLS record that holds the ClientHello message
@@ -142,35 +152,28 @@ error_t tlsInitHandshakeHash(TlsContext *context)
             length = context->txBufferLen - sizeof(DtlsRecord);
 
             //Update the hash value with the ClientHello message
-            tlsUpdateHandshakeHash(context, record->data, length);
+            tlsUpdateTranscriptHash(context, record->data, length);
          }
       }
       else
 #endif
       //TLS protocol?
       {
-         TlsHandshake *message;
+         size_t length;
+         TlsRecord *record;
 
-         //Point to the buffer where to format the handshake message
-         message = (TlsHandshake *) context->txBuffer;
+         //Point to the TLS record that holds the ClientHello message
+         record = (TlsRecord *) context->txBuffer;
 
-         //Format ClientHello message
-         error = tlsFormatClientHello(context,
-            (TlsClientHello *) message->data, &length);
-         //Any error to report?
-         if(error)
-            return error;
+         //Retrieve the length of the handshake message
+         length = ntohs(record->length);
 
-         //Handshake message type
-         message->msgType = TLS_TYPE_CLIENT_HELLO;
-         //Number of bytes in the message
-         STORE24BE(length, message->length);
-
-         //Total length of the handshake message
-         length += sizeof(TlsHandshake);
-
-         //Update the hash value with the ClientHello message
-         tlsUpdateHandshakeHash(context, context->txBuffer, length);
+         //Sanity check
+         if((length + sizeof(TlsRecord)) <= context->txBufferSize)
+         {
+            //Update the hash value with the ClientHello message
+            tlsUpdateTranscriptHash(context, record->data, length);
+         }
       }
    }
 #endif
@@ -187,18 +190,11 @@ error_t tlsInitHandshakeHash(TlsContext *context)
  * @param[in] length Length of the message
  **/
 
-void tlsUpdateHandshakeHash(TlsContext *context, const void *data,
+void tlsUpdateTranscriptHash(TlsContext *context, const void *data,
    size_t length)
 {
-   //Valid SHA-1 context?
-   if(context->handshakeSha1Context != NULL)
-   {
-      //Update SHA-1 hash value with message contents
-      sha1Update(context->handshakeSha1Context, data, length);
-   }
-
 #if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
-   //SSL 3.0, TLS 1.0 or 1.1 currently selected?
+   //SSL 3.0, TLS 1.0 or TLS 1.1 currently selected?
    if(context->version <= TLS_VERSION_1_1)
    {
       //Valid MD5 context?
@@ -210,16 +206,29 @@ void tlsUpdateHandshakeHash(TlsContext *context, const void *data,
    }
 #endif
 
-#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
-   //TLS 1.2 currently selected?
-   if(context->version == TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //SSL 3.0, TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
+   if(context->version <= TLS_VERSION_1_2)
+   {
+      //Valid SHA-1 context?
+      if(context->handshakeSha1Context != NULL)
+      {
+         //Update SHA-1 hash value with message contents
+         sha1Update(context->handshakeSha1Context, data, length);
+      }
+   }
+#endif
+
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+   //TLS 1.2 or TLS 1.3 currently selected?
+   if(context->version >= TLS_VERSION_1_2)
    {
       const HashAlgo *hashAlgo;
 
       //Point to the PRF hash algorithm to be used
       hashAlgo = context->cipherSuite.prfHashAlgo;
 
-      //Valid hash context?
+      //Valid hash algorithm?
       if(hashAlgo != NULL && context->handshakeHashContext != NULL)
       {
          //Update hash value with message contents
@@ -240,7 +249,7 @@ void tlsUpdateHandshakeHash(TlsContext *context, const void *data,
  * @return Error code
  **/
 
-error_t tlsFinalizeHandshakeHash(TlsContext *context, const HashAlgo *hash,
+error_t tlsFinalizeTranscriptHash(TlsContext *context, const HashAlgo *hash,
    const void *hashContext, const char_t *label, uint8_t *output)
 {
    error_t error;
@@ -266,7 +275,7 @@ error_t tlsFinalizeHandshakeHash(TlsContext *context, const HashAlgo *hash,
          size_t labelLen;
          size_t padLen;
 
-         //Compute the length of the label
+         //Retrieve the length of the label
          labelLen = strlen(label);
 
          //The pad character is repeated 48 times for MD5 or 40 times for SHA-1
@@ -291,9 +300,9 @@ error_t tlsFinalizeHandshakeHash(TlsContext *context, const HashAlgo *hash,
       }
       else
 #endif
-#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
-      //TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
-      if(context->version >= TLS_VERSION_1_0 && context->version <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+      //TLS 1.0, TLS 1.1, TLS 1.2 or TLS 1.3 currently selected?
+      if(context->version >= TLS_VERSION_1_0 && context->version <= TLS_VERSION_1_3)
       {
          //Compute hash(handshakeMessages)
          hash->final(tempHashContext, output);
@@ -323,6 +332,45 @@ error_t tlsFinalizeHandshakeHash(TlsContext *context, const HashAlgo *hash,
 
 
 /**
+ * @brief Release transcript hash context
+ * @param[in] context Pointer to the TLS context
+ * @return Error code
+ **/
+
+void tlsFreeTranscriptHash(TlsContext *context)
+{
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
+   //Release MD5 hash context
+   if(context->handshakeMd5Context != NULL)
+   {
+      memset(context->handshakeMd5Context, 0, sizeof(Md5Context));
+      tlsFreeMem(context->handshakeMd5Context);
+      context->handshakeMd5Context = NULL;
+   }
+#endif
+
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //Release SHA-1 hash context
+   if(context->handshakeSha1Context != NULL)
+   {
+      memset(context->handshakeSha1Context, 0, sizeof(Sha1Context));
+      tlsFreeMem(context->handshakeSha1Context);
+      context->handshakeSha1Context = NULL;
+   }
+#endif
+
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+   //Release transcript hash context
+   if(context->handshakeHashContext != NULL)
+   {
+      tlsFreeMem(context->handshakeHashContext);
+      context->handshakeHashContext = NULL;
+   }
+#endif
+}
+
+
+/**
  * @brief Compute verify data from previous handshake messages
  * @param[in] context Pointer to the TLS context
  * @param[in] entity Specifies whether the computation is performed at client
@@ -336,12 +384,13 @@ error_t tlsComputeVerifyData(TlsContext *context, TlsConnectionEnd entity,
    uint8_t *verifyData, size_t *verifyDataLen)
 {
    error_t error;
-   const char_t *label;
 
 #if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= SSL_VERSION_3_0)
    //SSL 3.0 currently selected?
    if(context->version == SSL_VERSION_3_0)
    {
+      const char_t *label;
+
       //Check whether the computation is performed at client or server side
       if(entity == TLS_CONNECTION_END_CLIENT)
          label = "CLNT";
@@ -350,7 +399,7 @@ error_t tlsComputeVerifyData(TlsContext *context, TlsConnectionEnd entity,
 
       //Compute MD5(masterSecret + pad2 + MD5(handshakeMessages + label +
       //masterSecret + pad1))
-      error = tlsFinalizeHandshakeHash(context, MD5_HASH_ALGO,
+      error = tlsFinalizeTranscriptHash(context, MD5_HASH_ALGO,
          context->handshakeMd5Context, label, verifyData);
 
       //Check status code
@@ -358,7 +407,7 @@ error_t tlsComputeVerifyData(TlsContext *context, TlsConnectionEnd entity,
       {
          //Compute SHA(masterSecret + pad2 + SHA(handshakeMessages + label +
          //masterSecret + pad1))
-         error = tlsFinalizeHandshakeHash(context, SHA1_HASH_ALGO,
+         error = tlsFinalizeTranscriptHash(context, SHA1_HASH_ALGO,
             context->handshakeSha1Context, label, verifyData + MD5_DIGEST_SIZE);
       }
    }
@@ -368,20 +417,19 @@ error_t tlsComputeVerifyData(TlsContext *context, TlsConnectionEnd entity,
    //TLS 1.0 or 1.1 currently selected?
    if(context->version == TLS_VERSION_1_0 || context->version == TLS_VERSION_1_1)
    {
-      //A temporary buffer is needed to concatenate MD5 and SHA-1 hash
-      //values before computing PRF
-      uint8_t handshakeHash[MD5_DIGEST_SIZE + SHA1_DIGEST_SIZE];
+      const char_t *label;
+      uint8_t digest[MD5_DIGEST_SIZE + SHA1_DIGEST_SIZE];
 
       //Finalize MD5 hash computation
-      error = tlsFinalizeHandshakeHash(context, MD5_HASH_ALGO,
-         context->handshakeMd5Context, "", handshakeHash);
+      error = tlsFinalizeTranscriptHash(context, MD5_HASH_ALGO,
+         context->handshakeMd5Context, "", digest);
 
       //Check status code
       if(!error)
       {
          //Finalize SHA-1 hash computation
-         error = tlsFinalizeHandshakeHash(context, SHA1_HASH_ALGO,
-            context->handshakeSha1Context, "", handshakeHash + MD5_DIGEST_SIZE);
+         error = tlsFinalizeTranscriptHash(context, SHA1_HASH_ALGO,
+            context->handshakeSha1Context, "", digest + MD5_DIGEST_SIZE);
       }
 
       //Check status code
@@ -393,9 +441,9 @@ error_t tlsComputeVerifyData(TlsContext *context, TlsConnectionEnd entity,
          else
             label = "server finished";
 
-         //Verify data is always 12-byte long for TLS 1.0 and 1.1
+         //The verify data is always 12-byte long for TLS 1.0 and 1.1
          error = tlsPrf(context->masterSecret, TLS_MASTER_SECRET_SIZE,
-            label, handshakeHash, sizeof(handshakeHash), verifyData, 12);
+            label, digest, sizeof(digest), verifyData, 12);
       }
    }
    else
@@ -404,43 +452,103 @@ error_t tlsComputeVerifyData(TlsContext *context, TlsConnectionEnd entity,
    //TLS 1.2 currently selected?
    if(context->version == TLS_VERSION_1_2)
    {
+      const char_t *label;
       const HashAlgo *hashAlgo;
       HashContext *hashContext;
 
       //Point to the hash algorithm to be used
       hashAlgo = context->cipherSuite.prfHashAlgo;
 
-      //Allocate hash algorithm context
-      hashContext = tlsAllocMem(hashAlgo->contextSize);
-
-      //Successful memory allocation?
-      if(hashContext != NULL)
+      //Valid hash algorithm?
+      if(hashAlgo != NULL && context->handshakeHashContext != NULL)
       {
-         //The original hash context must be preserved
-         memcpy(hashContext, context->handshakeHashContext,
-            hashAlgo->contextSize);
+         //Allocate hash algorithm context
+         hashContext = tlsAllocMem(hashAlgo->contextSize);
 
-         //Finalize hash computation
-         hashAlgo->final(hashContext, NULL);
+         //Successful memory allocation?
+         if(hashContext != NULL)
+         {
+            //The original hash context must be preserved
+            memcpy(hashContext, context->handshakeHashContext,
+               hashAlgo->contextSize);
 
-         //Check whether the computation is performed at client or server side
-         if(entity == TLS_CONNECTION_END_CLIENT)
-            label = "client finished";
+            //Finalize hash computation
+            hashAlgo->final(hashContext, NULL);
+
+            //Check whether the computation is performed at client or server side
+            if(entity == TLS_CONNECTION_END_CLIENT)
+               label = "client finished";
+            else
+               label = "server finished";
+
+            //Compute the verify data
+            error = tls12Prf(hashAlgo, context->masterSecret, TLS_MASTER_SECRET_SIZE,
+               label, hashContext->digest, hashAlgo->digestSize,
+               verifyData, context->cipherSuite.verifyDataLen);
+
+            //Release previously allocated memory
+            tlsFreeMem(hashContext);
+         }
          else
-            label = "server finished";
-
-         //Generate the verify data
-         error = tls12Prf(hashAlgo, context->masterSecret, TLS_MASTER_SECRET_SIZE,
-            label, hashContext->digest, hashAlgo->digestSize,
-            verifyData, context->cipherSuite.verifyDataLen);
-
-         //Release previously allocated memory
-         tlsFreeMem(hashContext);
+         {
+            //Failed to allocate memory
+            error = ERROR_OUT_OF_MEMORY;
+         }
       }
       else
       {
-         //Failed to allocate memory
-         error = ERROR_OUT_OF_MEMORY;
+         //Invalid hash algorithm
+         error = ERROR_FAILURE;
+      }
+   }
+   else
+#endif
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+   //TLS 1.3 currently selected?
+   if(context->version == TLS_VERSION_1_3)
+   {
+      uint8_t *baseKey;
+      const HashAlgo *hashAlgo;
+      uint8_t digest[TLS_MAX_HKDF_DIGEST_SIZE];
+      uint8_t finishedKey[TLS_MAX_HKDF_DIGEST_SIZE];
+
+      //The hash function used by HKDF is the cipher suite hash algorithm
+      hashAlgo = context->cipherSuite.prfHashAlgo;
+
+      //Valid hash algorithm?
+      if(hashAlgo != NULL && context->handshakeHashContext != NULL)
+      {
+         //Check whether the computation is performed at client or server side
+         if(entity == TLS_CONNECTION_END_CLIENT)
+            baseKey = context->clientHsTrafficSecret;
+         else
+            baseKey = context->serverHsTrafficSecret;
+
+         //The key used to compute the Finished message is computed from the
+         //base key using HKDF
+         error = tls13HkdfExpandLabel(hashAlgo, baseKey, hashAlgo->digestSize,
+            "finished", NULL, 0, finishedKey, hashAlgo->digestSize);
+
+         //Check status code
+         if(!error)
+         {
+            //Compute the transcript hash
+            error = tlsFinalizeTranscriptHash(context, hashAlgo,
+               context->handshakeHashContext, "", digest);
+         }
+
+         //Check status code
+         if(!error)
+         {
+            //Compute the verify data
+            error = hmacCompute(hashAlgo, finishedKey, hashAlgo->digestSize,
+               digest, hashAlgo->digestSize, verifyData);
+         }
+      }
+      else
+      {
+         //Invalid hash algorithm
+         error = ERROR_FAILURE;
       }
    }
    else

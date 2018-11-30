@@ -1,6 +1,6 @@
 /**
- * @file ssl_misc.h
- * @brief SSL 3.0 helper functions
+ * @file tls13_key_material.h
+ * @brief TLS 1.3 key schedule
  *
  * @section License
  *
@@ -26,11 +26,10 @@
  * @version 1.9.0
  **/
 
-#ifndef _SSL_MISC_H
-#define _SSL_MISC_H
+#ifndef _TLS13_KEY_MATERIAL_H
+#define _TLS13_KEY_MATERIAL_H
 
 //Dependencies
-#include "core/crypto.h"
 #include "tls.h"
 
 //C++ guard
@@ -38,16 +37,19 @@
    extern "C" {
 #endif
 
-//SSL 3.0 related constants
-extern const uint8_t sslPad1[48];
-extern const uint8_t sslPad2[48];
+//TLS 1.3 related functions
+error_t tls13HkdfExpandLabel(const HashAlgo *hash, const uint8_t *secret,
+   size_t secretLen, const char_t *label, const uint8_t *context,
+   size_t contextLen, uint8_t *output, size_t outputLen);
 
-//SSL 3.0 related functions
-error_t sslExpandKey(const uint8_t *secret, size_t secretLen,
-   const uint8_t *random, size_t randomLen, uint8_t *output, size_t outputLen);
+error_t tls13DeriveSecret(TlsContext *context, const uint8_t *secret,
+   size_t secretLen, const char_t *label, const char_t *message,
+   size_t messageLen, uint8_t *output, size_t outputLen);
 
-error_t sslComputeMac(TlsEncryptionEngine *encryptionEngine,
-   const TlsRecord *record, const uint8_t *data, size_t dataLen, uint8_t *mac);
+error_t tls13GenerateEarlyTrafficKeys(TlsContext *context);
+error_t tls13GenerateHandshakeTrafficKeys(TlsContext *context);
+error_t tls13GenerateServerAppTrafficKeys(TlsContext *context);
+error_t tls13GenerateClientAppTrafficKeys(TlsContext *context);
 
 //C++ guard
 #ifdef __cplusplus

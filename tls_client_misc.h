@@ -23,11 +23,11 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.6
+ * @version 1.9.0
  **/
 
-#ifndef _TLS_SERVER_MISC_H
-#define _TLS_SERVER_MISC_H
+#ifndef _TLS_CLIENT_MISC_H
+#define _TLS_CLIENT_MISC_H
 
 //Dependencies
 #include "tls.h"
@@ -38,77 +38,28 @@
 #endif
 
 //TLS client specific functions
-error_t tlsFormatCipherSuites(TlsContext *context,
-   uint_t *cipherSuiteTypes, uint8_t *p, size_t *written);
+error_t tlsFormatInitialClientHello(TlsContext *context);
 
-error_t tlsFormatCompressMethods(TlsContext *context,
+error_t tlsFormatSessionId(TlsContext *context, uint8_t *p,
+   size_t *written);
+
+error_t tlsFormatCipherSuites(TlsContext *context, uint_t *cipherSuiteTypes,
    uint8_t *p, size_t *written);
 
-error_t tlsFormatClientSupportedVersionsExtension(TlsContext *context,
-   uint8_t *p, size_t *written);
+error_t tlsFormatCompressMethods(TlsContext *context, uint8_t *p,
+   size_t *written);
 
-error_t tlsFormatClientSniExtension(TlsContext *context,
-   uint8_t *p, size_t *written);
+error_t tlsFormatPskIdentity(TlsContext *context, uint8_t *p,
+   size_t *written);
 
-error_t tlsFormatClientMaxFragLenExtension(TlsContext *context,
-   uint8_t *p, size_t *written);
+error_t tlsFormatClientKeyParams(TlsContext *context, uint8_t *p,
+   size_t *written);
 
-error_t tlsFormatClientRecordSizeLimitExtension(TlsContext *context,
-   uint8_t *p, size_t *written);
+error_t tlsParsePskIdentityHint(TlsContext *context, const uint8_t *p,
+   size_t length, size_t *consumed);
 
-error_t tlsFormatSupportedGroupsExtension(TlsContext *context,
-   uint_t cipherSuiteTypes, uint8_t *p, size_t *written);
-
-error_t tlsFormatClientEcPointFormatsExtension(TlsContext *context,
-   uint_t cipherSuiteTypes, uint8_t *p, size_t *written);
-
-error_t tlsFormatClientAlpnExtension(TlsContext *context,
-   uint8_t *p, size_t *written);
-
-error_t tlsFormatClientCertTypeListExtension(TlsContext *context,
-   uint8_t *p, size_t *written);
-
-error_t tlsFormatServerCertTypeListExtension(TlsContext *context,
-   uint8_t *p, size_t *written);
-
-error_t tlsFormatClientEmsExtension(TlsContext *context,
-   uint8_t *p, size_t *written);
-
-error_t tlsFormatClientRenegoInfoExtension(TlsContext *context,
-   uint8_t *p, size_t *written);
-
-error_t tlsFormatPskIdentity(TlsContext *context,
-   uint8_t *p, size_t *written);
-
-error_t tlsFormatClientKeyParams(TlsContext *context,
-   uint8_t *p, size_t *written);
-
-error_t tlsParseServerSniExtension(TlsContext *context,
-   const TlsServerNameList *serverNameList);
-
-error_t tlsParseServerMaxFragLenExtension(TlsContext *context,
-   const uint8_t *maxFragLen);
-
-error_t tlsParseServerRecordSizeLimitExtension(TlsContext *context,
-   const uint8_t *recordSizeLimit);
-
-error_t tlsParseServerEcPointFormatsExtension(TlsContext *context,
-   const TlsEcPointFormatList *ecPointFormatList);
-
-error_t tlsParseServerAlpnExtension(TlsContext *context,
-   const TlsProtocolNameList *protocolNameList);
-
-error_t tlsParseClientCertTypeExtension(TlsContext *context,
-   const uint8_t *clientCertType);
-
-error_t tlsParseServerCertTypeExtension(TlsContext *context,
-   const uint8_t *serverCertType);
-
-error_t tlsParsePskIdentityHint(TlsContext *context,
-   const uint8_t *p, size_t length, size_t *consumed);
-
-error_t tlsParseServerKeyParams(TlsContext *context,
-   const uint8_t *p, size_t length, size_t *consumed);
+error_t tlsParseServerKeyParams(TlsContext *context, const uint8_t *p,
+   size_t length, size_t *consumed);
 
 error_t tlsVerifyServerKeySignature(TlsContext *context,
    const TlsDigitalSignature *signature, size_t length,
@@ -117,6 +68,12 @@ error_t tlsVerifyServerKeySignature(TlsContext *context,
 error_t tls12VerifyServerKeySignature(TlsContext *context,
    const Tls12DigitalSignature *signature, size_t length,
    const uint8_t *params, size_t paramsLen, size_t *consumed);
+
+error_t tlsSelectClientVersion(TlsContext *context,
+   const TlsServerHello *message, const TlsHelloExtensions *extensions);
+
+error_t tlsResumeClientSession(TlsContext *context, const uint8_t *sessionId,
+   size_t sessionIdLen, uint16_t cipherSuite, uint8_t compressMethod);
 
 //C++ guard
 #ifdef __cplusplus

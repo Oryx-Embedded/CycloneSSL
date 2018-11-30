@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.6
+ * @version 1.9.0
  **/
 
 //Switch to the appropriate trace level
@@ -35,9 +35,8 @@
 #include "tls_ffdhe.h"
 #include "debug.h"
 
-//Check SSL library configuration
+//Check TLS library configuration
 #if (TLS_SUPPORT == ENABLED && TLS_FFDHE_SUPPORT == ENABLED)
-
 
 #if (TLS_FFDHE2048_SUPPORT == ENABLED)
 
@@ -165,17 +164,156 @@ const TlsFfdheGroup ffdhe4096Group =
 
 
 /**
+ * @brief Select the named group to be used when performing FFDHE key exchange
+ * @param[in] context Pointer to the TLS context
+ * @param[in] groupList List of named groups supported by the peer
+ * @return Error code
+ **/
+
+error_t tlsSelectFfdheGroup(TlsContext *context,
+   const TlsSupportedGroupList *groupList)
+{
+   error_t error;
+   uint_t i;
+   uint_t j;
+   uint_t n;
+   uint16_t namedGroup;
+   bool_t ffdheGroupFound;
+
+   //Initialize status code
+   error = ERROR_HANDSHAKE_FAILED;
+
+   //Initialize flag
+   ffdheGroupFound = FALSE;
+
+   //Reset the named group to its default value
+   context->namedGroup = TLS_GROUP_NONE;
+
+   //Check whether a list of named groups is offered by the client
+   if(groupList != NULL)
+   {
+      //Get the number of named groups present in the list
+      n = ntohs(groupList->length) / sizeof(uint16_t);
+
+      //Any preferred groups?
+      if(context->numSupportedGroups > 0)
+      {
+         //Loop through the list of allowed groups (most preferred first)
+         for(i = 0; i < context->numSupportedGroups; i++)
+         {
+            //Loop through the list of named groups the client supports
+            for(j = 0; j < n; j++)
+            {
+               //Convert the named group to host byte order
+               namedGroup = ntohs(groupList->value[j]);
+
+               //Check whether the SupportedGroups extension contains codepoints
+               //between 256 and 511, inclusive
+               if(namedGroup >= TLS_GROUP_FFDHE2048 &&
+                  namedGroup <= TLS_GROUP_FFDHE_MAX)
+               {
+                  //The list contains at least one FFDHE group
+                  ffdheGroupFound = TRUE;
+               }
+
+               //The named group to be used when performing FFDHE key exchange
+               //must be one of those present in the SupportedGroups extension
+               if(context->supportedGroups[i] == namedGroup)
+               {
+                  //Acceptable FFDHE group found?
+                  if(tlsGetFfdheGroup(context, namedGroup) != NULL)
+                  {
+                     //Save the named group
+                     if(context->namedGroup == TLS_GROUP_NONE)
+                     {
+                        context->namedGroup = namedGroup;
+                     }
+                  }
+               }
+            }
+         }
+      }
+      else
+      {
+         //The named group to be used when performing FFDHE key exchange must
+         //be one of those present in the SupportedGroups extension
+         for(j = 0; j < n; j++)
+         {
+            //Convert the named group to host byte order
+            namedGroup = ntohs(groupList->value[j]);
+
+            //Check whether the SupportedGroups extension contains codepoints
+            //between 256 and 511, inclusive
+            if(namedGroup >= TLS_GROUP_FFDHE2048 &&
+               namedGroup <= TLS_GROUP_FFDHE_MAX)
+            {
+               //The list contains at least one FFDHE group
+               ffdheGroupFound = TRUE;
+            }
+
+            //Acceptable FFDHE group found?
+            if(tlsGetFfdheGroup(context, namedGroup) != NULL)
+            {
+               //Save the named group
+               if(context->namedGroup == TLS_GROUP_NONE)
+               {
+                  context->namedGroup = namedGroup;
+               }
+            }
+         }
+      }
+   }
+
+   //If the SupportedGroups extension is either absent from the ClientHello
+   //entirely or contains no FFDHE groups, then the server knows that the
+   //client is not compatible with RFC 7919
+   if(!ffdheGroupFound)
+   {
+      //In this scenario, the server may select an FFDHE group of its choice
+      if(tlsGetFfdheGroup(context, TLS_GROUP_FFDHE2048) != NULL)
+      {
+         //Select ffdhe2048 finite field group
+         context->namedGroup = TLS_GROUP_FFDHE2048;
+      }
+      else if(tlsGetFfdheGroup(context, TLS_GROUP_FFDHE3072) != NULL)
+      {
+         //Select ffdhe3072 finite field group
+         context->namedGroup = TLS_GROUP_FFDHE3072;
+      }
+      else if(tlsGetFfdheGroup(context, TLS_GROUP_FFDHE4096) != NULL)
+      {
+         //Select ffdhe4096 finite field group
+         context->namedGroup = TLS_GROUP_FFDHE4096;
+      }
+      else
+      {
+         //Just for sanity
+         context->namedGroup = TLS_GROUP_NONE;
+      }
+   }
+
+   //If no acceptable choices are presented, then return an error
+   if(context->namedGroup != TLS_GROUP_NONE)
+   {
+      error = NO_ERROR;
+   }
+
+   //Return status code
+   return error;
+}
+
+
+/**
  * @brief Get the FFDHE parameters that match the specified named group
+ * @param[in] context Pointer to the TLS context
  * @param[in] namedGroup Named group
  * @return FFDHE parameters
  **/
 
-const TlsFfdheGroup *tlsGetFfdheGroup(uint16_t namedGroup)
+const TlsFfdheGroup *tlsGetFfdheGroup(TlsContext *context, uint16_t namedGroup)
 {
+   uint_t i;
    const TlsFfdheGroup *ffdheGroup;
-
-   //Default FFDHE parameters
-   ffdheGroup = NULL;
 
    //Check named group
    switch(namedGroup)
@@ -204,101 +342,38 @@ const TlsFfdheGroup *tlsGetFfdheGroup(uint16_t namedGroup)
       break;
    }
 
+   //Restrict the use of certain FFDHE groups
+   if(context->numSupportedGroups > 0)
+   {
+      //Loop through the list of allowed named groups
+      for(i = 0; i < context->numSupportedGroups; i++)
+      {
+         //Compare named groups
+         if(context->supportedGroups[i] == namedGroup)
+            break;
+      }
+
+      //Check whether the use of the FFDHE group is restricted
+      if(i >= context->numSupportedGroups)
+         ffdheGroup = NULL;
+   }
+
    //Return FFDHE parameters, if any
    return ffdheGroup;
 }
 
 
 /**
- * @brief Select the named group to be used when performing FFDHE key exchange
- * @param[in] context Pointer to the TLS context
- * @param[in] groupList List of named groups supported by the client
- * @return Error code
- **/
-
-error_t tlsSelectFfdheGroup(TlsContext *context,
-   const TlsSupportedGroupList *groupList)
-{
-   uint_t i;
-   uint_t n;
-   bool_t ffdheGroupFound;
-
-   //Initialize flag
-   ffdheGroupFound = FALSE;
-
-   //Reset the named group to its default value
-   context->namedGroup = TLS_GROUP_NONE;
-
-   //Check whether a list of named groups is offered by the client
-   if(groupList != NULL)
-   {
-      //Get the number of named groups present in the list
-      n = ntohs(groupList->length) / sizeof(uint16_t);
-
-      //The named group to be used when performing FFDHE key exchange must be
-      //one of those present in the list
-      for(i = 0; i < n; i++)
-      {
-         //Check whether the SupportedGroups extension contains codepoints
-         //between 256 and 511, inclusive
-         if(ntohs(groupList->value[i]) >= TLS_GROUP_FFDHE2048 &&
-            ntohs(groupList->value[i]) <= TLS_GROUP_FFDHE_MAX)
-         {
-            //The list contains at least one FFDHE group
-            ffdheGroupFound = TRUE;
-         }
-
-         //Acceptable FFDHE group found?
-         if(tlsGetFfdheGroup(ntohs(groupList->value[i])) != NULL)
-         {
-            //Save the named group
-            if(context->namedGroup == TLS_GROUP_NONE)
-               context->namedGroup = ntohs(groupList->value[i]);
-
-            //We are done
-            break;
-         }
-      }
-   }
-
-   //If the SupportedGroups extension is either absent from the ClientHello
-   //entirely or contains no FFDHE groups, then the server knows that the
-   //client is not compatible with RFC 7919
-   if(!ffdheGroupFound)
-   {
-      //In this scenario, the server may select an FFDHE group of its choice
-      if(tlsGetFfdheGroup(TLS_GROUP_FFDHE2048) != NULL)
-         context->namedGroup = TLS_GROUP_FFDHE2048;
-      else if(tlsGetFfdheGroup(TLS_GROUP_FFDHE3072) != NULL)
-         context->namedGroup = TLS_GROUP_FFDHE3072;
-      else if(tlsGetFfdheGroup(TLS_GROUP_FFDHE4096) != NULL)
-         context->namedGroup = TLS_GROUP_FFDHE4096;
-      else
-         context->namedGroup = TLS_GROUP_NONE;
-   }
-
-   //If no acceptable choices are presented, then return an error
-   if(context->namedGroup == TLS_GROUP_NONE)
-      return ERROR_FAILURE;
-   else
-      return NO_ERROR;
-}
-
-
-/**
  * @brief Load FFDHE parameters
  * @param[out] params Pointer to the structure to be initialized
- * @param[in] namedGroup Named group
+ * @param[in] ffdheGroup FFDHE parameters
  * @return Error code
  **/
 
-error_t tlsLoadFfdheParameters(DhParameters *params, uint16_t namedGroup)
+error_t tlsLoadFfdheParameters(DhParameters *params,
+   const TlsFfdheGroup *ffdheGroup)
 {
    error_t error;
-   const TlsFfdheGroup *ffdheGroup;
-
-   //Retrieve the FFDHE group to be used
-   ffdheGroup = tlsGetFfdheGroup(namedGroup);
 
    //Make sure the FFDHE group is supported
    if(ffdheGroup != NULL)

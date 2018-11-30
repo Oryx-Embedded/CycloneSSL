@@ -29,7 +29,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.6
+ * @version 1.9.0
  **/
 
 //Switch to the appropriate trace level
@@ -40,18 +40,18 @@
 #include <ctype.h>
 #include "tls.h"
 #include "tls_handshake.h"
-#include "tls_client.h"
-#include "tls_server.h"
 #include "tls_common.h"
-#include "tls_record.h"
 #include "tls_certificate.h"
+#include "tls_transcript_hash.h"
+#include "tls_record.h"
 #include "tls_misc.h"
+#include "tls13_client_misc.h"
 #include "dtls_record.h"
 #include "certificate/pem_import.h"
 #include "certificate/x509_cert_parse.h"
 #include "debug.h"
 
-//Check SSL library configuration
+//Check TLS library configuration
 #if (TLS_SUPPORT == ENABLED)
 
 
@@ -82,14 +82,29 @@ TlsContext *tlsInit(void)
       //Default client authentication mode
       context->clientAuthMode = TLS_CLIENT_AUTH_NONE;
 
-      //Minimum version accepted by the implementation
+      //Minimum and maximum versions accepted by the implementation
       context->versionMin = TLS_MIN_VERSION;
-      //Maximum version accepted by the implementation
       context->versionMax = TLS_MAX_VERSION;
 
       //Default record layer version number
       context->version = TLS_MIN_VERSION;
       context->encryptionEngine.version = TLS_MIN_VERSION;
+
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+      //Select default named group
+      if(tls13IsGroupSupported(context, TLS_GROUP_ECDH_X25519))
+      {
+         context->preferredGroup = TLS_GROUP_ECDH_X25519;
+      }
+      else if(tls13IsGroupSupported(context, TLS_GROUP_SECP256R1))
+      {
+         context->preferredGroup = TLS_GROUP_SECP256R1;
+      }
+      else
+      {
+         context->preferredGroup = TLS_GROUP_NONE;
+      }
+#endif
 
 #if (DTLS_SUPPORT == ENABLED)
       //Default PMTU
@@ -103,31 +118,27 @@ TlsContext *tlsInit(void)
       context->replayDetectionEnabled = TRUE;
 #endif
 
-#if (TLS_DH_ANON_SUPPORT == ENABLED || TLS_DHE_RSA_SUPPORT == ENABLED || \
-   TLS_DHE_DSS_SUPPORT == ENABLED || TLS_DHE_PSK_SUPPORT == ENABLED)
+#if (TLS_DH_SUPPORT == ENABLED)
       //Initialize Diffie-Hellman context
       dhInit(&context->dhContext);
 #endif
 
-#if (TLS_ECDH_ANON_SUPPORT == ENABLED || TLS_ECDHE_RSA_SUPPORT == ENABLED || \
-   TLS_ECDHE_ECDSA_SUPPORT == ENABLED || TLS_ECDHE_PSK_SUPPORT == ENABLED)
+#if (TLS_ECDH_SUPPORT == ENABLED)
       //Initialize ECDH context
       ecdhInit(&context->ecdhContext);
 #endif
 
-#if (TLS_RSA_SIGN_SUPPORT == ENABLED || TLS_RSA_PSS_SIGN_SUPPORT == ENABLED || \
-   TLS_RSA_SUPPORT == ENABLED || TLS_DHE_RSA_SUPPORT == ENABLED || \
-   TLS_ECDHE_RSA_SUPPORT == ENABLED || TLS_RSA_PSK_SUPPORT == ENABLED)
+#if (TLS_RSA_SUPPORT == ENABLED)
       //Initialize peer's RSA public key
       rsaInitPublicKey(&context->peerRsaPublicKey);
 #endif
 
-#if (TLS_DSA_SIGN_SUPPORT == ENABLED || TLS_DHE_DSS_SUPPORT == ENABLED)
+#if (TLS_DSA_SIGN_SUPPORT == ENABLED)
       //Initialize peer's DSA public key
       dsaInitPublicKey(&context->peerDsaPublicKey);
 #endif
 
-#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED || TLS_ECDHE_ECDSA_SUPPORT == ENABLED)
+#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED || TLS_EDDSA_SIGN_SUPPORT == ENABLED)
       //Initialize peer's EC domain parameters
       ecInitDomainParameters(&context->peerEcParams);
       //Initialize peer's EC public key
@@ -548,8 +559,8 @@ error_t tlsSetMaxFragmentLength(TlsContext *context, size_t maxFragLen)
  * @return Error code
  **/
 
-error_t tlsSetCipherSuites(TlsContext *context,
-   const uint16_t *cipherSuites, uint_t length)
+error_t tlsSetCipherSuites(TlsContext *context, const uint16_t *cipherSuites,
+   uint_t length)
 {
    //Invalid TLS context?
    if(context == NULL)
@@ -569,6 +580,60 @@ error_t tlsSetCipherSuites(TlsContext *context,
 
 
 /**
+ * @brief Specify the list of allowed ECDHE and FFDHE groups
+ * @param[in] context Pointer to the TLS context
+ * @param[in] groups List of named groups
+ * @param[in] length Number of named groups in the list
+ * @return Error code
+ **/
+
+error_t tlsSetSupportedGroups(TlsContext *context, const uint16_t *groups,
+   uint_t length)
+{
+   //Invalid TLS context?
+   if(context == NULL)
+      return ERROR_INVALID_PARAMETER;
+
+   //Check parameters
+   if(groups == NULL && length != 0)
+      return ERROR_INVALID_PARAMETER;
+
+   //Restrict the named groups that can be used
+   context->supportedGroups = groups;
+   context->numSupportedGroups = length;
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
+ * @brief Specify the preferred ECDHE or FFDHE group
+ * @param[in] context Pointer to the TLS context
+ * @param[in] group Preferred ECDHE or FFDHE named group
+ * @return Error code
+ **/
+
+error_t tlsSetPreferredGroup(TlsContext *context, uint16_t group)
+{
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+   //Invalid TLS context?
+   if(context == NULL)
+      return ERROR_INVALID_PARAMETER;
+
+   //Save the preferred named group
+   context->preferredGroup = group;
+
+   //Successful processing
+   return NO_ERROR;
+#else
+   //Not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
+}
+
+
+/**
  * @brief Import Diffie-Hellman parameters
  * @param[in] context Pointer to the TLS context
  * @param[in] params PEM structure that holds Diffie-Hellman parameters
@@ -576,11 +641,10 @@ error_t tlsSetCipherSuites(TlsContext *context,
  * @return Error code
  **/
 
-error_t tlsSetDhParameters(TlsContext *context,
-   const char_t *params, size_t length)
+error_t tlsSetDhParameters(TlsContext *context, const char_t *params,
+   size_t length)
 {
-#if (TLS_DH_ANON_SUPPORT == ENABLED || TLS_DHE_RSA_SUPPORT == ENABLED || \
-   TLS_DHE_DSS_SUPPORT == ENABLED || TLS_DHE_PSK_SUPPORT == ENABLED)
+#if (TLS_DH_SUPPORT == ENABLED)
    //Invalid TLS context?
    if(context == NULL)
       return ERROR_INVALID_PARAMETER;
@@ -673,6 +737,33 @@ error_t tlsSetEcdsaVerifyCallback(TlsContext *context,
    return NO_ERROR;
 #else
    //PSK key exchange is not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
+}
+
+
+/**
+ * @brief Register key logging callback function (for debugging purpose only)
+ * @param[in] context Pointer to the TLS context
+ * @param[in] keyLogCallback Key logging callback function
+ * @return Error code
+ **/
+
+error_t tlsSetKeyLogCallback(TlsContext *context,
+   TlsKeyLogCallback keyLogCallback)
+{
+#if (TLS_KEY_LOG_SUPPORT == ENABLED)
+   //Check parameters
+   if(context == NULL || keyLogCallback == NULL)
+      return ERROR_INVALID_PARAMETER;
+
+   //Save the key logging callback function
+   context->keyLogCallback = keyLogCallback;
+
+   //Successful processing
+   return NO_ERROR;
+#else
+   //Key logging is not implemented
    return ERROR_NOT_IMPLEMENTED;
 #endif
 }
@@ -789,8 +880,7 @@ const char_t *tlsGetAlpnProtocol(TlsContext *context)
 
 error_t tlsSetPsk(TlsContext *context, const uint8_t *psk, size_t length)
 {
-#if (TLS_PSK_SUPPORT == ENABLED || TLS_RSA_PSK_SUPPORT == ENABLED || \
-   TLS_DHE_PSK_SUPPORT == ENABLED || TLS_ECDHE_PSK_SUPPORT == ENABLED)
+#if (TLS_PSK_SUPPORT == ENABLED)
    //Invalid TLS context?
    if(context == NULL)
       return ERROR_INVALID_PARAMETER;
@@ -805,7 +895,7 @@ error_t tlsSetPsk(TlsContext *context, const uint8_t *psk, size_t length)
       //Release memory
       memset(context->psk, 0, context->pskLen);
       tlsFreeMem(context->psk);
-      //Re-initialize length
+      context->psk = NULL;
       context->pskLen = 0;
    }
 
@@ -823,6 +913,15 @@ error_t tlsSetPsk(TlsContext *context, const uint8_t *psk, size_t length)
       //Save the length of the key
       context->pskLen = length;
    }
+
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+   //For externally established PSKs, the hash algorithm must be set when the
+   //PSK is established, or default to SHA-256 if no such algorithm is defined
+   context->pskHashAlgo = TLS_HASH_ALGO_SHA256;
+
+   //The cipher suite must be provisioned along with the key
+   context->pskCipherSuite = 0;
+#endif
 
    //Successful processing
    return NO_ERROR;
@@ -842,8 +941,7 @@ error_t tlsSetPsk(TlsContext *context, const uint8_t *psk, size_t length)
 
 error_t tlsSetPskIdentity(TlsContext *context, const char_t *pskIdentity)
 {
-#if (TLS_PSK_SUPPORT == ENABLED || TLS_RSA_PSK_SUPPORT == ENABLED || \
-   TLS_DHE_PSK_SUPPORT == ENABLED || TLS_ECDHE_PSK_SUPPORT == ENABLED)
+#if (TLS_PSK_SUPPORT == ENABLED)
    size_t length;
 
    //Check parameters
@@ -892,8 +990,7 @@ error_t tlsSetPskIdentity(TlsContext *context, const char_t *pskIdentity)
 
 error_t tlsSetPskIdentityHint(TlsContext *context, const char_t *pskIdentityHint)
 {
-#if (TLS_PSK_SUPPORT == ENABLED || TLS_RSA_PSK_SUPPORT == ENABLED || \
-   TLS_DHE_PSK_SUPPORT == ENABLED || TLS_ECDHE_PSK_SUPPORT == ENABLED)
+#if (TLS_PSK_SUPPORT == ENABLED)
    size_t length;
 
    //Check parameters
@@ -942,8 +1039,7 @@ error_t tlsSetPskIdentityHint(TlsContext *context, const char_t *pskIdentityHint
 
 error_t tlsSetPskCallback(TlsContext *context, TlsPskCallback pskCallback)
 {
-#if (TLS_PSK_SUPPORT == ENABLED || TLS_RSA_PSK_SUPPORT == ENABLED || \
-   TLS_DHE_PSK_SUPPORT == ENABLED || TLS_ECDHE_PSK_SUPPORT == ENABLED)
+#if (TLS_PSK_SUPPORT == ENABLED)
    //Check parameters
    if(context == NULL || pskCallback == NULL)
       return ERROR_INVALID_PARAMETER;
@@ -1087,8 +1183,8 @@ error_t tlsAddCertificate(TlsContext *context, const char_t *certChain,
          break;
 
       //Retrieve the signature algorithm that has been used to sign the certificate
-      error = tlsGetCertificateType(certInfo, &certType,
-         &certSignAlgo, &certHashAlgo, &namedCurve);
+      error = tlsGetCertificateType(certInfo, &certType, &certSignAlgo,
+         &certHashAlgo, &namedCurve);
       //The specified signature algorithm is not supported?
       if(error)
          break;
@@ -1178,6 +1274,40 @@ error_t tlsEnableFallbackScsv(TlsContext *context, bool_t enabled)
 
 
 /**
+ * @brief Set ticket encryption/decryption callbacks
+ * @param[in] context Pointer to the TLS context
+ * @param[in] ticketEncryptCallback Ticket encryption callback function
+ * @param[in] ticketDecryptCallback Ticket decryption callback function
+ * @param[in] param An opaque pointer passed to the callback functions
+ * @return Error code
+ **/
+
+error_t tlsSetTicketCallbacks(TlsContext *context,
+   TlsTicketEncryptCallback ticketEncryptCallback,
+   TlsTicketDecryptCallback ticketDecryptCallback, void *param)
+{
+#if (TLS_TICKET_SUPPORT == ENABLED)
+   //Invalid TLS context?
+   if(context == NULL)
+      return ERROR_INVALID_PARAMETER;
+
+   //Save ticket encryption/decryption callback functions
+   context->ticketEncryptCallback = ticketEncryptCallback;
+   context->ticketDecryptCallback = ticketDecryptCallback;
+
+   //This opaque pointer will be directly passed to the callback functions
+   context->ticketParam = param;
+
+   //Successful processing
+   return NO_ERROR;
+#else
+   //Session ticket mechanism is not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
+}
+
+
+/**
  * @brief Set PMTU value (for DTLS only)
  * @param[in] context Pointer to the TLS context
  * @param[in] pmtu PMTU value
@@ -1238,13 +1368,13 @@ error_t tlsSetTimeout(TlsContext *context, systime_t timeout)
  * @param[in] context Pointer to the TLS context
  * @param[in] cookieGenerateCallback Cookie generation callback function
  * @param[in] cookieVerifyCallback Cookie verification callback function
- * @param[in] handle An opaque pointer passed to the callback functions
+ * @param[in] param An opaque pointer passed to the callback functions
  * @return Error code
  **/
 
 error_t tlsSetCookieCallbacks(TlsContext *context,
    DtlsCookieGenerateCallback cookieGenerateCallback,
-   DtlsCookieVerifyCallback cookieVerifyCallback, DtlsCookieHandle handle)
+   DtlsCookieVerifyCallback cookieVerifyCallback, void *param)
 {
 #if (DTLS_SUPPORT == ENABLED)
    //Invalid TLS context?
@@ -1260,7 +1390,7 @@ error_t tlsSetCookieCallbacks(TlsContext *context,
    context->cookieVerifyCallback = cookieVerifyCallback;
 
    //This opaque pointer will be directly passed to the callback functions
-   context->cookieHandle = handle;
+   context->cookieParam = param;
 
    //Successful processing
    return NO_ERROR;
@@ -1296,6 +1426,102 @@ error_t tlsEnableReplayDetection(TlsContext *context, bool_t enabled)
 #endif
 }
 
+
+/**
+ * @brief Send the maximum amount of 0-RTT data the server can accept
+ * @param[in] context Pointer to the TLS context
+ * @param[in] maxEarlyDataSize Maximum amount of 0-RTT data that the client
+ *   is allowed to send
+ * @return Error code
+ **/
+
+
+error_t tlsSetMaxEarlyDataSize(TlsContext *context, size_t maxEarlyDataSize)
+{
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+   //Invalid TLS context?
+   if(context == NULL)
+      return ERROR_INVALID_PARAMETER;
+
+   //Save the maximum amount of 0-RTT data that the client is allowed to send
+   context->maxEarlyDataSize = maxEarlyDataSize;
+
+   //Successful processing
+   return NO_ERROR;
+#else
+   //Not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
+}
+
+
+/**
+ * @brief Send early data to the remote TLS server
+ * @param[in] context Pointer to the TLS context
+ * @param[in] data Pointer to a buffer containing the data to be transmitted
+ * @param[in] length Number of bytes to be transmitted
+ * @param[out] written Actual number of bytes written (optional parameter)
+ * @param[in] flags Set of flags that influences the behavior of this function
+ * @return Error code
+ **/
+
+error_t tlsWriteEarlyData(TlsContext *context, const void *data,
+   size_t length, size_t *written, uint_t flags)
+{
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3 && \
+   TLS_CLIENT_SUPPORT == ENABLED && TLS13_EARLY_DATA_SUPPORT == ENABLED)
+   size_t n;
+   error_t error;
+
+   //Invalid TLS context?
+   if(context == NULL)
+      return ERROR_INVALID_PARAMETER;
+
+   //Check parameters
+   if(data == NULL && length != 0)
+      return ERROR_INVALID_PARAMETER;
+
+   //Check operation mode
+   if(context->entity != TLS_CONNECTION_END_CLIENT)
+      return ERROR_FAILURE;
+
+   //Make sure TLS 1.3 is supported by the client
+   if(context->versionMax < TLS_VERSION_1_3)
+      return ERROR_FAILURE;
+
+   //Check transport protocol
+   if(context->transportProtocol != TLS_TRANSPORT_PROTOCOL_STREAM)
+      return ERROR_FAILURE;
+
+   //Ensure the send/receive functions are properly registered
+   if(context->socketSendCallback == NULL || context->socketReceiveCallback == NULL)
+      return ERROR_NOT_CONFIGURED;
+
+   //Verify that the PRNG is properly set
+   if(context->prngAlgo == NULL || context->prngContext == NULL)
+      return ERROR_NOT_CONFIGURED;
+
+#if (DTLS_SUPPORT == ENABLED)
+   //Save current time
+   context->startTime = osGetSystemTime();
+#endif
+
+   //Send 0-RTT data
+   error = tls13SendEarlyData(context, data, length, &n);
+
+   //Total number of data that have been written
+   if(written != NULL)
+      *written = n;
+
+   //Return status code
+   return error;
+#else
+   //Not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
+}
+
+
 /**
  * @brief Initiate the TLS handshake
  * @param[in] context Pointer to the TLS context
@@ -1323,48 +1549,63 @@ error_t tlsConnect(TlsContext *context)
    context->startTime = osGetSystemTime();
 #endif
 
-   //Check current state
-   if(context->state == TLS_STATE_INIT)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3 && \
+   TLS_CLIENT_SUPPORT == ENABLED && TLS13_EARLY_DATA_SUPPORT == ENABLED)
+   //Any 0-RTT data sent by the client?
+   if(context->entity == TLS_CONNECTION_END_CLIENT &&
+      context->state == TLS_STATE_EARLY_DATA)
    {
-      //Allocate send buffer if necessary
-      if(context->txBuffer == NULL)
-      {
-         //Allocate TX buffer
-         context->txBuffer = tlsAllocMem(context->txBufferSize);
-
-         //Failed to allocate memory?
-         if(context->txBuffer == NULL)
-            return ERROR_OUT_OF_MEMORY;
-
-         //Clear TX buffer
-         memset(context->txBuffer, 0, context->txBufferSize);
-      }
-
-      //Allocate receive buffer if necessary
-      if(context->rxBuffer == NULL)
-      {
-         //Allocate RX buffer
-         context->rxBuffer = tlsAllocMem(context->rxBufferSize);
-
-         //Failed to allocate memory?
-         if(context->rxBuffer == NULL)
-         {
-            //Clean up side effects
-            tlsFreeMem(context->txBuffer);
-            context->txBuffer = NULL;
-            //Report an error
-            return ERROR_OUT_OF_MEMORY;
-         }
-
-         //Clear RX buffer
-         memset(context->rxBuffer, 0, context->rxBufferSize);
-      }
+      //Save current sequence number
+      context->earlyDataSeqNum = context->encryptionEngine.seqNum;
+      //Wait for a ServerHello message
+      context->state = TLS_STATE_SERVER_HELLO_3;
    }
+#endif
 
    //Perform TLS handshake
-   error = tlsHandshake(context);
+   error = tlsPerformHandshake(context);
    //Return status code
    return error;
+}
+
+
+/**
+ * @brief Check whether the server has accepted or rejected the early data
+ * @param[in] context Pointer to the TLS context
+ * @return TLS_EARLY_DATA_ACCEPTED if the early data was accepted, else
+ *   TLS_EARLY_DATA_REJECT if the early data was rejected
+ **/
+
+TlsEarlyDataStatus tlsGetEarlyDataStatus(TlsContext *context)
+{
+   TlsEarlyDataStatus status;
+
+   //Initialize early data status
+   status = TLS_EARLY_DATA_REJECTED;
+
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3 && \
+   TLS_CLIENT_SUPPORT == ENABLED && TLS13_EARLY_DATA_SUPPORT == ENABLED)
+   //Make sure the TLS context is valid
+   if(context != NULL)
+   {
+      //TLS operates as a client?
+      if(context->entity == TLS_CONNECTION_END_CLIENT)
+      {
+         //Any 0-RTT data sent by the client?
+         if(context->earlyDataEnabled)
+         {
+            //Check whether the server has accepted or rejected the early data
+            if(context->earlyDataExtReceived && !context->earlyDataRejected)
+            {
+               status = TLS_EARLY_DATA_ACCEPTED;
+            }
+         }
+      }
+   }
+#endif
+
+   //Return early data status
+   return status;
 }
 
 
@@ -1649,40 +1890,24 @@ error_t tlsRead(TlsContext *context, void *data,
             //Handshake message received?
             else if(contentType == TLS_TYPE_HANDSHAKE)
             {
-#if (TLS_CLIENT_SUPPORT == ENABLED)
-               //TLS operates as a client?
-               if(context->entity == TLS_CONNECTION_END_CLIENT)
-               {
-                  //Parse incoming handshake message
-                  error = tlsParseServerMessage(context);
-               }
-               else
-#endif
-#if (TLS_SERVER_SUPPORT == ENABLED)
-               //TLS operates as a server?
-               if(context->entity == TLS_CONNECTION_END_SERVER)
-               {
-                  //Parse incoming handshake message
-                  error = tlsParseClientMessage(context);
-               }
-               else
-#endif
-               //Unsupported mode of operation?
-               {
-                  //Report an error
-                  error = ERROR_FAILURE;
-               }
-            }
-            //Alert message received?
-            else if(contentType == TLS_TYPE_ALERT)
-            {
-               //Parse Alert message
-               error = tlsParseAlert(context, (TlsAlert *) p, n);
-
                //Advance data pointer
                context->rxBufferPos += n;
                //Number of bytes still pending in the receive buffer
                context->rxBufferLen -= n;
+
+               //Parse handshake message
+               error = tlsParseHandshakeMessage(context, p, n);
+            }
+            //Alert message received?
+            else if(contentType == TLS_TYPE_ALERT)
+            {
+               //Advance data pointer
+               context->rxBufferPos += n;
+               //Number of bytes still pending in the receive buffer
+               context->rxBufferLen -= n;
+
+               //Parse Alert message
+               error = tlsParseAlert(context, (TlsAlert *) p, n);
             }
             //An inappropriate message was received?
             else
@@ -1893,24 +2118,26 @@ error_t tlsShutdownEx(TlsContext *context, bool_t waitForCloseNotify)
                //Check status code
                if(!error)
                {
+                  //Advance data pointer
+                  context->rxBufferPos += n;
+                  //Number of bytes still pending in the receive buffer
+                  context->rxBufferLen -= n;
+
                   //Application data received?
                   if(contentType == TLS_TYPE_APPLICATION_DATA)
                   {
-                     //Advance data pointer
-                     context->rxBufferPos += n;
-                     //Number of bytes still pending in the receive buffer
-                     context->rxBufferLen -= n;
+                     //Discard application data
                   }
                   //Alert message received?
                   else if(contentType == TLS_TYPE_ALERT)
                   {
                      //Parse Alert message
                      error = tlsParseAlert(context, (TlsAlert *) p, n);
-
-                     //Advance data pointer
-                     context->rxBufferPos += n;
-                     //Number of bytes still pending in the receive buffer
-                     context->rxBufferLen -= n;
+                  }
+                  else if(contentType == TLS_TYPE_HANDSHAKE)
+                  {
+                     //Parse handshake message
+                     error = tlsParseHandshakeMessage(context, p, n);
                   }
                   //An inappropriate message was received?
                   else
@@ -1959,6 +2186,13 @@ void tlsFree(TlsContext *context)
          tlsFreeMem(context->serverName);
       }
 
+      //Release cookie
+      if(context->cookie != NULL)
+      {
+         memset(context->cookie, 0, context->cookieLen);
+         tlsFreeMem(context->cookie);
+      }
+
       //Release send buffer
       if(context->txBuffer != NULL)
       {
@@ -1973,63 +2207,51 @@ void tlsFree(TlsContext *context)
          tlsFreeMem(context->rxBuffer);
       }
 
-      //Release the SHA-1 context used to compute verify data
-      if(context->handshakeSha1Context != NULL)
+      //Release transcript hash context
+      tlsFreeTranscriptHash(context);
+
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+      //Release session ticket (TLS 1.3)
+      if(context->ticket != NULL)
       {
-         memset(context->handshakeSha1Context, 0, sizeof(Sha1Context));
-         tlsFreeMem(context->handshakeSha1Context);
+         tlsFreeMem(context->ticket);
       }
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
-      //Release the MD5 context used to compute verify data
-      if(context->handshakeMd5Context != NULL)
+      //Release the ALPN protocol associated with the ticket
+      if(context->ticketAlpn != NULL)
       {
-         memset(context->handshakeMd5Context, 0, sizeof(Md5Context));
-         tlsFreeMem(context->handshakeMd5Context);
-      }
-#endif
-
-#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
-      //Release the hash context used to compute verify data (TLS 1.2)
-      if(context->handshakeHashContext != NULL)
-      {
-         tlsFreeMem(context->handshakeHashContext);
+         tlsFreeMem(context->ticketAlpn);
       }
 #endif
 
-#if (TLS_DH_ANON_SUPPORT == ENABLED || TLS_DHE_RSA_SUPPORT == ENABLED || \
-   TLS_DHE_DSS_SUPPORT == ENABLED || TLS_DHE_PSK_SUPPORT == ENABLED)
+#if (TLS_DH_SUPPORT == ENABLED)
       //Release Diffie-Hellman context
       dhFree(&context->dhContext);
 #endif
 
-#if (TLS_ECDH_ANON_SUPPORT == ENABLED || TLS_ECDHE_RSA_SUPPORT == ENABLED || \
-   TLS_ECDHE_ECDSA_SUPPORT == ENABLED || TLS_ECDHE_PSK_SUPPORT == ENABLED)
+#if (TLS_ECDH_SUPPORT == ENABLED)
       //Release ECDH context
       ecdhFree(&context->ecdhContext);
 #endif
 
-#if (TLS_RSA_SIGN_SUPPORT == ENABLED || TLS_RSA_PSS_SIGN_SUPPORT == ENABLED || \
-   TLS_RSA_SUPPORT == ENABLED || TLS_DHE_RSA_SUPPORT == ENABLED || \
-   TLS_ECDHE_RSA_SUPPORT == ENABLED || TLS_RSA_PSK_SUPPORT == ENABLED)
+#if (TLS_RSA_SUPPORT == ENABLED)
       //Release peer's RSA public key
       rsaFreePublicKey(&context->peerRsaPublicKey);
 #endif
 
-#if (TLS_DSA_SIGN_SUPPORT == ENABLED || TLS_DHE_DSS_SUPPORT == ENABLED)
+#if (TLS_DSA_SIGN_SUPPORT == ENABLED)
       //Release peer's DSA public key
       dsaFreePublicKey(&context->peerDsaPublicKey);
 #endif
 
-#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED || TLS_ECDHE_ECDSA_SUPPORT == ENABLED)
+#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED || TLS_EDDSA_SIGN_SUPPORT == ENABLED)
       //Release peer's EC domain parameters
       ecFreeDomainParameters(&context->peerEcParams);
       //Release peer's EC public key
       ecFree(&context->peerEcPublicKey);
 #endif
 
-#if (TLS_PSK_SUPPORT == ENABLED || TLS_RSA_PSK_SUPPORT == ENABLED || \
-   TLS_DHE_PSK_SUPPORT == ENABLED || TLS_ECDHE_PSK_SUPPORT == ENABLED)
+#if (TLS_PSK_SUPPORT == ENABLED)
       //Release the pre-shared key
       if(context->psk != NULL)
       {
@@ -2051,13 +2273,13 @@ void tlsFree(TlsContext *context)
 #endif
 
 #if (TLS_ALPN_SUPPORT == ENABLED)
-      //Release the list of supported protocols
+      //Release the list of supported ALPN protocols
       if(context->protocolList != NULL)
       {
          tlsFreeMem(context->protocolList);
       }
 
-      //Release the selected protocol name
+      //Release the selected ALPN protocol
       if(context->selectedProtocol != NULL)
       {
          tlsFreeMem(context->selectedProtocol);
@@ -2082,42 +2304,152 @@ void tlsFree(TlsContext *context)
 
 
 /**
- * @brief Save TLS session
- * @param[in] context Pointer to the TLS context
- * @param[out] session Buffer where to store the current session parameters
+ * @brief Initialize session state
+ * @param[in] session Pointer to the session state
  * @return Error code
  **/
 
-error_t tlsSaveSession(const TlsContext *context, TlsSession *session)
+error_t tlsInitSessionState(TlsSessionState *session)
+{
+   //Make sure the session state is valid
+   if(session == NULL)
+      return ERROR_INVALID_PARAMETER;
+
+   //Erase session state
+   memset(session, 0, sizeof(TlsSessionState));
+
+   //Sucessful initialization
+   return NO_ERROR;
+}
+
+
+/**
+ * @brief Save TLS session
+ * @param[in] context Pointer to the TLS context
+ * @param[out] session Pointer to the session state
+ * @return Error code
+ **/
+
+error_t tlsSaveSessionState(const TlsContext *context,
+   TlsSessionState *session)
 {
    //Check parameters
    if(context == NULL || session == NULL)
       return ERROR_INVALID_PARAMETER;
 
-   //Invalid session parameters?
-   if(context->sessionIdLen == 0 || context->cipherSuite.identifier == 0)
-      return ERROR_FAILURE;
+   //Release previous session state
+   tlsFreeSessionState(session);
 
-   //Save session identifier
-   memcpy(session->id, context->sessionId, context->sessionIdLen);
-   session->idLength = context->sessionIdLen;
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //SSL 3.0, TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
+   if(context->version >= SSL_VERSION_3_0 && context->version <= TLS_VERSION_1_2)
+   {
+      //Valid session parameters?
+      if(context->cipherSuite.identifier != 0 &&
+         context->sessionIdLen > 0)
+      {
+         //Get current time
+         session->timestamp = osGetSystemTime();
 
-   //Get current time
-   session->timestamp = osGetSystemTime();
+         //Save session parameters
+         session->version = context->version;
+         session->cipherSuite = context->cipherSuite.identifier;
+         session->compressMethod = context->compressMethod;
 
-   //Save session parameters
-   session->version = context->version;
-   session->cipherSuite = context->cipherSuite.identifier;
-   session->compressMethod = context->compressMethod;
+         //Save session identifier
+         memcpy(session->sessionId, context->sessionId, context->sessionIdLen);
+         session->sessionIdLen = context->sessionIdLen;
 
-   //Save master secret
-   memcpy(session->masterSecret, context->masterSecret,
-      TLS_MASTER_SECRET_SIZE);
+         //Save master secret
+         memcpy(session->secret, context->masterSecret, TLS_MASTER_SECRET_SIZE);
 
 #if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
-   //Extended master secret computation
-   session->extendedMasterSecret = context->extendedMasterSecretExtReceived;
+         //Extended master secret computation
+         session->extendedMasterSecret = context->extendedMasterSecretExtReceived;
 #endif
+      }
+   }
+   else
+#endif
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+   //TLS 1.3 currently selected?
+   if(context->version == TLS_VERSION_1_3)
+   {
+      //Valid session parameters?
+      if(context->cipherSuite.identifier != 0 &&
+         context->cipherSuite.prfHashAlgo != NULL)
+      {
+         const HashAlgo *hashAlgo;
+
+         //Point to the cipher suite hash algorithm
+         hashAlgo = context->cipherSuite.prfHashAlgo;
+
+         //Allocate a memory block to hold the ticket
+         session->ticket = tlsAllocMem(context->ticketLen);
+         //Failed to allocate memory?
+         if(session->ticket == NULL)
+            return ERROR_OUT_OF_MEMORY;
+
+         //Get current time
+         session->timestamp = osGetSystemTime();
+
+         //Save session parameters
+         session->version = context->version;
+         session->cipherSuite = context->cipherSuite.identifier;
+         session->compressMethod = context->compressMethod;
+         session->ticketTimestamp = context->ticketTimestamp;
+         session->ticketLifetime = context->ticketLifetime;
+         session->ticketAgeAdd = context->ticketAgeAdd;
+         session->maxEarlyDataSize = context->maxEarlyDataSize;
+
+         //Copy session ticket
+         memcpy(session->ticket, context->ticket, context->ticketLen);
+         session->ticketLen = context->ticketLen;
+
+         //Each PSK established via the ticket mechanism is associated with
+         //a single hash algorithm
+         if(hashAlgo == tlsGetHashAlgo(TLS_HASH_ALGO_SHA256))
+            session->ticketHashAlgo = TLS_HASH_ALGO_SHA256;
+         else if(hashAlgo == tlsGetHashAlgo(TLS_HASH_ALGO_SHA384))
+            session->ticketHashAlgo = TLS_HASH_ALGO_SHA384;
+         else
+            session->ticketHashAlgo = TLS_HASH_ALGO_NONE;
+
+         //Copy ticket PSK
+         memcpy(session->secret, context->ticketPsk, hashAlgo->digestSize);
+
+#if (TLS_ALPN_SUPPORT == ENABLED)
+         //Valid ALPN protocol?
+         if(context->selectedProtocol != NULL)
+         {
+            size_t n;
+
+            //Retrieve the length of the ALPN protocol
+            n = strlen(context->selectedProtocol);
+
+            //Allocate a memory block to hold the ALPN protocol
+            session->ticketAlpn = tlsAllocMem(n + 1);
+            //Failed to allocate memory?
+            if(session->ticketAlpn == NULL)
+            {
+               //Clean up side effects
+               tlsFreeSessionState(session);
+               //Report an error
+               return ERROR_OUT_OF_MEMORY;
+            }
+
+            //Copy the ALPN protocol associated with the ticket
+            strcpy(session->ticketAlpn, context->selectedProtocol);
+         }
+#endif
+      }
+   }
+   else
+#endif
+   //Invalid TLS version?
+   {
+      //Do not save session state
+   }
 
    //Successful processing
    return NO_ERROR;
@@ -2127,36 +2459,160 @@ error_t tlsSaveSession(const TlsContext *context, TlsSession *session)
 /**
  * @brief Restore TLS session
  * @param[in] context Pointer to the TLS context
- * @param[in] session Pointer to the session to be restored
+ * @param[in] session Pointer to the session state to be restored
  * @return Error code
  **/
 
-error_t tlsRestoreSession(TlsContext *context, const TlsSession *session)
+error_t tlsRestoreSessionState(TlsContext *context,
+   const TlsSessionState *session)
 {
    //Check parameters
    if(context == NULL || session == NULL)
       return ERROR_INVALID_PARAMETER;
 
-   //Restore session identifier
-   memcpy(context->sessionId, session->id, session->idLength);
-   context->sessionIdLen = session->idLength;
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //SSL 3.0, TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
+   if(session->version >= SSL_VERSION_3_0 && session->version <= TLS_VERSION_1_2)
+   {
+      //Valid session state?
+      if(session->cipherSuite != 0 && session->sessionIdLen > 0)
+      {
+         //Restore session parameters
+         context->version = session->version;
+         context->cipherSuite.identifier = session->cipherSuite;
+         context->compressMethod = session->compressMethod;
 
-   //Restore session parameters
-   context->version = session->version;
-   context->cipherSuite.identifier = session->cipherSuite;
-   context->compressMethod = session->compressMethod;
+         //Restore session identifier
+         memcpy(context->sessionId, session->sessionId, session->sessionIdLen);
+         context->sessionIdLen = session->sessionIdLen;
 
-   //Restore master secret
-   memcpy(context->masterSecret, session->masterSecret,
-      TLS_MASTER_SECRET_SIZE);
+         //Restore master secret
+         memcpy(context->masterSecret, session->secret, TLS_MASTER_SECRET_SIZE);
 
 #if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
-   //Extended master secret computation
-   context->extendedMasterSecretExtReceived = session->extendedMasterSecret;
+         //Extended master secret computation
+         context->extendedMasterSecretExtReceived = session->extendedMasterSecret;
 #endif
+      }
+   }
+   else
+#endif
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+   //TLS 1.3 currently selected?
+   if(session->version == TLS_VERSION_1_3)
+   {
+      //Valid ticket?
+      if(session->cipherSuite != 0 && session->ticketLen > 0)
+      {
+         //Restore session parameters
+         context->version = session->version;
+         context->compressMethod = session->compressMethod;
+         context->ticketCipherSuite = session->cipherSuite;
+         context->ticketHashAlgo = session->ticketHashAlgo;
+         context->ticketTimestamp = session->ticketTimestamp;
+         context->ticketLifetime = session->ticketLifetime;
+         context->ticketAgeAdd = session->ticketAgeAdd;
+         context->maxEarlyDataSize = session->maxEarlyDataSize;
+         context->sessionIdLen = 0;
+
+         //Release existing session ticket, if any
+         if(context->ticket != NULL)
+         {
+            memset(context->ticket, 0, context->ticketLen);
+            tlsFreeMem(context->ticket);
+            context->ticket = NULL;
+            context->ticketLen = 0;
+         }
+
+         //Allocate a memory block to hold the ticket
+         context->ticket = tlsAllocMem(session->ticketLen);
+         //Failed to allocate memory?
+         if(context->ticket == NULL)
+            return ERROR_OUT_OF_MEMORY;
+
+         //Copy session ticket
+         memcpy(context->ticket, session->ticket, session->ticketLen);
+         context->ticketLen = session->ticketLen;
+
+         //Each PSK established via the ticket mechanism is associated with
+         //a single hash algorithm
+         if(session->ticketHashAlgo == TLS_HASH_ALGO_SHA256)
+            context->ticketPskLen = SHA256_DIGEST_SIZE;
+         else if(session->ticketHashAlgo == TLS_HASH_ALGO_SHA384)
+            context->ticketPskLen = SHA384_DIGEST_SIZE;
+         else
+            context->ticketPskLen = 0;
+
+         //Copy ticket PSK
+         memcpy(context->ticketPsk, session->secret, context->ticketPskLen);
+
+#if (TLS_ALPN_SUPPORT == ENABLED)
+         //Release ALPN protocol, if any
+         if(context->ticketAlpn != NULL)
+         {
+            tlsFreeMem(context->ticketAlpn);
+            context->ticketAlpn = NULL;
+         }
+
+         //Valid ALPN protocol?
+         if(session->ticketAlpn != NULL)
+         {
+            size_t n;
+
+            //Retrieve the length of the ALPN protocol
+            n = strlen(session->ticketAlpn);
+
+            //Allocate a memory block to hold the ALPN protocol
+            context->ticketAlpn = tlsAllocMem(n + 1);
+            //Failed to allocate memory?
+            if(context->ticketAlpn == NULL)
+               return ERROR_OUT_OF_MEMORY;
+
+            //Copy the ALPN protocol associated with the ticket
+            strcpy(context->ticketAlpn, session->ticketAlpn);
+         }
+#endif
+      }
+   }
+   else
+#endif
+   //Invalid TLS version?
+   {
+      //Do not restore session state
+   }
 
    //Successful processing
    return NO_ERROR;
+}
+
+
+/**
+ * @brief Properly dispose a session state
+ * @param[in] session Pointer to the session state to be released
+ **/
+
+void tlsFreeSessionState(TlsSessionState *session)
+{
+   //Make sure the session state is valid
+   if(session != NULL)
+   {
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+      //Release session ticket
+      if(session->ticket != NULL)
+      {
+         tlsFreeMem(session->ticket);
+      }
+
+      //Release the ALPN protocol associated with the ticket
+      if(session->ticketAlpn != NULL)
+      {
+         tlsFreeMem(session->ticketAlpn);
+      }
+#endif
+
+      //Erase session state
+      memset(session, 0, sizeof(TlsSessionState));
+   }
 }
 
 #endif

@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.6
+ * @version 1.9.0
  **/
 
 #ifndef _TLS_KEY_MATERIAL_H
@@ -54,6 +54,9 @@ error_t tlsPrf(const uint8_t *secret, size_t secretLen, const char_t *label,
 error_t tls12Prf(const HashAlgo *hash, const uint8_t *secret,
    size_t secretLen, const char_t *label, const uint8_t *seed,
    size_t seedLen, uint8_t *output, size_t outputLen);
+
+void tlsDumpSecret(TlsContext *context, const char_t *label,
+   const uint8_t *secret, size_t secretLen);
 
 //C++ guard
 #ifdef __cplusplus

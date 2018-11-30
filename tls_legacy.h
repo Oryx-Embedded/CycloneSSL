@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.6
+ * @version 1.9.0
  **/
 
 #ifndef _TLS_LEGACY_H
@@ -35,5 +35,71 @@
 //Deprecated functions
 #define tlsSetIoCallbacks(context, handle, sendCallback, receiveCallback) \
    tlsSetSocketCallbacks(context, sendCallback, receiveCallback, handle);
+
+#ifdef TLS_RSA_SUPPORT
+   #if (TLS_RSA_SUPPORT == ENABLED)
+      #define TLS_RSA_KE_SUPPORT ENABLED
+   #else
+      #define TLS_RSA_KE_SUPPORT DISABLED
+   #endif
+   #undef TLS_RSA_SUPPORT
+#endif
+
+#ifdef TLS_DHE_RSA_SUPPORT
+   #define TLS_DHE_RSA_KE_SUPPORT TLS_DHE_RSA_SUPPORT
+#endif
+
+#ifdef TLS_DHE_DSS_SUPPORT
+   #define TLS_DHE_DSS_KE_SUPPORT TLS_DHE_DSS_SUPPORT
+#endif
+
+#ifdef TLS_DH_ANON_SUPPORT
+   #define TLS_DH_ANON_KE_SUPPORT TLS_DH_ANON_SUPPORT
+#endif
+
+#ifdef TLS_ECDHE_RSA_SUPPORT
+   #define TLS_ECDHE_RSA_KE_SUPPORT TLS_ECDHE_RSA_SUPPORT
+#endif
+
+#ifdef TLS_ECDHE_ECDSA_SUPPORT
+   #define TLS_ECDHE_ECDSA_KE_SUPPORT TLS_ECDHE_ECDSA_SUPPORT
+#endif
+
+#ifdef TLS_ECDH_ANON_SUPPORT
+   #define TLS_ECDH_ANON_KE_SUPPORT TLS_ECDH_ANON_SUPPORT
+#endif
+
+#ifdef TLS_PSK_SUPPORT
+   #if (TLS_PSK_SUPPORT == ENABLED)
+      #define TLS_PSK_KE_SUPPORT ENABLED
+   #else
+      #define TLS_PSK_KE_SUPPORT DISABLED
+   #endif
+   #undef TLS_PSK_SUPPORT
+#endif
+
+#ifdef TLS_RSA_PSK_SUPPORT
+   #define TLS_RSA_PSK_KE_SUPPORT TLS_RSA_PSK_SUPPORT
+#endif
+
+#ifdef TLS_DHE_PSK_SUPPORT
+   #define TLS_DHE_PSK_KE_SUPPORT TLS_DHE_PSK_SUPPORT
+#endif
+
+#ifdef TLS_ECDHE_PSK_SUPPORT
+   #define TLS_ECDHE_PSK_KE_SUPPORT TLS_ECDHE_PSK_SUPPORT
+#endif
+
+#ifdef TLS_CURVE25519_SUPPORT
+   #define TLS_X25519_SUPPORT TLS_CURVE25519_SUPPORT
+#endif
+
+#ifdef TLS_CURVE448_SUPPORT
+   #define TLS_X448_SUPPORT TLS_CURVE448_SUPPORT
+#endif
+
+#define TlsSession TlsSessionState
+#define tlsSaveSession tlsSaveSessionState
+#define tlsRestoreSession tlsRestoreSessionState
 
 #endif

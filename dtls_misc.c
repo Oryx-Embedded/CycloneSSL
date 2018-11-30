@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.6
+ * @version 1.9.0
  **/
 
 //Switch to the appropriate trace level
@@ -33,12 +33,12 @@
 #include <string.h>
 #include <ctype.h>
 #include "tls.h"
-#include "tls_handshake_misc.h"
+#include "tls_handshake.h"
 #include "tls_common.h"
 #include "dtls_misc.h"
 #include "debug.h"
 
-//Check SSL library configuration
+//Check TLS library configuration
 #if (TLS_SUPPORT == ENABLED && DTLS_SUPPORT == ENABLED)
 
 
@@ -81,6 +81,10 @@ error_t dtlsSelectVersion(TlsContext *context, uint16_t version)
          error = NO_ERROR;
       }
    }
+   else
+   {
+      //Unknown DTLS version
+   }
 
    //Check whether the DTLS version is supported
    if(!error)
@@ -91,11 +95,6 @@ error_t dtlsSelectVersion(TlsContext *context, uint16_t version)
          //Save the negotiated version
          context->encryptionEngine.version = context->version;
       }
-   }
-   else
-   {
-      //Debug message
-      TRACE_WARNING("DTLS version not supported!\r\n");
    }
 
    //Return status code
@@ -143,10 +142,16 @@ error_t dtlsFormatCookie(TlsContext *context, uint8_t *p, size_t *written)
    //Add Cookie field
    cookie = (DtlsCookie *) p;
 
+   //When a HelloVerifyRequest message has been received by the client, it
+   //must retransmit the ClientHello with the cookie added
+   if(context->cookieLen > 0)
+   {
+      //Copy cookie
+      memcpy(cookie->value, context->cookie, context->cookieLen);
+   }
+
    //Set the length of the cookie
    cookie->length = (uint8_t) context->cookieLen;
-   //Copy cookie
-   memcpy(cookie->value, context->cookie, context->cookieLen);
 
    //Total number of bytes that have been written
    *written = sizeof(DtlsCookie) + cookie->length;
@@ -160,12 +165,12 @@ error_t dtlsFormatCookie(TlsContext *context, uint8_t *p, size_t *written)
  * @brief Cookie verification
  * @param[in] context Pointer to the TLS context
  * @param[in] cookie Pointer to the client's cookie
- * @param[in] params Client's parameters
+ * @param[in] clientParams Client's parameters
  * @return Error code
  **/
 
 error_t dtlsVerifyCookie(TlsContext *context, const DtlsCookie *cookie,
-   const DtlsClientParameters *params)
+   const DtlsClientParameters *clientParams)
 {
    error_t error;
 
@@ -174,8 +179,8 @@ error_t dtlsVerifyCookie(TlsContext *context, const DtlsCookie *cookie,
       context->cookieGenerateCallback != NULL)
    {
       //Verify that the cookie is valid
-      error = context->cookieVerifyCallback(context->cookieHandle,
-         params, cookie->value, cookie->length);
+      error = context->cookieVerifyCallback(context, clientParams,
+         cookie->value, cookie->length, context->cookieParam);
 
       //Invalid cookie?
       if(error == ERROR_WRONG_COOKIE)
@@ -183,10 +188,23 @@ error_t dtlsVerifyCookie(TlsContext *context, const DtlsCookie *cookie,
          //Set the cookie size limit (32 or 255 bytes depending on DTLS version)
          context->cookieLen = DTLS_MAX_COOKIE_SIZE;
 
-         //The DTLS server should generate cookies in such a way that they can
-         //be verified without retaining any per-client state on the server
-         error = context->cookieGenerateCallback(context->cookieHandle,
-            params, context->cookie, &context->cookieLen);
+         //Allocate a memory block to hold the cookie
+         if(context->cookie == NULL)
+            context->cookie = tlsAllocMem(context->cookieLen);
+
+         //Successful memory allocation?
+         if(context->cookie != NULL)
+         {
+            //The DTLS server should generate cookies in such a way that they can
+            //be verified without retaining any per-client state on the server
+            error = context->cookieGenerateCallback(context, clientParams,
+               context->cookie, &context->cookieLen, context->cookieParam);
+         }
+         else
+         {
+            //Failed to allocate memory
+            error = ERROR_OUT_OF_MEMORY;
+         }
 
          //Check status code
          if(!error)
@@ -270,10 +288,15 @@ error_t dtlsFormatHelloVerifyRequest(TlsContext *context,
    //regardless of the version of TLS that is expected to be negotiated
    message->serverVersion = HTONS(DTLS_VERSION_1_0);
 
+   //Valid cookie?
+   if(context->cookieLen > 0)
+   {
+      //Copy cookie
+      memcpy(message->cookie, context->cookie, context->cookieLen);
+   }
+
    //Set the length of the cookie
    message->cookieLength = (uint8_t) context->cookieLen;
-   //Copy cookie
-   memcpy(message->cookie, context->cookie, context->cookieLen);
 
    //Length of the handshake message
    *length = sizeof(DtlsHelloVerifyRequest) + context->cookieLen;
@@ -321,12 +344,29 @@ error_t dtlsParseHelloVerifyRequest(TlsContext *context,
       if(message->cookieLength != length)
          return ERROR_DECODING_FAILED;
 
-      //Check the length of the cookie
-      if(message->cookieLength > DTLS_MAX_COOKIE_SIZE)
-         return ERROR_ILLEGAL_PARAMETER;
+      //Sanity check
+      if(context->cookie != NULL)
+      {
+         //Release memory
+         tlsFreeMem(context->cookie);
+         context->cookie = NULL;
+         context->cookieLen = 0;
+      }
 
-      //Save cookie
-      memcpy(context->cookie, message->cookie, message->cookieLength);
+      //Valid cookie received?
+      if(message->cookieLength > 0)
+      {
+         //Allocate a memory block to store the cookie
+         context->cookie = tlsAllocMem(message->cookieLength);
+         //Failed to allocate memory?
+         if(context->cookie == NULL)
+            return ERROR_OUT_OF_MEMORY;
+
+         //Save cookie
+         memcpy(context->cookie, message->cookie, message->cookieLength);
+      }
+
+      //Save the length of the cookie
       context->cookieLen = message->cookieLength;
 
       //The client sends a second ClientHello message

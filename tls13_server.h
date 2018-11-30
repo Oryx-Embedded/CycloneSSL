@@ -1,6 +1,6 @@
 /**
- * @file tls_handshake_hash.h
- * @brief Handshake hash calculation/verification
+ * @file tls13_server.h
+ * @brief Handshake message processing (TLS 1.3 server)
  *
  * @section License
  *
@@ -23,11 +23,11 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.6
+ * @version 1.9.0
  **/
 
-#ifndef _TLS_HANDSHAKE_HASH_H
-#define _TLS_HANDSHAKE_HASH_H
+#ifndef _TLS13_SERVER_H
+#define _TLS13_SERVER_H
 
 //Dependencies
 #include "tls.h"
@@ -37,17 +37,19 @@
    extern "C" {
 #endif
 
-//TLS related functions
-error_t tlsInitHandshakeHash(TlsContext *context);
+//TLS 1.3 server specific functions
+error_t tls13SendHelloRetryRequest(TlsContext *context);
+error_t tls13SendEncryptedExtensions(TlsContext *context);
+error_t tls13SendNewSessionTicket(TlsContext *context);
 
-void tlsUpdateHandshakeHash(TlsContext *context, const void *data,
-   size_t length);
+error_t tls13FormatHelloRetryRequest(TlsContext *context,
+   Tls13HelloRetryRequest *message, size_t *length);
 
-error_t tlsFinalizeHandshakeHash(TlsContext *context, const HashAlgo *hash,
-   const void *hashContext, const char_t *label, uint8_t *output);
+error_t tls13FormatEncryptedExtensions(TlsContext *context,
+   Tls13EncryptedExtensions *message, size_t *length);
 
-error_t tlsComputeVerifyData(TlsContext *context, TlsConnectionEnd entity,
-   uint8_t *verifyData, size_t *verifyDataLen);
+error_t tls13FormatNewSessionTicket(TlsContext *context,
+   Tls13NewSessionTicket *message, size_t *length);
 
 //C++ guard
 #ifdef __cplusplus

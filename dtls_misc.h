@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.6
+ * @version 1.9.0
  **/
 
 #ifndef _DTLS_MISC_H
@@ -220,26 +220,21 @@ typedef struct
 
 
 /**
- * @brief Opaque pointer passed to the cookie callbacks
- **/
-
-typedef void *DtlsCookieHandle;
-
-
-/**
  * @brief DTLS cookie generation callback function
  **/
 
-typedef error_t (*DtlsCookieGenerateCallback)(DtlsCookieHandle handle,
-   const DtlsClientParameters *params, uint8_t *cookie, size_t *length);
+typedef error_t (*DtlsCookieGenerateCallback)(TlsContext *context,
+   const DtlsClientParameters *clientParams, uint8_t *cookie,
+   size_t *length, void *param);
 
 
 /**
  * @brief DTLS cookie verification callback function
  **/
 
-typedef error_t (*DtlsCookieVerifyCallback)(DtlsCookieHandle handle,
-   const DtlsClientParameters *params, const uint8_t *cookie, size_t length);
+typedef error_t (*DtlsCookieVerifyCallback)(TlsContext *context,
+   const DtlsClientParameters *clientParams, const uint8_t *cookie,
+   size_t length, void *param);
 
 
 //DTLS specific functions
@@ -249,7 +244,7 @@ uint16_t dtlsTranslateVersion(uint16_t version);
 error_t dtlsFormatCookie(TlsContext *context, uint8_t *p, size_t *written);
 
 error_t dtlsVerifyCookie(TlsContext *context, const DtlsCookie *cookie,
-   const DtlsClientParameters *params);
+   const DtlsClientParameters *clientParams);
 
 error_t dtlsSendHelloVerifyRequest(TlsContext *context);
 

@@ -1,6 +1,6 @@
 /**
- * @file ssl_misc.h
- * @brief SSL 3.0 helper functions
+ * @file tls13_server_misc.h
+ * @brief Helper functions for TLS 1.3 server
  *
  * @section License
  *
@@ -26,11 +26,10 @@
  * @version 1.9.0
  **/
 
-#ifndef _SSL_MISC_H
-#define _SSL_MISC_H
+#ifndef _TLS13_SERVER_MISC_H
+#define _TLS13_SERVER_MISC_H
 
 //Dependencies
-#include "core/crypto.h"
 #include "tls.h"
 
 //C++ guard
@@ -38,16 +37,26 @@
    extern "C" {
 #endif
 
-//SSL 3.0 related constants
-extern const uint8_t sslPad1[48];
-extern const uint8_t sslPad2[48];
+//TLS 1.3 server specific functions
+error_t tls13NegotiateCipherSuite(TlsContext *context, const void *clientHello,
+   size_t clientHelloLen, const TlsCipherSuites *cipherSuites,
+   TlsHelloExtensions *extensions);
 
-//SSL 3.0 related functions
-error_t sslExpandKey(const uint8_t *secret, size_t secretLen,
-   const uint8_t *random, size_t randomLen, uint8_t *output, size_t outputLen);
+error_t tls13SelectGroup(TlsContext *context,
+   const TlsSupportedGroupList *groupList);
 
-error_t sslComputeMac(TlsEncryptionEngine *encryptionEngine,
-   const TlsRecord *record, const uint8_t *data, size_t dataLen, uint8_t *mac);
+error_t tls13VerifyPskBinder(TlsContext *context, const void *clientHello,
+   size_t clientHelloLen, const Tls13PskIdentityList *identityList,
+   const Tls13PskBinderList *binderList, int_t selectedIdentity);
+
+error_t tls13ProcessEarlyData(TlsContext *context, const uint8_t *data,
+   size_t length);
+
+error_t tls13GenerateTicket(TlsContext *context,
+   const Tls13NewSessionTicket *message, uint8_t *ticket, size_t *length);
+
+error_t tls13VerifyTicket(TlsContext *context, const uint8_t *ticket,
+   size_t length, uint32_t obfuscatedTicketAge);
 
 //C++ guard
 #ifdef __cplusplus

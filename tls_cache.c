@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.6
+ * @version 1.9.0
  **/
 
 //Switch to the appropriate trace level
@@ -35,7 +35,7 @@
 #include "tls_cache.h"
 #include "debug.h"
 
-//Check SSL library configuration
+//Check TLS library configuration
 #if (TLS_SUPPORT == ENABLED)
 
 
@@ -55,7 +55,7 @@ TlsCache *tlsInitCache(uint_t size)
       return NULL;
 
    //Size of the memory required
-   n = sizeof(TlsCache) + size * sizeof(TlsSession);
+   n = sizeof(TlsCache) + size * sizeof(TlsSessionState);
 
    //Allocate a memory buffer to hold the session cache
    cache = tlsAllocMem(n);
@@ -86,24 +86,26 @@ TlsCache *tlsInitCache(uint_t size)
 /**
  * @brief Search the session cache for a given session ID
  * @param[in] cache Pointer to the session cache
- * @param[in] id Expected session ID
- * @param[in] length Length of the session ID
+ * @param[in] sessionId Expected session ID
+ * @param[in] sessionIdLen Length of the session ID
  * @return A pointer to the matching session is returned. NULL is returned
  *   if the specified ID could not be found in the session cache
  **/
 
-TlsSession *tlsFindCache(TlsCache *cache, const uint8_t *id, size_t length)
+TlsSessionState *tlsFindCache(TlsCache *cache, const uint8_t *sessionId,
+   size_t sessionIdLen)
 {
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    uint_t i;
    systime_t time;
-   TlsSession *session;
+   TlsSessionState *session;
 
    //Check whether session caching is supported
    if(cache == NULL)
       return NULL;
 
    //Ensure the session ID is valid
-   if(id == NULL || length == 0)
+   if(sessionId == NULL || sessionIdLen == 0)
       return NULL;
 
    //Get current time
@@ -119,13 +121,13 @@ TlsSession *tlsFindCache(TlsCache *cache, const uint8_t *id, size_t length)
       session = &cache->sessions[i];
 
       //Skip unused entries
-      if(session->idLength != 0)
+      if(session->sessionIdLen != 0)
       {
          //Outdated entry?
          if((time - session->timestamp) >= TLS_SESSION_CACHE_LIFETIME)
          {
             //This session is no more valid and should be removed from the cache
-            memset(session, 0, sizeof(TlsSession));
+            memset(session, 0, sizeof(TlsSessionState));
          }
       }
    }
@@ -137,7 +139,8 @@ TlsSession *tlsFindCache(TlsCache *cache, const uint8_t *id, size_t length)
       session = &cache->sessions[i];
 
       //Check whether the current identifier matches the specified session ID
-      if(session->idLength == length && !memcmp(session->id, id, length))
+      if(session->sessionIdLen == sessionIdLen &&
+         !memcmp(session->sessionId, sessionId, sessionIdLen))
       {
          //Release exclusive access to the session cache
          osReleaseMutex(&cache->mutex);
@@ -148,6 +151,8 @@ TlsSession *tlsFindCache(TlsCache *cache, const uint8_t *id, size_t length)
 
    //Release exclusive access to the session cache
    osReleaseMutex(&cache->mutex);
+#endif
+
    //No matching entry in session cache
    return NULL;
 }
@@ -161,12 +166,13 @@ TlsSession *tlsFindCache(TlsCache *cache, const uint8_t *id, size_t length)
 
 error_t tlsSaveToCache(TlsContext *context)
 {
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    error_t error;
    uint_t i;
    systime_t time;
-   TlsSession *session;
-   TlsSession *firstFreeEntry;
-   TlsSession *oldestEntry;
+   TlsSessionState *session;
+   TlsSessionState *firstFreeEntry;
+   TlsSessionState *oldestEntry;
 
    //Check parameters
    if(context == NULL)
@@ -196,8 +202,8 @@ error_t tlsSaveToCache(TlsContext *context)
       session = &context->cache->sessions[i];
 
       //If the session ID already exists, we are done
-      if(session->idLength == context->sessionIdLen &&
-         !memcmp(session->id, context->sessionId, session->idLength))
+      if(session->sessionIdLen == context->sessionIdLen &&
+         !memcmp(session->sessionId, context->sessionId, session->sessionIdLen))
       {
          //Do not write to session cache
          firstFreeEntry = NULL;
@@ -207,7 +213,7 @@ error_t tlsSaveToCache(TlsContext *context)
       }
 
       //Check whether current entry is free
-      if(session->idLength == 0)
+      if(session->sessionIdLen == 0)
       {
          //Keep track of the first free entry
          if(!firstFreeEntry)
@@ -231,9 +237,9 @@ error_t tlsSaveToCache(TlsContext *context)
 
    //Add current session to cache if necessary
    if(firstFreeEntry != NULL)
-      error = tlsSaveSession(context, firstFreeEntry);
+      error = tlsSaveSessionState(context, firstFreeEntry);
    else if(oldestEntry != NULL)
-      error = tlsSaveSession(context, oldestEntry);
+      error = tlsSaveSessionState(context, oldestEntry);
    else
       error = NO_ERROR;
 
@@ -241,6 +247,10 @@ error_t tlsSaveToCache(TlsContext *context)
    osReleaseMutex(&context->cache->mutex);
    //Return status code
    return error;
+#else
+   //Not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
 }
 
 
@@ -252,8 +262,9 @@ error_t tlsSaveToCache(TlsContext *context)
 
 error_t tlsRemoveFromCache(TlsContext *context)
 {
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    uint_t i;
-   TlsSession *session;
+   TlsSessionState *session;
 
    //Check parameters
    if(context == NULL)
@@ -276,16 +287,18 @@ error_t tlsRemoveFromCache(TlsContext *context)
       session = &context->cache->sessions[i];
 
       //Check whether the current identifier matches the specified session ID
-      if(session->idLength == context->sessionIdLen &&
-         !memcmp(session->id, context->sessionId, session->idLength))
+      if(session->sessionIdLen == context->sessionIdLen &&
+         !memcmp(session->sessionId, context->sessionId, session->sessionIdLen))
       {
          //Drop current entry
-         memset(session, 0, sizeof(TlsSession));
+         memset(session, 0, sizeof(TlsSessionState));
       }
    }
 
    //Release exclusive access to the session cache
    osReleaseMutex(&context->cache->mutex);
+#endif
+
    //Successful processing
    return NO_ERROR;
 }
@@ -308,7 +321,7 @@ void tlsFreeCache(TlsCache *cache)
    osDeleteMutex(&cache->mutex);
 
    //Compute the number of bytes allocated for the session cache
-   n = sizeof(TlsCache) + cache->size * sizeof(TlsSession);
+   n = sizeof(TlsCache) + cache->size * sizeof(TlsSessionState);
 
    //Clear the session cache before freeing memory
    memset(cache, 0, n);

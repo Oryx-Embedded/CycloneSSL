@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.6
+ * @version 1.9.0
  **/
 
 //Switch to the appropriate trace level
@@ -42,7 +42,7 @@
 #include "aead/chacha20_poly1305.h"
 #include "debug.h"
 
-//Check SSL library configuration
+//Check TLS library configuration
 #if (TLS_SUPPORT == ENABLED)
 
 
@@ -307,6 +307,11 @@ error_t tlsReadProtocolData(TlsContext *context,
       if(context->rxBufferType != TLS_TYPE_ALERT)
          context->alertCount = 0;
 #endif
+#if (TLS_MAX_KEY_UPDATE_MESSAGES > 0)
+      //Reset the count of consecutive KeyUpdate messages
+      if(context->rxBufferType != TLS_TYPE_HANDSHAKE)
+         context->keyUpdateCount = 0;
+#endif
 
       //Pointer to the received data
       *data = context->rxBuffer + context->rxBufferPos;
@@ -335,6 +340,7 @@ error_t tlsWriteRecord(TlsContext *context, const uint8_t *data,
 {
    error_t error;
    size_t n;
+   uint16_t legacyVersion;
    TlsRecord *record;
    TlsEncryptionEngine *encryptionEngine;
 
@@ -353,9 +359,13 @@ error_t tlsWriteRecord(TlsContext *context, const uint8_t *data,
       //Send as much data as possible
       if(context->txRecordLen == 0)
       {
+         //The record version must be set to 0x0303 for all records generated
+         //by a TLS 1.3 implementation other than an initial ClientHello
+         legacyVersion = MIN(context->version, TLS_VERSION_1_2);
+
          //Format TLS record
          record->type = contentType;
-         record->version = htons(context->version);
+         record->version = htons(legacyVersion);
          record->length = htons(length);
 
          //Copy record data
@@ -436,16 +446,12 @@ error_t tlsReadRecord(TlsContext *context, uint8_t *data,
    error_t error;
    size_t n;
    TlsRecord *record;
-   TlsEncryptionEngine *decryptionEngine;
-
-   //Point to the decryption engine
-   decryptionEngine = &context->decryptionEngine;
-
-   //Point to the buffer where to store the incoming TLS record
-   record = (TlsRecord *) data;
 
    //Initialize status code
    error = NO_ERROR;
+
+   //Point to the buffer where to store the incoming TLS record
+   record = (TlsRecord *) data;
 
    //Receive process
    while(!error)
@@ -526,67 +532,11 @@ error_t tlsReadRecord(TlsContext *context, uint8_t *data,
       }
       else
       {
-         //Check current state
-         if(context->state > TLS_STATE_SERVER_HELLO)
-         {
-            //Once the server has sent the ServerHello message, enforce the
-            //version of incoming records
-            if(ntohs(record->version) != context->version)
-               error = ERROR_VERSION_NOT_SUPPORTED;
-         }
-         else
-         {
-            //Compliant servers must accept any value {03,XX} as the record
-            //layer version number for ClientHello
-            if(LSB(record->version) != MSB(TLS_VERSION_1_0))
-               error = ERROR_VERSION_NOT_SUPPORTED;
-         }
+         //Process the incoming TLS record
+         error = tlsProcessRecord(context, record);
 
          //Check status code
-         if(!error)
-         {
-            //Record payload protected?
-            if(decryptionEngine->cipherMode != CIPHER_MODE_NULL ||
-               decryptionEngine->hashAlgo != NULL)
-            {
-               //Decrypt TLS record
-               error = tlsDecryptRecord(context, decryptionEngine, record);
-            }
-         }
-
-         //Check status code
-         if(!error)
-         {
-            //Check the length of the plaintext record
-            if(ntohs(record->length) <= TLS_MAX_RECORD_LENGTH)
-            {
-#if (TLS_MAX_EMPTY_RECORDS > 0)
-               //Empty TLS record?
-               if(ntohs(record->length) == 0)
-               {
-                  //Increment the count of consecutive empty records
-                  context->emptyRecordCount++;
-
-                  //Do not allow too many consecutive empty records
-                  if(context->emptyRecordCount > TLS_MAX_EMPTY_RECORDS)
-                     error = ERROR_UNEXPECTED_MESSAGE;
-               }
-               else
-               {
-                  //Reset the count of consecutive empty records
-                  context->emptyRecordCount = 0;
-               }
-#endif
-            }
-            else
-            {
-               //The length of the plaintext record must not exceed 2^14 bytes
-               error = ERROR_RECORD_OVERFLOW;
-            }
-         }
-
-         //Check status code
-         if(!error)
+         if(error == NO_ERROR)
          {
             //Actual length of the record data
             *length = ntohs(record->length);
@@ -607,11 +557,164 @@ error_t tlsReadRecord(TlsContext *context, uint8_t *data,
             //We are done
             break;
          }
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+         else if(error == ERROR_BAD_RECORD_MAC)
+         {
+            //Check current state
+            if(context->version == TLS_VERSION_1_3 &&
+               context->entity == TLS_CONNECTION_END_SERVER &&
+               context->state == TLS_STATE_CLIENT_FINISHED &&
+               context->rxBufferLen == 0)
+            {
+               //Early data received?
+               if(!context->updatedClientHelloReceived &&
+                  context->earlyDataExtReceived)
+               {
+                  //Amount of 0-RTT data received by the server
+                  context->earlyDataLen += ntohs(record->length);
+
+                  //Discard records which fail deprotection (up to the configured
+                  //max_early_data_size)
+                  if(context->earlyDataLen <= context->maxEarlyDataSize)
+                  {
+                     //Debug message
+                     TRACE_INFO("Discarding early data (%" PRIuSIZE " bytes)...\r\n",
+                        ntohs(record->length));
+
+                     //Prepare to receive the next TLS record
+                     context->rxRecordLen = 0;
+                     context->rxRecordPos = 0;
+
+                     //Catch exception
+                     error = NO_ERROR;
+                  }
+               }
+            }
+         }
+#endif
+         else
+         {
+            //Invalid record received
+         }
       }
    }
 
    //Return status code
    return error;
+}
+
+
+/**
+ * @brief Process incoming TLS record
+ * @param[in] context Pointer to the TLS context
+ * @param[in] record Pointer to the received TLS record
+ * @return Error code
+ **/
+
+error_t tlsProcessRecord(TlsContext *context, TlsRecord *record)
+{
+   error_t error;
+   TlsEncryptionEngine *decryptionEngine;
+
+   //Point to the decryption engine
+   decryptionEngine = &context->decryptionEngine;
+
+   //Check current state
+   if(context->state > TLS_STATE_SERVER_HELLO)
+   {
+      //Once the server has sent the ServerHello message, enforce the version
+      //of incoming records. In TLS 1.3, this field is deprecated. It may be
+      //validated to match the fixed constant value 0x0303
+      if(ntohs(record->version) != MIN(context->version, TLS_VERSION_1_2))
+         return ERROR_VERSION_NOT_SUPPORTED;
+   }
+   else
+   {
+      //Compliant servers must accept any value {03,XX} as the record layer
+      //version number for ClientHello
+      if(LSB(record->version) != MSB(TLS_VERSION_1_0))
+         return ERROR_VERSION_NOT_SUPPORTED;
+   }
+
+   //Version of TLS prior to TLS 1.3?
+   if(context->version <= TLS_VERSION_1_2)
+   {
+      //Check whether the record payload is protected
+      if(decryptionEngine->cipherMode != CIPHER_MODE_NULL ||
+         decryptionEngine->hashAlgo != NULL)
+      {
+         //Decrypt TLS record
+         error = tlsDecryptRecord(context, decryptionEngine, record);
+         //Any error to report?
+         if(error)
+            return error;
+      }
+   }
+   else
+   {
+      //An implementation may receive an unencrypted ChangeCipherSpec at a point
+      //at the handshake where the implementation is expecting protected records
+      //and so it is necessary to detect this condition prior to attempting to
+      //deprotect the record
+      if(record->type != TLS_TYPE_CHANGE_CIPHER_SPEC)
+      {
+#if (TLS_MAX_CHANGE_CIPHER_SPEC_MESSAGES > 0)
+         //Reset the count of consecutive ChangeCipherSpec messages
+         context->changeCipherSpecCount = 0;
+#endif
+         //Check whether the record payload is protected
+         if(decryptionEngine->cipherMode != CIPHER_MODE_NULL ||
+            decryptionEngine->hashAlgo != NULL)
+         {
+            //Decrypt TLS record
+            error = tlsDecryptRecord(context, decryptionEngine, record);
+            //Any error to report?
+            if(error)
+               return error;
+         }
+
+         //Abort the handshake with an unexpected_message alert if a protected
+         //ChangeCipherSpec record was received
+         if(record->type == TLS_TYPE_CHANGE_CIPHER_SPEC)
+            return ERROR_UNEXPECTED_MESSAGE;
+      }
+
+      //Implementations must not send Handshake and Alert records that have a
+      //zero-length plaintext content (refer to RFC 8446, section 5.4)
+      if(record->type == TLS_TYPE_HANDSHAKE ||
+         record->type == TLS_TYPE_ALERT)
+      {
+         //If such a message is received, the receiving implementation must
+         //terminate the connection with an unexpected_message alert
+         if(ntohs(record->length) == 0)
+            return ERROR_UNEXPECTED_MESSAGE;
+      }
+   }
+
+   //The length of the plaintext record must not exceed 2^14 bytes
+   if(ntohs(record->length) > TLS_MAX_RECORD_LENGTH)
+      return ERROR_RECORD_OVERFLOW;
+
+#if (TLS_MAX_EMPTY_RECORDS > 0)
+   //Empty record received?
+   if(ntohs(record->length) == 0)
+   {
+      //Increment the count of consecutive empty records
+      context->emptyRecordCount++;
+
+      //Do not allow too many consecutive empty records
+      if(context->emptyRecordCount > TLS_MAX_EMPTY_RECORDS)
+         return ERROR_UNEXPECTED_MESSAGE;
+   }
+   else
+   {
+      //Reset the count of consecutive empty records
+      context->emptyRecordCount = 0;
+   }
+#endif
+
+   //Successful processing
+   return NO_ERROR;
 }
 
 
@@ -769,6 +872,22 @@ error_t tlsEncryptRecord(TlsContext *context,
          size_t nonceLen;
          uint8_t aad[13];
          uint8_t nonce[12];
+
+         //TLS 1.3 currently selected?
+         if(encryptionEngine->version == TLS_VERSION_1_3)
+         {
+            //The type field indicates the higher-level protocol used to process
+            //the enclosed fragment
+            data[length++] = tlsGetRecordType(context, record);
+
+            //In TLS 1.3, the outer opaque_type field of a TLS record is always
+            //set to the value 23 (application data)
+            tlsSetRecordType(context, record, TLS_TYPE_APPLICATION_DATA);
+
+            //Fix the length field of the TLS record
+            tlsSetRecordLength(context, record, length +
+               encryptionEngine->authTagLen);
+         }
 
          //Additional data to be authenticated
          tlsFormatAad(context, encryptionEngine, record, aad, &aadLen);
@@ -985,8 +1104,27 @@ error_t tlsDecryptRecord(TlsContext *context,
 
          //Calculate the length of the ciphertext
          length -= decryptionEngine->recordIvLen + decryptionEngine->authTagLen;
-         //Fix the length field of the TLS record
-         tlsSetRecordLength(context, record, length);
+
+         //Version of TLS prior to TLS 1.3?
+         if(decryptionEngine->version <= TLS_VERSION_1_2)
+         {
+            //Fix the length field of the TLS record
+            tlsSetRecordLength(context, record, length);
+         }
+         else
+         {
+            //The length must not exceed 2^14 octets + 1 octet for ContentType +
+            //the maximum AEAD expansion. An endpoint that receives a record
+            //that exceeds this length must terminate the connection with a
+            //record_overflow alert
+            if(length > (TLS_MAX_RECORD_LENGTH + 1))
+               return ERROR_RECORD_OVERFLOW;
+
+            //In TLS 1.3, the outer opaque_type field of a TLS record is always
+            //set to the value 23 (application data)
+            if(tlsGetRecordType(context, record) != TLS_TYPE_APPLICATION_DATA)
+               return ERROR_BAD_RECORD_MAC;
+         }
 
          //Additional data to be authenticated
          tlsFormatAad(context, decryptionEngine, record, aad, &aadLen);
@@ -1047,6 +1185,32 @@ error_t tlsDecryptRecord(TlsContext *context,
          if(decryptionEngine->recordIvLen != 0)
          {
             memmove(data, data + decryptionEngine->recordIvLen, length);
+         }
+
+         //TLS 1.3 currently selected?
+         if(decryptionEngine->version == TLS_VERSION_1_3)
+         {
+            //Upon successful decryption of an encrypted record, the receiving
+            //implementation scans the field from the end toward the beginning
+            //until it finds a non-zero octet
+            while(length > 0 && data[length - 1] == 0)
+            {
+               length--;
+            }
+
+            //If a receiving implementation does not find a non-zero octet
+            //in the cleartext, it must terminate the connection with an
+            //unexpected_message alert
+            if(length == 0)
+               return ERROR_UNEXPECTED_MESSAGE;
+
+            //Retrieve the length of the plaintext
+            length--;
+
+            //The actual content type of the record is found in the type field
+            tlsSetRecordType(context, record, data[length]);
+            //Fix the length field of the TLS record
+            tlsSetRecordLength(context, record, length);
          }
 
          //Increment sequence number
@@ -1374,7 +1538,7 @@ void tlsFormatAad(TlsContext *context, TlsEncryptionEngine *encryptionEngine,
 #endif
    //TLS protocol?
    {
-      //TLS 1.2 currently selected?
+      //Version of TLS prior to TLS 1.3?
       if(context->version <= TLS_VERSION_1_2)
       {
          //Additional data to be authenticated
@@ -1384,14 +1548,20 @@ void tlsFormatAad(TlsContext *context, TlsEncryptionEngine *encryptionEngine,
          //Length of the additional data, in bytes
          *aadLen = 13;
       }
-      //TLS 1.3 currently selected?
       else
       {
-         //The additional data input is the record header
+#if (TLS_VERSION_1_3 == TLS_VERSION_1_3_DRAFT(23) || \
+   TLS_VERSION_1_3 == TLS_VERSION_1_3_DRAFT(24))
+         //The additional data input is empty (zero length)
+         *aadLen = 0;
+#else
+         //The additional data input is the record header (refer to RFC 8446,
+         //section 5.2)
          memcpy(aad, record, 5);
 
          //Length of the additional data, in bytes
          *aadLen = 5;
+#endif
       }
    }
 }

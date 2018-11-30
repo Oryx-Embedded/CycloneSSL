@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.6
+ * @version 1.9.0
  **/
 
 //Switch to the appropriate trace level
@@ -36,7 +36,7 @@
 #include "ssl_misc.h"
 #include "debug.h"
 
-//Check SSL library configuration
+//Check TLS library configuration
 #if (TLS_SUPPORT == ENABLED && TLS_MIN_VERSION <= SSL_VERSION_3_0)
 
 //pad1 pattern
@@ -82,16 +82,20 @@ error_t sslExpandKey(const uint8_t *secret, size_t secretLen,
 
    //Allocate a memory buffer to hold the MD5 context
    md5Context = tlsAllocMem(sizeof(Md5Context));
+   //Failed to allocate memory?
+   if(md5Context == NULL)
+   {
+      //Report an error
+      return ERROR_OUT_OF_MEMORY;
+   }
+
    //Allocate a memory buffer to hold the SHA-1 context
    sha1Context = tlsAllocMem(sizeof(Sha1Context));
-
    //Failed to allocate memory?
-   if(md5Context == NULL || sha1Context == NULL)
+   if(sha1Context == NULL)
    {
-      //Release previously allocated resources
+      //Clean up side effects
       tlsFreeMem(md5Context);
-      tlsFreeMem(sha1Context);
-
       //Report an error
       return ERROR_OUT_OF_MEMORY;
    }

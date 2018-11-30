@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.6
+ * @version 1.9.0
  **/
 
 //Switch to the appropriate trace level
@@ -33,20 +33,21 @@
 #include <string.h>
 #include "tls.h"
 #include "tls_cipher_suites.h"
-#include "tls_handshake_hash.h"
-#include "tls_handshake_misc.h"
+#include "tls_handshake.h"
 #include "tls_client.h"
 #include "tls_server.h"
 #include "tls_common.h"
-#include "tls_record.h"
-#include "tls_signature.h"
 #include "tls_certificate.h"
+#include "tls_signature.h"
+#include "tls_transcript_hash.h"
 #include "tls_cache.h"
+#include "tls_record.h"
 #include "tls_misc.h"
 #include "dtls_record.h"
+#include "certificate/x509_common.h"
 #include "debug.h"
 
-//Check SSL library configuration
+//Check TLS library configuration
 #if (TLS_SUPPORT == ENABLED)
 
 
@@ -60,13 +61,13 @@ error_t tlsSendCertificate(TlsContext *context)
 {
    error_t error;
    size_t length;
-   void *message;
+   TlsCertificate *message;
 
    //Initialize status code
    error = NO_ERROR;
 
    //Point to the buffer where to format the message
-   message = (void *) (context->txBuffer + context->txBufferLen);
+   message = (TlsCertificate *) (context->txBuffer + context->txBufferLen);
 
 #if (TLS_CLIENT_SUPPORT == ENABLED)
    //TLS operates as a client?
@@ -140,11 +141,34 @@ error_t tlsSendCertificate(TlsContext *context)
    //Check status code
    if(error == NO_ERROR || error == ERROR_WOULD_BLOCK || error == ERROR_TIMEOUT)
    {
-      //Update FSM state
-      if(context->entity == TLS_CONNECTION_END_CLIENT)
-         context->state = TLS_STATE_CLIENT_KEY_EXCHANGE;
+      //Version of TLS prior to TLS 1.3?
+      if(context->version <= TLS_VERSION_1_2)
+      {
+         //Check whether TLS operates as a client or a server
+         if(context->entity == TLS_CONNECTION_END_CLIENT)
+            context->state = TLS_STATE_CLIENT_KEY_EXCHANGE;
+         else
+            context->state = TLS_STATE_SERVER_KEY_EXCHANGE;
+      }
       else
-         context->state = TLS_STATE_SERVER_KEY_EXCHANGE;
+      {
+         //Check whether TLS operates as a client or a server
+         if(context->entity == TLS_CONNECTION_END_CLIENT)
+         {
+            //Clients must send a CertificateVerify message whenever
+            //authenticating via a certificate
+            if(context->clientCertRequested)
+               context->state = TLS_STATE_CLIENT_CERTIFICATE_VERIFY;
+            else
+               context->state = TLS_STATE_CLIENT_FINISHED;
+         }
+         else
+         {
+            //Servers must send a CertificateVerify message whenever
+            //authenticating via a certificate
+            context->state = TLS_STATE_SERVER_CERTIFICATE_VERIFY;
+         }
+      }
    }
 
    //Return status code
@@ -172,14 +196,17 @@ error_t tlsSendCertificateVerify(TlsContext *context)
    //Initialize status code
    error = NO_ERROR;
 
-   //The CertificateVerify message is only sent following a client
-   //certificate that has signing capability
+   //The CertificateVerify message is only sent following a client certificate
+   //that has signing capability
    if(context->cert != NULL)
    {
       //Check certificate type
       if(context->cert->type == TLS_CERT_RSA_SIGN ||
+         context->cert->type == TLS_CERT_RSA_PSS_SIGN ||
          context->cert->type == TLS_CERT_DSS_SIGN ||
-         context->cert->type == TLS_CERT_ECDSA_SIGN)
+         context->cert->type == TLS_CERT_ECDSA_SIGN ||
+         context->cert->type == TLS_CERT_ED25519_SIGN ||
+         context->cert->type == TLS_CERT_ED448_SIGN)
       {
          //Point to the buffer where to format the message
          message = (TlsCertificateVerify *) (context->txBuffer + context->txBufferLen);
@@ -204,8 +231,20 @@ error_t tlsSendCertificateVerify(TlsContext *context)
    //Check status code
    if(error == NO_ERROR || error == ERROR_WOULD_BLOCK || error == ERROR_TIMEOUT)
    {
-      //Prepare to send ChangeCipherSpec message...
-      context->state = TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC;
+      //Version of TLS prior to TLS 1.3?
+      if(context->version <= TLS_VERSION_1_2)
+      {
+         //Send a ChangeCipherSpec message to the server
+         context->state = TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC;
+      }
+      else
+      {
+         //Send a Finished message to the peer
+         if(context->entity == TLS_CONNECTION_END_CLIENT)
+            context->state = TLS_STATE_CLIENT_FINISHED;
+         else
+            context->state = TLS_STATE_SERVER_FINISHED;
+      }
    }
 
    //Return status code
@@ -264,33 +303,61 @@ error_t tlsSendChangeCipherSpec(TlsContext *context)
    //Check status code
    if(error == NO_ERROR || error == ERROR_WOULD_BLOCK || error == ERROR_TIMEOUT)
    {
+      //Version of TLS prior to TLS 1.3?
+      if(context->version <= TLS_VERSION_1_2)
+      {
 #if (DTLS_SUPPORT == ENABLED)
-      //Release previous encryption engine first
-      tlsFreeEncryptionEngine(&context->prevEncryptionEngine);
+         //Release previous encryption engine first
+         tlsFreeEncryptionEngine(&context->prevEncryptionEngine);
 
-      //Save current encryption engine for later use
-      context->prevEncryptionEngine = context->encryptionEngine;
-      //Clear current encryption engine
-      memset(&context->encryptionEngine, 0, sizeof(TlsEncryptionEngine));
+         //Save current encryption engine for later use
+         context->prevEncryptionEngine = context->encryptionEngine;
+         //Clear current encryption engine
+         memset(&context->encryptionEngine, 0, sizeof(TlsEncryptionEngine));
 #else
-      //Release encryption engine first
-      tlsFreeEncryptionEngine(&context->encryptionEngine);
+         //Release encryption engine first
+         tlsFreeEncryptionEngine(&context->encryptionEngine);
 #endif
 
-      //Inform the record layer that subsequent records will be protected
-      //under the newly negotiated encryption algorithm
-      error = tlsInitEncryptionEngine(context, &context->encryptionEngine,
-         context->entity, NULL);
-   }
+         //Inform the record layer that subsequent records will be protected
+         //under the newly negotiated encryption algorithm
+         error = tlsInitEncryptionEngine(context, &context->encryptionEngine,
+            context->entity, NULL);
 
-   //Check status code
-   if(!error)
-   {
-      //Prepare to send a Finished message to the peer...
-      if(context->entity == TLS_CONNECTION_END_CLIENT)
-         context->state = TLS_STATE_CLIENT_FINISHED;
+         //Check status code
+         if(!error)
+         {
+            //Send a Finished message to the peer
+            if(context->entity == TLS_CONNECTION_END_CLIENT)
+               context->state = TLS_STATE_CLIENT_FINISHED;
+            else
+               context->state = TLS_STATE_SERVER_FINISHED;
+         }
+      }
       else
-         context->state = TLS_STATE_SERVER_FINISHED;
+      {
+#if (TLS13_MIDDLEBOX_COMPAT_SUPPORT == ENABLED)
+         //The middlebox compatibility mode improves the chance of successfully
+         //connecting through middleboxes
+         if(context->state == TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC ||
+            context->state == TLS_STATE_SERVER_CHANGE_CIPHER_SPEC_2)
+         {
+            //The client can send its second flight
+            context->state = TLS_STATE_CLIENT_HELLO_2;
+         }
+         else if(context->state == TLS_STATE_SERVER_CHANGE_CIPHER_SPEC ||
+            context->state == TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC_2)
+         {
+            //All handshake messages after the ServerHello are now encrypted
+            context->state = TLS_STATE_HANDSHAKE_TRAFFIC_KEYS;
+         }
+         else
+#endif
+         {
+            //Middlebox compatibility mode is not implemented
+            error = ERROR_UNEXPECTED_STATE;
+         }
+      }
    }
 
    //Return status code
@@ -320,7 +387,7 @@ error_t tlsSendFinished(TlsContext *context)
    //Point to the buffer where to format the message
    message = (TlsFinished *) (context->txBuffer + context->txBufferLen);
 
-   //TLS operates as a client or a server?
+   //Check whether TLS operates as a client or a server
    if(context->entity == TLS_CONNECTION_END_CLIENT)
    {
       //The verify data is generated from all messages in this handshake
@@ -358,22 +425,40 @@ error_t tlsSendFinished(TlsContext *context)
    //Check status code
    if(error == NO_ERROR || error == ERROR_WOULD_BLOCK || error == ERROR_TIMEOUT)
    {
-      //TLS operates as a client or a server?
-      if(context->entity == TLS_CONNECTION_END_CLIENT)
+      //Version of TLS prior to TLS 1.3?
+      if(context->version <= TLS_VERSION_1_2)
       {
-         //Use abbreviated or full handshake?
-         if(context->resume)
-            context->state = TLS_STATE_APPLICATION_DATA;
+         //Check whether TLS operates as a client or a server
+         if(context->entity == TLS_CONNECTION_END_CLIENT)
+         {
+            //Abbreviated or full handshake?
+            if(context->resume)
+               context->state = TLS_STATE_APPLICATION_DATA;
+            else
+               context->state = TLS_STATE_SERVER_CHANGE_CIPHER_SPEC;
+         }
          else
-            context->state = TLS_STATE_SERVER_CHANGE_CIPHER_SPEC;
+         {
+            //Abbreviated or full handshake?
+            if(context->resume)
+               context->state = TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC;
+            else
+               context->state = TLS_STATE_APPLICATION_DATA;
+         }
       }
       else
       {
-         //Use abbreviated or full handshake?
-         if(context->resume)
-            context->state = TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC;
+         //Check whether TLS operates as a client or a server
+         if(context->entity == TLS_CONNECTION_END_CLIENT)
+         {
+            //Compute client application traffic keys
+            context->state = TLS_STATE_CLIENT_APP_TRAFFIC_KEYS;
+         }
          else
-            context->state = TLS_STATE_APPLICATION_DATA;
+         {
+            //Compute server application traffic keys
+            context->state = TLS_STATE_SERVER_APP_TRAFFIC_KEYS;
+         }
       }
    }
 
@@ -447,9 +532,13 @@ error_t tlsSendAlert(TlsContext *context, uint8_t level, uint8_t description)
       //termination of the connection
       context->fatalAlertSent = TRUE;
 
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
       //Any connection terminated with a fatal alert must not be resumed
       if(context->entity == TLS_CONNECTION_END_SERVER)
+      {
          tlsRemoveFromCache(context);
+      }
+#endif
 
       //Servers and clients must forget any session identifiers
       memset(context->sessionId, 0, 32);
@@ -477,28 +566,75 @@ error_t tlsFormatCertificate(TlsContext *context,
 {
    error_t error;
    size_t n;
+   uint8_t *p;
+   TlsCertificateList *certificateList;
+
+   //Point to the beginning of the handshake message
+   p = message;
+   //Length of the handshake message
+   *length = 0;
+
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+   //TLS 1.3 currently selected?
+   if(context->version == TLS_VERSION_1_3)
+   {
+      Tls13CertRequestContext *certRequestContext;
+
+      //Point to the certificate request context
+      certRequestContext = (Tls13CertRequestContext *) p;
+
+      //Check whether TLS operates as a client or a server
+      if(context->entity == TLS_CONNECTION_END_CLIENT)
+      {
+         //The value of the certificate_request_context field from server's
+         //CertificateRequest message is echoed in the Certificate message
+         if(context->certRequestContextLen > 0)
+         {
+            //Copy certificate request context
+            memcpy(certRequestContext->value, context->certRequestContext,
+               context->certRequestContextLen);
+         }
+
+         //The context is preceded by a length field
+         certRequestContext->length = (uint8_t) context->certRequestContextLen;
+      }
+      else
+      {
+         //In the case of server authentication, this field shall be zero length
+         certRequestContext->length = 0;
+      }
+
+      //Point to the next field
+      p += sizeof(Tls13CertRequestContext) + certRequestContext->length;
+      //Adjust the length of the Certificate message
+      *length += sizeof(Tls13CertRequestContext) + certRequestContext->length;
+   }
+#endif
+
+   //Point to the chain of certificates
+   certificateList = (TlsCertificateList *) p;
 
 #if (TLS_RAW_PUBLIC_KEY_SUPPORT == ENABLED)
    //Check certificate type
    if(context->certFormat == TLS_CERT_FORMAT_RAW_PUBLIC_KEY)
    {
       //Format the raw public key
-      error = tlsFormatRawPublicKey(context, message->certificateList, &n);
+      error = tlsFormatRawPublicKey(context, certificateList->value, &n);
    }
    else
 #endif
    {
       //Format the certificate chain
-      error = tlsFormatCertificateList(context, message->certificateList, &n);
+      error = tlsFormatCertificateList(context, certificateList->value, &n);
    }
 
    //Check status code
    if(!error)
    {
       //A 3-byte length field shall precede the certificate list
-      STORE24BE(n, message->certificateListLen);
-      //Length of the Certificate message
-      *length = sizeof(TlsCertificate) + n;
+      STORE24BE(n, certificateList->length);
+      //Adjust the length of the Certificate message
+      *length += sizeof(TlsCertificateList) + n;
    }
 
    //Return status code
@@ -540,6 +676,17 @@ error_t tlsFormatCertificateVerify(TlsContext *context,
       //has been replaced with a single hash. The signed element now includes
       //a field that explicitly specifies the hash algorithm used
       error = tls12GenerateSignature(context, message, length);
+   }
+   else
+#endif
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+   //TLS 1.3 currently selected?
+   if(context->version == TLS_VERSION_1_3)
+   {
+      //In TLS 1.3, the signed element specifies the signature algorithm used.
+      //The content that is covered under the signature is the transcript hash
+      //output
+      error = tls13GenerateSignature(context, message, length);
    }
    else
 #endif
@@ -587,7 +734,7 @@ error_t tlsFormatChangeCipherSpec(TlsContext *context,
 error_t tlsFormatFinished(TlsContext *context,
    TlsFinished *message, size_t *length)
 {
-   //TLS operates as a client or a server?
+   //Check whether TLS operates as a client or a server
    if(context->entity == TLS_CONNECTION_END_CLIENT)
    {
       //Copy the client's verify data
@@ -648,8 +795,10 @@ error_t tlsFormatSignatureAlgorithmsExtension(TlsContext *context,
 {
    size_t n = 0;
 
-#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
-   //Check whether TLS 1.2 is supported
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+   //This extension is not meaningful for TLS versions prior to 1.2. Clients
+   //must not offer it if they are offering prior versions (refer to RFC 5246,
+   //section 7.4.1.4.1)
    if(context->versionMax >= TLS_VERSION_1_2)
    {
       TlsExtension *extension;
@@ -660,24 +809,70 @@ error_t tlsFormatSignatureAlgorithmsExtension(TlsContext *context,
       //Type of the extension
       extension->type = HTONS(TLS_EXT_SIGNATURE_ALGORITHMS);
 
-      //Point to the list of the hash/signature algorithm pairs that
-      //the server is able to verify
+      //Point to the list of the hash/signature algorithm pairs that the
+      //server is able to verify
       supportedSignAlgos = (TlsSignHashAlgos *) extension->value;
 
-      //Enumerate the hash/signature algorithm pairs in descending
-      //order of preference
+      //Enumerate the hash/signature algorithm pairs in descending order
+      //of preference
       n = 0;
 
+#if (TLS_EDDSA_SIGN_SUPPORT == ENABLED)
 #if (TLS_ED25519_SUPPORT == ENABLED)
       //Ed25519 signature algorithm (PureEdDSA mode)
       supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ED25519;
       supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
 #endif
-
 #if (TLS_ED448_SUPPORT == ENABLED)
       //Ed448 signature algorithm (PureEdDSA mode)
       supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ED448;
       supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
+#endif
+#endif
+
+#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED)
+      //Any ECC cipher suite proposed by the client?
+      if((cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_ECC) != 0 ||
+         (cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_TLS13) != 0)
+      {
+#if (TLS_SHA256_SUPPORT == ENABLED)
+         //ECDSA signature algorithm with SHA-256
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA256;
+#endif
+#if (TLS_SHA384_SUPPORT == ENABLED)
+         //ECDSA signature algorithm with SHA-384
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA384;
+#endif
+#if (TLS_SHA512_SUPPORT == ENABLED)
+         //ECDSA signature algorithm with SHA-512
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA512;
+#endif
+      }
+#endif
+
+#if (TLS_RSA_PSS_SIGN_SUPPORT == ENABLED)
+      //Check whether the X.509 parser supports RSA-PSS signatures
+      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_RSA_PSS))
+      {
+#if (TLS_SHA256_SUPPORT == ENABLED)
+         //RSASSA-PSS PSS signature algorithm with SHA-256
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA_PSS_PSS_SHA256;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
+#endif
+#if (TLS_SHA384_SUPPORT == ENABLED)
+         //RSASSA-PSS PSS signature algorithm with SHA-384
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA_PSS_PSS_SHA384;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
+#endif
+#if (TLS_SHA512_SUPPORT == ENABLED)
+         //RSASSA-PSS PSS signature algorithm with SHA-512
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA_PSS_PSS_SHA512;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
+#endif
+      }
 #endif
 
 #if (TLS_RSA_PSS_SIGN_SUPPORT == ENABLED)
@@ -699,21 +894,6 @@ error_t tlsFormatSignatureAlgorithmsExtension(TlsContext *context,
 #endif
 
 #if (TLS_RSA_SIGN_SUPPORT == ENABLED)
-#if (TLS_MD5_SUPPORT == ENABLED)
-      //RSASSA-PKCS1-v1_5 signature algorithm with MD5
-      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
-      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_MD5;
-#endif
-#if (TLS_SHA1_SUPPORT == ENABLED)
-      //RSASSA-PKCS1-v1_5 signature algorithm with SHA-1
-      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
-      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA1;
-#endif
-#if (TLS_SHA224_SUPPORT == ENABLED)
-      //RSASSA-PKCS1-v1_5 signature algorithm with SHA-224
-      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
-      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA224;
-#endif
 #if (TLS_SHA256_SUPPORT == ENABLED)
       //RSASSA-PKCS1-v1_5 signature algorithm with SHA-256
       supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
@@ -728,6 +908,42 @@ error_t tlsFormatSignatureAlgorithmsExtension(TlsContext *context,
       //RSASSA-PKCS1-v1_5 signature algorithm with SHA-512
       supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
       supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA512;
+#endif
+#endif
+
+#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED)
+      //Any ECC cipher suite proposed by the client?
+      if((cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_ECC) != 0 ||
+         (cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_TLS13) != 0)
+      {
+#if (TLS_SHA1_SUPPORT == ENABLED)
+         //ECDSA signature algorithm with SHA-1
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA1;
+#endif
+#if (TLS_SHA224_SUPPORT == ENABLED)
+         //ECDSA signature algorithm with SHA-224
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA224;
+#endif
+      }
+#endif
+
+#if (TLS_RSA_SIGN_SUPPORT == ENABLED)
+#if (TLS_SHA1_SUPPORT == ENABLED)
+      //RSASSA-PKCS1-v1_5 signature algorithm with SHA-1
+      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
+      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA1;
+#endif
+#if (TLS_SHA224_SUPPORT == ENABLED)
+      //RSASSA-PKCS1-v1_5 signature algorithm with SHA-224
+      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
+      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA224;
+#endif
+#if (TLS_MD5_SUPPORT == ENABLED)
+      //RSASSA-PKCS1-v1_5 signature algorithm with MD5
+      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
+      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_MD5;
 #endif
 #endif
 
@@ -747,38 +963,6 @@ error_t tlsFormatSignatureAlgorithmsExtension(TlsContext *context,
       supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_DSA;
       supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA256;
 #endif
-#endif
-
-#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED)
-      //Any ECC cipher suite proposed by the client?
-      if((cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_ECC) != 0)
-      {
-#if (TLS_SHA1_SUPPORT == ENABLED)
-         //ECDSA signature algorithm with SHA-1
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA1;
-#endif
-#if (TLS_SHA224_SUPPORT == ENABLED)
-         //ECDSA signature algorithm with SHA-224
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA224;
-#endif
-#if (TLS_SHA256_SUPPORT == ENABLED)
-         //ECDSA signature algorithm with SHA-256
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA256;
-#endif
-#if (TLS_SHA384_SUPPORT == ENABLED)
-         //ECDSA signature algorithm with SHA-384
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA384;
-#endif
-#if (TLS_SHA512_SUPPORT == ENABLED)
-         //ECDSA signature algorithm with SHA-512
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA512;
-#endif
-      }
 #endif
 
       //Compute the length, in bytes, of the list
@@ -805,6 +989,236 @@ error_t tlsFormatSignatureAlgorithmsExtension(TlsContext *context,
 
 
 /**
+ * @brief Format SignatureAlgorithmsCert extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] p Output stream where to write the SignatureAlgorithmsCert extension
+ * @param[out] written Total number of bytes that have been written
+ * @return Error code
+ **/
+
+error_t tlsFormatSignatureAlgorithmsCertExtension(TlsContext *context,
+   uint8_t *p, size_t *written)
+{
+   size_t n = 0;
+
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+   //TLS 1.2 implementations should also process this extension
+   if(context->versionMax >= TLS_VERSION_1_2)
+   {
+      TlsExtension *extension;
+      TlsSignHashAlgos *supportedSignAlgos;
+
+      //Add the SignatureAlgorithmsCert extension
+      extension = (TlsExtension *) p;
+      //Type of the extension
+      extension->type = HTONS(TLS_EXT_SIGNATURE_ALGORITHMS_CERT);
+
+      //The SignatureAlgorithmsCert extension allows a client to indicate
+      //which signature algorithms it can validate in X.509 certificates
+      supportedSignAlgos = (TlsSignHashAlgos *) extension->value;
+
+      //Enumerate the hash/signature algorithm pairs in descending order
+      //of preference
+      n = 0;
+
+      //Ed25519 signature algorithm (PureEdDSA mode)
+      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_ED25519))
+      {
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ED25519;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
+      }
+
+      //Ed448 signature algorithm (PureEdDSA mode)
+      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_ED448))
+      {
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ED448;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
+      }
+
+      //ECDSA signature algorithm with SHA-256
+      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_ECDSA) &&
+         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA256))
+      {
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA256;
+      }
+
+      //ECDSA signature algorithm with SHA-384
+      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_ECDSA) &&
+         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA384))
+      {
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA384;
+      }
+
+      //ECDSA signature algorithm with SHA-512
+      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_ECDSA) &&
+         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA512))
+      {
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA512;
+      }
+
+      //RSASSA-PSS PSS signature algorithm with SHA-256
+      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_RSA_PSS) &&
+         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA256))
+      {
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA_PSS_PSS_SHA256;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
+      }
+
+      //RSASSA-PSS PSS signature algorithm with SHA-384
+      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_RSA_PSS) &&
+         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA384))
+      {
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA_PSS_PSS_SHA384;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
+      }
+
+      //RSASSA-PSS PSS signature algorithm with SHA-512
+      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_RSA_PSS) &&
+         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA512))
+      {
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA_PSS_PSS_SHA512;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
+      }
+
+      //RSASSA-PSS RSAE signature algorithm with SHA-256
+      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_RSA) &&
+         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA256))
+      {
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA256;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
+      }
+
+      //RSASSA-PSS RSAE signature algorithm with SHA-384
+      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_RSA) &&
+         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA384))
+      {
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA384;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
+      }
+
+      //RSASSA-PSS RSAE signature algorithm with SHA-512
+      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_RSA) &&
+         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA512))
+      {
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA512;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
+      }
+
+      //RSASSA-PKCS1-v1_5 signature algorithm with SHA-256
+      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_RSA) &&
+         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA256))
+      {
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA256;
+      }
+
+      //RSASSA-PKCS1-v1_5 signature algorithm with SHA-384
+      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_RSA) &&
+         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA384))
+      {
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA384;
+      }
+
+      //RSASSA-PKCS1-v1_5 signature algorithm with SHA-512
+      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_RSA) &&
+         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA512))
+      {
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA512;
+      }
+
+      //ECDSA signature algorithm with SHA-1
+      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_ECDSA) &&
+         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA1))
+      {
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA1;
+      }
+
+      //ECDSA signature algorithm with SHA-224
+      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_ECDSA) &&
+         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA224))
+      {
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA224;
+      }
+
+      //RSASSA-PKCS1-v1_5 signature algorithm with SHA-1
+      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_RSA) &&
+         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA1))
+      {
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA1;
+      }
+
+      //RSASSA-PKCS1-v1_5 signature algorithm with SHA-224
+      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_RSA) &&
+         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA224))
+      {
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA224;
+      }
+
+      //RSASSA-PKCS1-v1_5 signature algorithm with MD5
+      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_RSA) &&
+         x509IsHashAlgoSupported(X509_HASH_ALGO_MD5))
+      {
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_MD5;
+      }
+
+      //DSA signature algorithm with SHA-1
+      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_DSA) &&
+         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA1))
+      {
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_DSA;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA1;
+      }
+
+      //DSA signature algorithm with SHA-224
+      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_DSA) &&
+         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA224))
+      {
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_DSA;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA224;
+      }
+
+      //DSA signature algorithm with SHA-256
+      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_DSA) &&
+         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA256))
+      {
+         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_DSA;
+         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA256;
+      }
+
+      //Compute the length, in bytes, of the list
+      n *= sizeof(TlsSignHashAlgo);
+      //Fix the length of the list
+      supportedSignAlgos->length = htons(n);
+
+      //Consider the 2-byte length field that precedes the list
+      n += sizeof(TlsSignHashAlgos);
+      //Fix the length of the extension
+      extension->length = htons(n);
+
+      //Compute the length, in bytes, of the SignatureAlgorithmsCert extension
+      n += sizeof(TlsExtension);
+   }
+#endif
+
+   //Total number of bytes that have been written
+   *written = n;
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
  * @brief Parse Certificate message
  * @param[in] context Pointer to the TLS context
  * @param[in] message Incoming Certificate message to parse
@@ -817,17 +1231,32 @@ error_t tlsParseCertificate(TlsContext *context,
 {
    error_t error;
    size_t n;
+   const uint8_t *p;
+   const TlsCertificateList *certificateList;
 
    //Debug message
    TRACE_INFO("Certificate message received (%" PRIuSIZE " bytes)...\r\n", length);
    TRACE_DEBUG_ARRAY("  ", message, length);
 
-   //TLS operates as a client or a server?
+   //Check whether TLS operates as a client or a server
    if(context->entity == TLS_CONNECTION_END_CLIENT)
    {
-      //Check current state
-      if(context->state != TLS_STATE_SERVER_CERTIFICATE)
-         return ERROR_UNEXPECTED_MESSAGE;
+      //Version of TLS prior to TLS 1.3?
+      if(context->version <= TLS_VERSION_1_2)
+      {
+         //Check current state
+         if(context->state != TLS_STATE_SERVER_CERTIFICATE)
+            return ERROR_UNEXPECTED_MESSAGE;
+      }
+      else
+      {
+         //The CertificateRequest message is optional
+         if(context->state != TLS_STATE_CERTIFICATE_REQUEST &&
+            context->state != TLS_STATE_SERVER_CERTIFICATE)
+         {
+            return ERROR_UNEXPECTED_MESSAGE;
+         }
+      }
    }
    else
    {
@@ -836,14 +1265,42 @@ error_t tlsParseCertificate(TlsContext *context,
          return ERROR_UNEXPECTED_MESSAGE;
    }
 
-   //Check the length of the Certificate message
-   if(length < sizeof(TlsCertificate))
+   //Point to the beginning of the handshake message
+   p = message;
+
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+   //TLS 1.3 currently selected?
+   if(context->version == TLS_VERSION_1_3)
+   {
+      const Tls13CertRequestContext *certRequestContext;
+
+      //Point to the certificate request context
+      certRequestContext = (Tls13CertRequestContext *) p;
+
+      //Malformed Certificate message?
+      if(length < sizeof(Tls13CertRequestContext))
+         return ERROR_DECODING_FAILED;
+      if(length < (sizeof(Tls13CertRequestContext) + certRequestContext->length))
+         return ERROR_DECODING_FAILED;
+
+      //Point to the next field
+      p += sizeof(Tls13CertRequestContext) + certRequestContext->length;
+      //Remaining bytes to process
+      length -= sizeof(Tls13CertRequestContext) + certRequestContext->length;
+   }
+#endif
+
+   //Point to the chain of certificates
+   certificateList = (TlsCertificateList *) p;
+
+   //Malformed Certificate message?
+   if(length < sizeof(TlsCertificateList))
       return ERROR_DECODING_FAILED;
 
    //Get the size occupied by the certificate list
-   n = LOAD24BE(message->certificateListLen);
+   n = LOAD24BE(certificateList->length);
    //Remaining bytes to process
-   length -= sizeof(TlsCertificate);
+   length -= sizeof(TlsCertificateList);
 
    //Ensure that the chain of certificates is valid
    if(n != length)
@@ -874,32 +1331,56 @@ error_t tlsParseCertificate(TlsContext *context,
       if(context->peerCertFormat == TLS_CERT_FORMAT_RAW_PUBLIC_KEY)
       {
          //Parse the raw public key
-         error = tlsParseRawPublicKey(context, message->certificateList, n);
+         error = tlsParseRawPublicKey(context, certificateList->value, n);
       }
       else
 #endif
       {
          //Parse the certificate chain
-         error = tlsParseCertificateList(context, message->certificateList, n);
+         error = tlsParseCertificateList(context, certificateList->value, n);
       }
    }
 
    //Check status code
    if(!error)
    {
-      //TLS operates as a client or a server?
-      if(context->entity == TLS_CONNECTION_END_CLIENT)
+      //Version of TLS prior to TLS 1.3?
+      if(context->version <= TLS_VERSION_1_2)
       {
-         //Update FSM state
-         if(context->keyExchMethod == TLS_KEY_EXCH_RSA)
-            context->state = TLS_STATE_CERTIFICATE_REQUEST;
+         //Check whether TLS operates as a client or a server
+         if(context->entity == TLS_CONNECTION_END_CLIENT)
+         {
+            //The server does not send a ServerKeyExchange message when RSA
+            //key exchange method is used
+            if(context->keyExchMethod == TLS_KEY_EXCH_RSA)
+               context->state = TLS_STATE_CERTIFICATE_REQUEST;
+            else
+               context->state = TLS_STATE_SERVER_KEY_EXCHANGE;
+         }
          else
-            context->state = TLS_STATE_SERVER_KEY_EXCHANGE;
+         {
+            //Wait for a ClientKeyExchange message from the client
+            context->state = TLS_STATE_CLIENT_KEY_EXCHANGE;
+         }
       }
       else
       {
-         //Prepare to receive ClientKeyExchange message...
-         context->state = TLS_STATE_CLIENT_KEY_EXCHANGE;
+         //Check whether TLS operates as a client or a server
+         if(context->entity == TLS_CONNECTION_END_CLIENT)
+         {
+            //The server must send a CertificateVerify message immediately
+            //after the Certificate message
+            context->state = TLS_STATE_SERVER_CERTIFICATE_VERIFY;
+         }
+         else
+         {
+            //The client must send a CertificateVerify message when the
+            //Certificate message is non-empty
+            if(context->peerCertType != TLS_CERT_NONE)
+               context->state = TLS_STATE_CLIENT_CERTIFICATE_VERIFY;
+            else
+               context->state = TLS_STATE_CLIENT_FINISHED;
+         }
       }
    }
 
@@ -930,9 +1411,19 @@ error_t tlsParseCertificateVerify(TlsContext *context,
    TRACE_INFO("CertificateVerify message received (%" PRIuSIZE " bytes)...\r\n", length);
    TRACE_DEBUG_ARRAY("  ", message, length);
 
-   //Check current state
-   if(context->state != TLS_STATE_CLIENT_CERTIFICATE_VERIFY)
-      return ERROR_UNEXPECTED_MESSAGE;
+   //Check whether TLS operates as a client or a server
+   if(context->entity == TLS_CONNECTION_END_CLIENT)
+   {
+      //Check current state
+      if(context->state != TLS_STATE_SERVER_CERTIFICATE_VERIFY)
+         return ERROR_UNEXPECTED_MESSAGE;
+   }
+   else
+   {
+      //Check current state
+      if(context->state != TLS_STATE_CLIENT_CERTIFICATE_VERIFY)
+         return ERROR_UNEXPECTED_MESSAGE;
+   }
 
 #if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
    //SSL 3.0, TLS 1.0 or TLS 1.1 currently selected?
@@ -955,14 +1446,42 @@ error_t tlsParseCertificateVerify(TlsContext *context,
    }
    else
 #endif
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+   //TLS 1.3 currently selected?
+   if(context->version == TLS_VERSION_1_3)
+   {
+      //In TLS 1.3, the signed element specifies the signature algorithm used.
+      //The content that is covered under the signature is the transcript hash
+      //output
+      error = tls13VerifySignature(context, message, length);
+   }
+   else
+#endif
    //Invalid TLS version?
    {
       //Report an error
       error = ERROR_INVALID_VERSION;
    }
 
-   //Prepare to receive a ChangeCipherSpec message...
-   context->state = TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC;
+   //Check status code
+   if(!error)
+   {
+      //Version of TLS prior to TLS 1.3?
+      if(context->version <= TLS_VERSION_1_2)
+      {
+         //Wait for a ChangeCipherSpec message from the client
+         context->state = TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC;
+      }
+      else
+      {
+         //Wait for a Finished message from the peer
+         if(context->entity == TLS_CONNECTION_END_CLIENT)
+            context->state = TLS_STATE_SERVER_FINISHED;
+         else
+            context->state = TLS_STATE_CLIENT_FINISHED;
+      }
+   }
+
    //Return status code
    return error;
 }
@@ -993,57 +1512,106 @@ error_t tlsParseChangeCipherSpec(TlsContext *context,
    if(message->type != 0x01)
       return ERROR_DECODING_FAILED;
 
-   //TLS operates as a client or a server?
-   if(context->entity == TLS_CONNECTION_END_CLIENT)
+   //Version of TLS prior to TLS 1.3?
+   if(context->version <= TLS_VERSION_1_2)
    {
-      //Check current state
-      if(context->state != TLS_STATE_SERVER_CHANGE_CIPHER_SPEC)
-         return ERROR_UNEXPECTED_MESSAGE;
-   }
-   else
-   {
-      //Check current state
-      if(context->state != TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC)
-         return ERROR_UNEXPECTED_MESSAGE;
-   }
+      //Check whether TLS operates as a client or a server
+      if(context->entity == TLS_CONNECTION_END_CLIENT)
+      {
+         //Check current state
+         if(context->state != TLS_STATE_SERVER_CHANGE_CIPHER_SPEC)
+            return ERROR_UNEXPECTED_MESSAGE;
+      }
+      else
+      {
+         //Check current state
+         if(context->state != TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC)
+            return ERROR_UNEXPECTED_MESSAGE;
+      }
 
-   //Release decryption engine first
-   tlsFreeEncryptionEngine(&context->decryptionEngine);
+      //Release decryption engine first
+      tlsFreeEncryptionEngine(&context->decryptionEngine);
 
-   //TLS operates as a client or a server?
-   if(context->entity == TLS_CONNECTION_END_CLIENT)
-   {
-      //Initialize decryption engine using server write keys
-      error = tlsInitEncryptionEngine(context, &context->decryptionEngine,
-         TLS_CONNECTION_END_SERVER, NULL);
-      //Any error to report?
-      if(error)
-         return error;
+      //Check whether TLS operates as a client or a server
+      if(context->entity == TLS_CONNECTION_END_CLIENT)
+      {
+         //Initialize decryption engine using server write keys
+         error = tlsInitEncryptionEngine(context, &context->decryptionEngine,
+            TLS_CONNECTION_END_SERVER, NULL);
+         //Any error to report?
+         if(error)
+            return error;
 
-      //Prepare to receive a Finished message from the server
-      context->state = TLS_STATE_SERVER_FINISHED;
-   }
-   else
-   {
-      //Initialize decryption engine using client write keys
-      error = tlsInitEncryptionEngine(context, &context->decryptionEngine,
-         TLS_CONNECTION_END_CLIENT, NULL);
-      //Any error to report?
-      if(error)
-         return error;
+         //Wait for a Finished message from the server
+         context->state = TLS_STATE_SERVER_FINISHED;
+      }
+      else
+      {
+         //Initialize decryption engine using client write keys
+         error = tlsInitEncryptionEngine(context, &context->decryptionEngine,
+            TLS_CONNECTION_END_CLIENT, NULL);
+         //Any error to report?
+         if(error)
+            return error;
 
-      //Prepare to receive a Finished message from the client
-      context->state = TLS_STATE_CLIENT_FINISHED;
-   }
+         //Wait for a Finished message from the client
+         context->state = TLS_STATE_CLIENT_FINISHED;
+      }
 
 #if (DTLS_SUPPORT == ENABLED)
-   //DTLS protocol?
-   if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_DATAGRAM)
-   {
-      //Initialize sliding window
-      dtlsInitReplayWindow(context);
-   }
+      //DTLS protocol?
+      if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_DATAGRAM)
+      {
+         //Initialize sliding window
+         dtlsInitReplayWindow(context);
+      }
 #endif
+   }
+   else
+   {
+      //In TLS 1.3, the ChangeCipherSpec message is used only for compatibility
+      //purposes and must be dropped without further processing
+      if(context->entity == TLS_CONNECTION_END_CLIENT)
+      {
+         //A ChangeCipherSpec message received received before the first
+         //ClientHello message or after the server's Finished message must
+         //be treated as an unexpected record type
+         if(context->state != TLS_STATE_SERVER_HELLO &&
+            context->state != TLS_STATE_SERVER_HELLO_2 &&
+            context->state != TLS_STATE_ENCRYPTED_EXTENSIONS &&
+            context->state != TLS_STATE_CERTIFICATE_REQUEST &&
+            context->state != TLS_STATE_SERVER_CERTIFICATE &&
+            context->state != TLS_STATE_SERVER_CERTIFICATE_VERIFY &&
+            context->state != TLS_STATE_SERVER_FINISHED)
+         {
+            //Report an error
+            return ERROR_UNEXPECTED_MESSAGE;
+         }
+      }
+      else
+      {
+         //A ChangeCipherSpec message received received before the first
+         //ClientHello message or after the client's Finished message must
+         //be treated as an unexpected record type
+         if(context->state != TLS_STATE_CLIENT_HELLO_2 &&
+            context->state != TLS_STATE_CLIENT_CERTIFICATE &&
+            context->state != TLS_STATE_CLIENT_CERTIFICATE_VERIFY &&
+            context->state != TLS_STATE_CLIENT_FINISHED)
+         {
+            //Report an error
+            return ERROR_UNEXPECTED_MESSAGE;
+         }
+      }
+
+#if (TLS_MAX_CHANGE_CIPHER_SPEC_MESSAGES > 0)
+      //Increment the count of consecutive ChangeCipherSpec messages
+      context->changeCipherSpecCount++;
+
+      //Do not allow too many consecutive ChangeCipherSpec messages
+      if(context->changeCipherSpecCount > TLS_MAX_CHANGE_CIPHER_SPEC_MESSAGES)
+         return ERROR_UNEXPECTED_MESSAGE;
+#endif
+   }
 
    //Successful processing
    return NO_ERROR;
@@ -1067,7 +1635,7 @@ error_t tlsParseFinished(TlsContext *context,
    TRACE_INFO("Finished message received (%" PRIuSIZE " bytes)...\r\n", length);
    TRACE_DEBUG_ARRAY("  ", message, length);
 
-   //TLS operates as a client or a server?
+   //Check whether TLS operates as a client or a server
    if(context->entity == TLS_CONNECTION_END_CLIENT)
    {
       //Check current state
@@ -1084,17 +1652,17 @@ error_t tlsParseFinished(TlsContext *context,
 
       //Check the length of the Finished message
       if(length != context->serverVerifyDataLen)
+      {
+#if (TLS_MAX_EMPTY_RECORDS > 0)
          return ERROR_INVALID_SIGNATURE;
+#else
+         return ERROR_DECODING_FAILED;
+#endif
+      }
 
       //Check the resulting verify data
       if(memcmp(message, context->serverVerifyData, context->serverVerifyDataLen))
          return ERROR_INVALID_SIGNATURE;
-
-      //Use abbreviated or full handshake?
-      if(context->resume)
-         context->state = TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC;
-      else
-         context->state = TLS_STATE_APPLICATION_DATA;
    }
    else
    {
@@ -1112,17 +1680,53 @@ error_t tlsParseFinished(TlsContext *context,
 
       //Check the length of the Finished message
       if(length != context->clientVerifyDataLen)
+      {
+#if (TLS_MAX_EMPTY_RECORDS > 0)
          return ERROR_INVALID_SIGNATURE;
+#else
+         return ERROR_DECODING_FAILED;
+#endif
+      }
 
       //Check the resulting verify data
       if(memcmp(message, context->clientVerifyData, context->clientVerifyDataLen))
          return ERROR_INVALID_SIGNATURE;
+   }
 
-      //Use abbreviated or full handshake?
-      if(context->resume)
-         context->state = TLS_STATE_APPLICATION_DATA;
+   //Version of TLS prior to TLS 1.3?
+   if(context->version <= TLS_VERSION_1_2)
+   {
+      //Check whether TLS operates as a client or a server
+      if(context->entity == TLS_CONNECTION_END_CLIENT)
+      {
+         //Abbreviated or full handshake?
+         if(context->resume)
+            context->state = TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC;
+         else
+            context->state = TLS_STATE_APPLICATION_DATA;
+      }
       else
-         context->state = TLS_STATE_SERVER_CHANGE_CIPHER_SPEC;
+      {
+         //Abbreviated or full handshake?
+         if(context->resume)
+            context->state = TLS_STATE_APPLICATION_DATA;
+         else
+            context->state = TLS_STATE_SERVER_CHANGE_CIPHER_SPEC;
+      }
+   }
+   else
+   {
+      //Check whether TLS operates as a client or a server
+      if(context->entity == TLS_CONNECTION_END_CLIENT)
+      {
+         //Compute server application traffic keys
+         context->state = TLS_STATE_SERVER_APP_TRAFFIC_KEYS;
+      }
+      else
+      {
+         //Compute client application traffic keys
+         context->state = TLS_STATE_CLIENT_APP_TRAFFIC_KEYS;
+      }
    }
 
    //Successful processing
@@ -1165,7 +1769,7 @@ error_t tlsParseAlert(TlsContext *context,
          return ERROR_UNEXPECTED_MESSAGE;
 #endif
 
-      //Closure alert received?
+      //Check alert type
       if(message->description == TLS_ALERT_CLOSE_NOTIFY)
       {
          //A closure alert has been received
@@ -1175,15 +1779,33 @@ error_t tlsParseAlert(TlsContext *context,
          if(context->state == TLS_STATE_APPLICATION_DATA)
             context->state = TLS_STATE_CLOSING;
       }
+      else if(message->description == TLS_ALERT_USER_CANCELED)
+      {
+         //This alert notifies the recipient that the sender is canceling the
+         //handshake for some reason unrelated to a protocol failure
+      }
+      else
+      {
+         //TLS 1.3 currently selected?
+         if(context->version == TLS_VERSION_1_3)
+         {
+            //Unknown alert types must be treated as error alerts
+            return ERROR_DECODING_FAILED;
+         }
+      }
    }
    else if(message->level == TLS_ALERT_LEVEL_FATAL)
    {
       //A fatal alert message has been received
       context->fatalAlertReceived = TRUE;
 
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
       //Any connection terminated with a fatal alert must not be resumed
       if(context->entity == TLS_CONNECTION_END_SERVER)
+      {
          tlsRemoveFromCache(context);
+      }
+#endif
 
       //Servers and clients must forget any session identifiers
       memset(context->sessionId, 0, 32);

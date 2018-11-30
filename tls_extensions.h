@@ -1,6 +1,6 @@
 /**
- * @file ssl_misc.h
- * @brief SSL 3.0 helper functions
+ * @file tls_extensions.h
+ * @brief Parsing and checking of TLS extensions
  *
  * @section License
  *
@@ -26,11 +26,10 @@
  * @version 1.9.0
  **/
 
-#ifndef _SSL_MISC_H
-#define _SSL_MISC_H
+#ifndef _TLS_EXTENSIONS_H
+#define _TLS_EXTENSIONS_H
 
 //Dependencies
-#include "core/crypto.h"
 #include "tls.h"
 
 //C++ guard
@@ -38,16 +37,18 @@
    extern "C" {
 #endif
 
-//SSL 3.0 related constants
-extern const uint8_t sslPad1[48];
-extern const uint8_t sslPad2[48];
+//TLS related functions
+error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
+   size_t length, TlsHelloExtensions *extensions);
 
-//SSL 3.0 related functions
-error_t sslExpandKey(const uint8_t *secret, size_t secretLen,
-   const uint8_t *random, size_t randomLen, uint8_t *output, size_t outputLen);
+error_t tlsCheckHelloExtensions(TlsMessageType msgType, uint16_t version,
+   TlsHelloExtensions *extensions);
 
-error_t sslComputeMac(TlsEncryptionEngine *encryptionEngine,
-   const TlsRecord *record, const uint8_t *data, size_t dataLen, uint8_t *mac);
+error_t tlsCheckDuplicateExtension(uint16_t type, const uint8_t *p,
+   size_t length);
+
+bool_t tlsIsAlpnProtocolSupported(TlsContext *context,
+   const char_t *protocol, size_t length);
 
 //C++ guard
 #ifdef __cplusplus

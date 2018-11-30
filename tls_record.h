@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.6
+ * @version 1.9.0
  **/
 
 #ifndef _TLS_RECORD_H
@@ -49,6 +49,8 @@ error_t tlsWriteRecord(TlsContext *context, const uint8_t *data,
 
 error_t tlsReadRecord(TlsContext *context, uint8_t *data,
    size_t size, size_t *length, TlsContentType *contentType);
+
+error_t tlsProcessRecord(TlsContext *context, TlsRecord *record);
 
 error_t tlsEncryptRecord(TlsContext *context,
    TlsEncryptionEngine *encryptionEngine, void *record);

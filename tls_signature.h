@@ -1,6 +1,6 @@
 /**
  * @file tls_signature.h
- * @brief RSA/DSA/ECDSA signature generation and verification
+ * @brief RSA/DSA/ECDSA/EdDSA signature generation and verification
  *
  * @section License
  *
@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.6
+ * @version 1.9.0
  **/
 
 #ifndef _TLS_SIGNATURE_H
@@ -38,7 +38,7 @@
 #endif
 
 //TLS related functions
-error_t tlsSelectSignHashAlgo(TlsContext *context, const TlsCertDesc *cert,
+error_t tlsSelectSignatureScheme(TlsContext *context, const TlsCertDesc *cert,
    const TlsSignHashAlgos *supportedSignAlgos);
 
 error_t tlsGenerateSignature(TlsContext *context, uint8_t *p,

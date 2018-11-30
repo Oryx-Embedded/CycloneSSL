@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.6
+ * @version 1.9.0
  **/
 
 //Switch to the appropriate trace level
@@ -40,7 +40,7 @@
 #include "dtls_record.h"
 #include "debug.h"
 
-//Check SSL library configuration
+//Check TLS library configuration
 #if (TLS_SUPPORT == ENABLED && DTLS_SUPPORT == ENABLED)
 
 
@@ -148,7 +148,7 @@ error_t dtlsReadProtocolData(TlsContext *context,
          if(error)
          {
             //Debug message
-            TRACE_WARNING("Invalid DTLS record received!\r\n");
+            TRACE_WARNING("Discarding DTLS record!\r\n");
 
             //DTLS implementations should silently discard records with
             //bad MACs and continue with the connection
@@ -161,10 +161,10 @@ error_t dtlsReadProtocolData(TlsContext *context,
          error = dtlsReadRecord(context);
 
          //Malformed record?
-         if(error)
+         if(error != NO_ERROR && error != ERROR_RECORD_OVERFLOW)
          {
             //Debug message
-            TRACE_WARNING("Invalid DTLS record received!\r\n");
+            TRACE_WARNING("Discarding DTLS record!\r\n");
 
             //The receiving implementation should discard the offending record
             error = NO_ERROR;
@@ -382,6 +382,10 @@ error_t dtlsReadRecord(TlsContext *context)
       //If the MAC validation fails, the receiver must discard the record
       if(error)
          return error;
+
+      //The length of the plaintext record must not exceed 2^14 bytes
+      if(ntohs(record->length) > TLS_MAX_RECORD_LENGTH)
+         return ERROR_RECORD_OVERFLOW;
    }
 
    //The receive window is updated only if the MAC verification succeeds
@@ -1094,7 +1098,7 @@ error_t dtlsReassembleHandshakeMessage(TlsContext *context,
             //Fix fragment length field
             STORE24BE(prevFragLength, prevFragment->fragLength);
 
-            //Jump to the the next fragment
+            //Jump to the next fragment
             pos += n;
          }
          else

@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.6
+ * @version 1.9.0
  **/
 
 //Switch to the appropriate trace level
@@ -33,529 +33,22 @@
 #include <string.h>
 #include "tls.h"
 #include "tls_cipher_suites.h"
-#include "tls_handshake_misc.h"
 #include "tls_server.h"
+#include "tls_server_extensions.h"
 #include "tls_server_misc.h"
 #include "tls_common.h"
-#include "tls_record.h"
-#include "tls_signature.h"
+#include "tls_extensions.h"
 #include "tls_certificate.h"
+#include "tls_signature.h"
 #include "tls_cache.h"
 #include "tls_ffdhe.h"
+#include "tls_record.h"
 #include "tls_misc.h"
 #include "certificate/pem_import.h"
 #include "debug.h"
 
-//Check SSL library configuration
+//Check TLS library configuration
 #if (TLS_SUPPORT == ENABLED && TLS_SERVER_SUPPORT == ENABLED)
-
-
-/**
- * @brief Format SNI extension
- * @param[in] context Pointer to the TLS context
- * @param[in] p Output stream where to write the ServerName extension
- * @param[out] written Total number of bytes that have been written
- * @return Error code
- **/
-
-error_t tlsFormatServerSniExtension(TlsContext *context,
-   uint8_t *p, size_t *written)
-{
-   size_t n = 0;
-
-#if (TLS_SNI_SUPPORT == ENABLED)
-   //A server that receives a ClientHello containing the SNI extension may use
-   //the information contained in the extension to guide its selection of an
-   //appropriate certificate to return to the client. In this event, the server
-   //shall include an extension of type SNI in the ServerHello
-   if(context->serverName != NULL)
-   {
-      //Full handshake?
-      if(!context->resume)
-      {
-         TlsExtension *extension;
-
-         //Add SNI (Server Name Indication) extension
-         extension = (TlsExtension *) p;
-         //Type of the extension
-         extension->type = HTONS(TLS_EXT_SERVER_NAME);
-
-         //The extension data field of this extension shall be empty (refer to
-         //RFC 6066, section 3)
-         extension->length = HTONS(0);
-
-         //Compute the length, in bytes, of the ServerName extension
-         n = sizeof(TlsExtension);
-      }
-      else
-      {
-         //When resuming a session, the server must not include a ServerName
-         //extension in the ServerHello (refer to RFC 6066, section 3)
-         n = 0;
-      }
-   }
-#endif
-
-   //Total number of bytes that have been written
-   *written = n;
-
-   //Successful processing
-   return NO_ERROR;
-}
-
-
-/**
- * @brief Format MaxFragmentLength extension
- * @param[in] context Pointer to the TLS context
- * @param[in] p Output stream where to write the MaxFragmentLength extension
- * @param[out] written Total number of bytes that have been written
- * @return Error code
- **/
-
-error_t tlsFormatServerMaxFragLenExtension(TlsContext *context,
-   uint8_t *p, size_t *written)
-{
-   size_t n = 0;
-
-#if (TLS_MAX_FRAG_LEN_SUPPORT == ENABLED)
-   //An extension type must not appear in the ServerHello unless the same
-   //extension type appeared in the corresponding ClientHello
-   if(context->maxFragLenExtReceived)
-   {
-      //Servers that receive an ClientHello containing a MaxFragmentLength
-      //extension may accept the requested maximum fragment length by including
-      //an extension of type MaxFragmentLength in the ServerHello
-      if(context->maxFragLen == 512 || context->maxFragLen == 1024 ||
-         context->maxFragLen == 2048 || context->maxFragLen == 4096)
-      {
-         TlsExtension *extension;
-
-         //Add the MaxFragmentLength extension
-         extension = (TlsExtension *) p;
-         //Type of the extension
-         extension->type = HTONS(TLS_EXT_MAX_FRAGMENT_LENGTH);
-
-         //The data field of this extension shall contain a MaxFragmentLength
-         //whose value is the same as the requested maximum fragment length
-         switch(context->maxFragLen)
-         {
-         case 512:
-            extension->value[0] = TLS_MAX_FRAGMENT_LENGTH_512;
-            break;
-         case 1024:
-            extension->value[0] = TLS_MAX_FRAGMENT_LENGTH_1024;
-            break;
-         case 2048:
-            extension->value[0] = TLS_MAX_FRAGMENT_LENGTH_2048;
-            break;
-         default:
-            extension->value[0] = TLS_MAX_FRAGMENT_LENGTH_4096;
-            break;
-         }
-
-         //The extension data field contains a single byte
-         n = sizeof(uint8_t);
-         //Fix the length of the extension
-         extension->length = htons(n);
-
-         //Compute the length, in bytes, of the MaxFragmentLength extension
-         n += sizeof(TlsExtension);
-      }
-   }
-#endif
-
-   //Total number of bytes that have been written
-   *written = n;
-
-   //Successful processing
-   return NO_ERROR;
-}
-
-
-/**
- * @brief Format RecordSizeLimit extension
- * @param[in] context Pointer to the TLS context
- * @param[in] p Output stream where to write the RecordSizeLimit extension
- * @param[out] written Total number of bytes that have been written
- * @return Error code
- **/
-
-error_t tlsFormatServerRecordSizeLimitExtension(TlsContext *context,
-   uint8_t *p, size_t *written)
-{
-   size_t n = 0;
-
-#if (TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)
-   //An extension type must not appear in the ServerHello unless the same
-   //extension type appeared in the corresponding ClientHello
-   if(context->recordSizeLimitExtReceived)
-   {
-      uint16_t recordSizeLimit;
-      TlsExtension *extension;
-
-      //Add the RecordSizeLimit extension
-      extension = (TlsExtension *) p;
-      //Type of the extension
-      extension->type = HTONS(TLS_EXT_RECORD_SIZE_LIMIT);
-
-      //An endpoint must not send a value higher than the protocol-defined
-      //maximum record size (refer to RFC 8449, section 4)
-      recordSizeLimit = MIN(context->rxBufferMaxLen, TLS_MAX_RECORD_LENGTH);
-
-      //The value of RecordSizeLimit is the maximum size of record in octets
-      //that the endpoint is willing to receive
-      STORE16BE(recordSizeLimit, extension->value);
-
-      //The extension data field contains a 16-bit unsigned integer
-      n = sizeof(uint16_t);
-      //Fix the length of the extension
-      extension->length = htons(n);
-
-      //Compute the length, in bytes, of the RecordSizeLimit extension
-      n += sizeof(TlsExtension);
-   }
-#endif
-
-   //Total number of bytes that have been written
-   *written = n;
-
-   //Successful processing
-   return NO_ERROR;
-}
-
-
-/**
- * @brief Format EcPointFormats extension
- * @param[in] context Pointer to the TLS context
- * @param[in] p Output stream where to write the EcPointFormats extension
- * @param[out] written Total number of bytes that have been written
- * @return Error code
- **/
-
-error_t tlsFormatServerEcPointFormatsExtension(TlsContext *context,
-   uint8_t *p, size_t *written)
-{
-   size_t n = 0;
-
-#if (TLS_ECDH_ANON_SUPPORT == ENABLED || TLS_ECDHE_RSA_SUPPORT == ENABLED || \
-   TLS_ECDHE_ECDSA_SUPPORT == ENABLED || TLS_ECDHE_PSK_SUPPORT == ENABLED)
-   //An extension type must not appear in the ServerHello unless the same
-   //extension type appeared in the corresponding ClientHello
-   if(context->ecPointFormatsExtReceived)
-   {
-      uint16_t identifier;
-
-      //Retrieve the selected cipher suite
-      identifier = context->cipherSuite.identifier;
-
-      //A server that selects an ECC cipher suite in response to a ClientHello
-      //message including an EcPointFormats extension appends this extension
-      //to its ServerHello message
-      if(tlsGetCipherSuiteType(identifier) == TLS_CIPHER_SUITE_TYPE_ECC)
-      {
-         TlsExtension *extension;
-         TlsEcPointFormatList *ecPointFormatList;
-
-         //Add the EcPointFormats extension
-         extension = (TlsExtension *) p;
-         //Type of the extension
-         extension->type = HTONS(TLS_EXT_EC_POINT_FORMATS);
-
-         //Point to the list of supported EC point formats
-         ecPointFormatList = (TlsEcPointFormatList *) extension->value;
-         //Items in the list are ordered according to server's preferences
-         n = 0;
-
-         //The server can parse only the uncompressed point format...
-         ecPointFormatList->value[n++] = TLS_EC_POINT_FORMAT_UNCOMPRESSED;
-         //Fix the length of the list
-         ecPointFormatList->length = (uint8_t) n;
-
-         //Consider the length field that precedes the list
-         n += sizeof(TlsEcPointFormatList);
-         //Fix the length of the extension
-         extension->length = htons(n);
-
-         //Compute the length, in bytes, of the EcPointFormats extension
-         n += sizeof(TlsExtension);
-      }
-   }
-#endif
-
-   //Total number of bytes that have been written
-   *written = n;
-
-   //Successful processing
-   return NO_ERROR;
-}
-
-
-/**
- * @brief Format ALPN extension
- * @param[in] context Pointer to the TLS context
- * @param[in] p Output stream where to write the ALPN extension
- * @param[out] written Total number of bytes that have been written
- * @return Error code
- **/
-
-error_t tlsFormatServerAlpnExtension(TlsContext *context,
-   uint8_t *p, size_t *written)
-{
-   size_t n = 0;
-
-#if (TLS_ALPN_SUPPORT == ENABLED)
-   //The ALPN extension may be returned to the client within the extended
-   //ServerHello message
-   if(context->selectedProtocol != NULL)
-   {
-      //Empty strings must not be included
-      if(context->selectedProtocol[0] != '\0')
-      {
-         TlsExtension *extension;
-         TlsProtocolName *protocolName;
-         TlsProtocolNameList *protocolNameList;
-
-         //Add ALPN (Application-Layer Protocol Negotiation) extension
-         extension = (TlsExtension *) p;
-         //Type of the extension
-         extension->type = HTONS(TLS_EXT_ALPN);
-
-         //Point to the list of protocol names
-         protocolNameList = (TlsProtocolNameList *) extension->value;
-         //The list must contain exactly one protocol name
-         protocolName = (TlsProtocolName *) protocolNameList->value;
-
-         //Retrieve the length of the protocol name
-         n = strlen(context->selectedProtocol);
-
-         //Fill in the length field
-         protocolName->length = (uint8_t) n;
-         //Copy protocol name
-         memcpy(protocolName->value, context->selectedProtocol, n);
-
-         //Adjust the length of the list
-         n += sizeof(TlsProtocolName);
-         //Fix the length of the list
-         protocolNameList->length = htons(n);
-
-         //Consider the 2-byte length field that precedes the list
-         n += sizeof(TlsProtocolNameList);
-         //Fix the length of the extension
-         extension->length = htons(n);
-
-         //Compute the length, in bytes, of the ALPN extension
-         n += sizeof(TlsExtension);
-      }
-   }
-#endif
-
-   //Total number of bytes that have been written
-   *written = n;
-
-   //Successful processing
-   return NO_ERROR;
-}
-
-
-/**
- * @brief Format ClientCertType extension
- * @param[in] context Pointer to the TLS context
- * @param[in] p Output stream where to write the ClientCertType extension
- * @param[out] written Total number of bytes that have been written
- * @return Error code
- **/
-
-error_t tlsFormatClientCertTypeExtension(TlsContext *context,
-   uint8_t *p, size_t *written)
-{
-   size_t n = 0;
-
-#if (TLS_RAW_PUBLIC_KEY_SUPPORT == ENABLED)
-   //An extension type must not appear in the ServerHello unless the same
-   //extension type appeared in the corresponding ClientHello
-   if(context->clientCertTypeExtReceived)
-   {
-      TlsExtension *extension;
-
-      //Add the ClientCertType extension
-      extension = (TlsExtension *) p;
-      //Type of the extension
-      extension->type = HTONS(TLS_EXT_CLIENT_CERT_TYPE);
-
-      //The ClientCertType extension in the ServerHello indicates the type
-      //of certificates the client is requested to provide in a subsequent
-      //certificate payload
-      extension->value[0] = context->peerCertFormat;
-
-      //The extension data field contains a single byte
-      n = sizeof(uint8_t);
-      //Fix the length of the extension
-      extension->length = htons(n);
-
-      //Compute the length, in bytes, of the ClientCertType extension
-      n += sizeof(TlsExtension);
-   }
-#endif
-
-   //Total number of bytes that have been written
-   *written = n;
-
-   //Successful processing
-   return NO_ERROR;
-}
-
-
-/**
- * @brief Format ServerCertType extension
- * @param[in] context Pointer to the TLS context
- * @param[in] p Output stream where to write the ServerCertType extension
- * @param[out] written Total number of bytes that have been written
- * @return Error code
- **/
-
-error_t tlsFormatServerCertTypeExtension(TlsContext *context,
-   uint8_t *p, size_t *written)
-{
-   size_t n = 0;
-
-#if (TLS_RAW_PUBLIC_KEY_SUPPORT == ENABLED)
-   //An extension type must not appear in the ServerHello unless the same
-   //extension type appeared in the corresponding ClientHello
-   if(context->serverCertTypeExtReceived)
-   {
-      TlsExtension *extension;
-
-      //Add the ServerCertType extension
-      extension = (TlsExtension *) p;
-      //Type of the extension
-      extension->type = HTONS(TLS_EXT_SERVER_CERT_TYPE);
-
-      //With the ServerCertType extension in the ServerHello, the TLS server
-      //indicates the certificate type carried in the certificate payload
-      extension->value[0] = context->certFormat;
-
-      //The extension data field contains a single byte
-      n = sizeof(uint8_t);
-      //Fix the length of the extension
-      extension->length = htons(n);
-
-      //Compute the length, in bytes, of the ServerCertType extension
-      n += sizeof(TlsExtension);
-   }
-#endif
-
-   //Total number of bytes that have been written
-   *written = n;
-
-   //Successful processing
-   return NO_ERROR;
-}
-
-
-/**
- * @brief Format ExtendedMasterSecret extension
- * @param[in] context Pointer to the TLS context
- * @param[in] p Output stream where to write the ExtendedMasterSecret extension
- * @param[out] written Total number of bytes that have been written
- * @return Error code
- **/
-
-error_t tlsFormatServerEmsExtension(TlsContext *context,
-   uint8_t *p, size_t *written)
-{
-   size_t n = 0;
-
-#if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
-   //If the server receives a ClientHello without the ExtendedMasterSecret
-   //extension, then it must not include the extension in the ServerHello
-   if(context->extendedMasterSecretExtReceived)
-   {
-      TlsExtension *extension;
-
-      //Add the ExtendedMasterSecret extension
-      extension = (TlsExtension *) p;
-      //Type of the extension
-      extension->type = HTONS(TLS_EXT_EXTENDED_MASTER_SECRET);
-
-      //The extension data field of this extension is empty
-      extension->length = HTONS(0);
-
-      //Compute the length, in bytes, of the ExtendedMasterSecret extension
-      n = sizeof(TlsExtension);
-   }
-#endif
-
-   //Total number of bytes that have been written
-   *written = n;
-
-   //Successful processing
-   return NO_ERROR;
-}
-
-
-/**
- * @brief Format RenegotiationInfo extension
- * @param[in] context Pointer to the TLS context
- * @param[in] p Output stream where to write the RenegotiationInfo extension
- * @param[out] written Total number of bytes that have been written
- * @return Error code
- **/
-
-error_t tlsFormatServerRenegoInfoExtension(TlsContext *context,
-   uint8_t *p, size_t *written)
-{
-   size_t n = 0;
-
-#if (TLS_SECURE_RENEGOTIATION_SUPPORT == ENABLED)
-   //Check whether secure renegotiation is enabled
-   if(context->secureRenegoEnabled)
-   {
-      //During secure renegotiation, the server must include a renegotiation_info
-      //extension containing the saved client_verify_data and server_verify_data
-      if(context->secureRenegoFlag)
-      {
-         TlsExtension *extension;
-         TlsRenegoInfo *renegoInfo;
-
-         //Determine the length of the renegotiated_connection field
-         n = context->clientVerifyDataLen + context->serverVerifyDataLen;
-
-         //Add the RenegotiationInfo extension
-         extension = (TlsExtension *) p;
-         //Type of the extension
-         extension->type = HTONS(TLS_EXT_RENEGOTIATION_INFO);
-
-         //Point to the renegotiated_connection field
-         renegoInfo = (TlsRenegoInfo *) extension->value;
-         //Set the length of the verify data
-         renegoInfo->length = (uint8_t) n;
-
-         //Copy the saved client_verify_data
-         memcpy(renegoInfo->value, context->clientVerifyData,
-            context->clientVerifyDataLen);
-
-         //Copy the saved client_verify_data
-         memcpy(renegoInfo->value + context->clientVerifyDataLen,
-            context->serverVerifyData, context->serverVerifyDataLen);
-
-         //Consider the length field that precedes the renegotiated_connection
-         //field
-         n += sizeof(TlsRenegoInfo);
-         //Fix the length of the extension
-         extension->length = htons(n);
-
-         //Compute the length, in bytes, of the RenegotiationInfo extension
-         n += sizeof(TlsExtension);
-      }
-   }
-#endif
-
-   //Total number of bytes that have been written
-   *written = n;
-
-   //Successful processing
-   return NO_ERROR;
-}
 
 
 /**
@@ -575,11 +68,8 @@ error_t tlsFormatPskIdentityHint(TlsContext *context,
    //Point to the PSK identity hint
    pskIdentityHint = (TlsPskIdentityHint *) p;
 
-   //Initialize length field
-   n = 0;
-
-#if (TLS_PSK_SUPPORT == ENABLED || TLS_RSA_PSK_SUPPORT == ENABLED || \
-   TLS_DHE_PSK_SUPPORT == ENABLED || TLS_ECDHE_PSK_SUPPORT == ENABLED)
+#if (TLS_PSK_KE_SUPPORT == ENABLED || TLS_RSA_PSK_KE_SUPPORT == ENABLED || \
+   TLS_DHE_PSK_KE_SUPPORT == ENABLED || TLS_ECDHE_PSK_KE_SUPPORT == ENABLED)
    //Any PSK identity hint defined?
    if(context->pskIdentityHint != NULL)
    {
@@ -588,7 +78,12 @@ error_t tlsFormatPskIdentityHint(TlsContext *context,
       //Copy PSK identity hint
       memcpy(pskIdentityHint->value, context->pskIdentityHint, n);
    }
+   else
 #endif
+   {
+      //No PSK identity hint is provided
+      n = 0;
+   }
 
    //The PSK identity hint is preceded by a 2-byte length field
    pskIdentityHint->length = htons(n);
@@ -614,14 +109,15 @@ error_t tlsFormatServerKeyParams(TlsContext *context,
 {
    error_t error;
 
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //Initialize status code
    error = NO_ERROR;
 
    //Total number of bytes that have been written
    *written = 0;
 
-#if (TLS_DH_ANON_SUPPORT == ENABLED || TLS_DHE_RSA_SUPPORT == ENABLED || \
-   TLS_DHE_DSS_SUPPORT == ENABLED || TLS_DHE_PSK_SUPPORT == ENABLED)
+#if (TLS_DH_ANON_KE_SUPPORT == ENABLED || TLS_DHE_RSA_KE_SUPPORT == ENABLED || \
+   TLS_DHE_DSS_KE_SUPPORT == ENABLED || TLS_DHE_PSK_KE_SUPPORT == ENABLED)
    //Diffie-Hellman key exchange method?
    if(context->keyExchMethod == TLS_KEY_EXCH_DH_ANON ||
       context->keyExchMethod == TLS_KEY_EXCH_DHE_RSA ||
@@ -631,12 +127,16 @@ error_t tlsFormatServerKeyParams(TlsContext *context,
       size_t n;
 
 #if (TLS_FFDHE_SUPPORT == ENABLED)
+      const TlsFfdheGroup *ffdheGroup;
+
+      //Get the FFDHE parameters that match the specified named group
+      ffdheGroup = tlsGetFfdheGroup(context, context->namedGroup);
+
       //Valid FFDHE group?
-      if(context->namedGroup != TLS_GROUP_NONE)
+      if(ffdheGroup != NULL)
       {
          //Load FFDHE parameters
-         error = tlsLoadFfdheParameters(&context->dhContext.params,
-            context->namedGroup);
+         error = tlsLoadFfdheParameters(&context->dhContext.params, ffdheGroup);
       }
 #endif
 
@@ -699,8 +199,8 @@ error_t tlsFormatServerKeyParams(TlsContext *context,
    }
    else
 #endif
-#if (TLS_ECDH_ANON_SUPPORT == ENABLED || TLS_ECDHE_RSA_SUPPORT == ENABLED || \
-   TLS_ECDHE_ECDSA_SUPPORT == ENABLED || TLS_ECDHE_PSK_SUPPORT == ENABLED)
+#if (TLS_ECDH_ANON_KE_SUPPORT == ENABLED || TLS_ECDHE_RSA_KE_SUPPORT == ENABLED || \
+   TLS_ECDHE_ECDSA_KE_SUPPORT == ENABLED || TLS_ECDHE_PSK_KE_SUPPORT == ENABLED)
    //ECDH key exchange method?
    if(context->keyExchMethod == TLS_KEY_EXCH_ECDH_ANON ||
       context->keyExchMethod == TLS_KEY_EXCH_ECDHE_RSA ||
@@ -711,7 +211,7 @@ error_t tlsFormatServerKeyParams(TlsContext *context,
       const EcCurveInfo *curveInfo;
 
       //Retrieve the elliptic curve to be used
-      curveInfo = tlsGetCurveInfo(context->namedGroup);
+      curveInfo = tlsGetCurveInfo(context, context->namedGroup);
 
       //Make sure the elliptic curve is supported
       if(curveInfo != NULL)
@@ -800,6 +300,10 @@ error_t tlsFormatServerKeyParams(TlsContext *context,
       //ECDHE_ECDSA or ECDH_anon is selected
       error = ERROR_FAILURE;
    }
+#else
+   //Not implemented
+   error = ERROR_NOT_IMPLEMENTED;
+#endif
 
    //Return status code
    return error;
@@ -829,10 +333,9 @@ error_t tlsGenerateServerKeySignature(TlsContext *context,
    //Total number of bytes that have been written
    *written = 0;
 
-#if (TLS_DHE_RSA_SUPPORT == ENABLED || TLS_ECDHE_RSA_SUPPORT == ENABLED)
-   //DHE_RSA or ECDHE_RSA key exchange method?
-   if(context->keyExchMethod == TLS_KEY_EXCH_DHE_RSA ||
-      context->keyExchMethod == TLS_KEY_EXCH_ECDHE_RSA)
+#if (TLS_RSA_SIGN_SUPPORT == ENABLED)
+   //RSA certificate?
+   if(context->cert->type == TLS_CERT_RSA_SIGN)
    {
       Md5Context *md5Context;
       Sha1Context *sha1Context;
@@ -910,9 +413,9 @@ error_t tlsGenerateServerKeySignature(TlsContext *context,
    }
    else
 #endif
-#if (TLS_DHE_DSS_SUPPORT == ENABLED)
-   //DHE_DSS key exchange method?
-   if(context->keyExchMethod == TLS_KEY_EXCH_DHE_DSS)
+#if (TLS_DSA_SIGN_SUPPORT == ENABLED)
+   //DSA certificate?
+   if(context->cert->type == TLS_CERT_DSS_SIGN)
    {
       Sha1Context *sha1Context;
 
@@ -948,65 +451,58 @@ error_t tlsGenerateServerKeySignature(TlsContext *context,
    }
    else
 #endif
-#if (TLS_ECDHE_ECDSA_SUPPORT == ENABLED)
-   //ECDHE_ECDSA key exchange method?
-   if(context->keyExchMethod == TLS_KEY_EXCH_ECDHE_ECDSA)
+#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED)
+   //ECDSA certificate?
+   if(context->cert->type == TLS_CERT_ECDSA_SIGN)
    {
-      //The digitally-signed element does not convey the signature algorithm
-      //to use, and hence implementations need to inspect the certificate to
-      //find out the signature algorithm to use
-      if(context->cert->type == TLS_CERT_ECDSA_SIGN)
+      Sha1Context *sha1Context;
+
+      //Allocate a memory buffer to hold the SHA-1 context
+      sha1Context = tlsAllocMem(sizeof(Sha1Context));
+
+      //Successful memory allocation?
+      if(sha1Context != NULL)
       {
-         Sha1Context *sha1Context;
+         //Compute SHA(ClientHello.random + ServerHello.random +
+         //ServerKeyExchange.params)
+         sha1Init(sha1Context);
+         sha1Update(sha1Context, context->random, 64);
+         sha1Update(sha1Context, params, paramsLen);
+         sha1Final(sha1Context, context->serverVerifyData);
 
-         //Allocate a memory buffer to hold the SHA-1 context
-         sha1Context = tlsAllocMem(sizeof(Sha1Context));
-
-         //Successful memory allocation?
-         if(sha1Context != NULL)
-         {
-            //Compute SHA(ClientHello.random + ServerHello.random +
-            //ServerKeyExchange.params)
-            sha1Init(sha1Context);
-            sha1Update(sha1Context, context->random, 64);
-            sha1Update(sha1Context, params, paramsLen);
-            sha1Final(sha1Context, context->serverVerifyData);
-
-            //Release previously allocated memory
-            tlsFreeMem(sha1Context);
-         }
-         else
-         {
-            //Failed to allocate memory
-            error = ERROR_OUT_OF_MEMORY;
-         }
-
-         //Check status code
-         if(!error)
-         {
-            //Sign the key exchange parameters using ECDSA
-            error = tlsGenerateEcdsaSignature(context, context->serverVerifyData,
-               SHA1_DIGEST_SIZE, signature->value, written);
-         }
+         //Release previously allocated memory
+         tlsFreeMem(sha1Context);
       }
       else
       {
-         //The signature algorithm is not supported
-         error = ERROR_UNSUPPORTED_SIGNATURE_ALGO;
+         //Failed to allocate memory
+         error = ERROR_OUT_OF_MEMORY;
+      }
+
+      //Check status code
+      if(!error)
+      {
+         //Sign the key exchange parameters using ECDSA
+         error = tlsGenerateEcdsaSignature(context, context->serverVerifyData,
+            SHA1_DIGEST_SIZE, signature->value, written);
       }
    }
    else
 #endif
-   //Invalid key exchange method?
+   //Invalid certificate?
    {
       //Report an error
       error = ERROR_UNSUPPORTED_SIGNATURE_ALGO;
    }
 
-   //Fix the length of the digitally-signed element
-   signature->length = htons(*written);
-   //Adjust the length of the signature
-   *written += sizeof(TlsDigitalSignature);
+   //Check status code
+   if(!error)
+   {
+      //Fix the length of the digitally-signed element
+      signature->length = htons(*written);
+      //Adjust the length of the signature
+      *written += sizeof(TlsDigitalSignature);
+   }
 #else
    //Not implemented
    error = ERROR_NOT_IMPLEMENTED;
@@ -1040,25 +536,46 @@ error_t tls12GenerateServerKeySignature(TlsContext *context,
    //Total number of bytes that have been written
    *written = 0;
 
-#if (TLS_DHE_RSA_SUPPORT == ENABLED || TLS_ECDHE_RSA_SUPPORT == ENABLED || \
-   TLS_DHE_DSS_SUPPORT == ENABLED || TLS_ECDHE_ECDSA_SUPPORT == ENABLED)
-   //RSA, DSA or ECDSA signature algorithm?
-   if(context->cert->type == TLS_CERT_RSA_SIGN ||
-      context->cert->type == TLS_CERT_DSS_SIGN ||
-      context->cert->type == TLS_CERT_ECDSA_SIGN)
+#if (TLS_RSA_SIGN_SUPPORT == ENABLED || TLS_RSA_PSS_SIGN_SUPPORT == ENABLED || \
+   TLS_DSA_SIGN_SUPPORT == ENABLED || TLS_ECDSA_SIGN_SUPPORT == ENABLED)
+   //RSA, DSA or ECDSA signature scheme?
+   if(context->signAlgo == TLS_SIGN_ALGO_RSA ||
+      context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA256 ||
+      context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA384 ||
+      context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA512 ||
+      context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA256 ||
+      context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA384 ||
+      context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA512 ||
+      context->signAlgo == TLS_SIGN_ALGO_DSA ||
+      context->signAlgo == TLS_SIGN_ALGO_ECDSA)
    {
       const HashAlgo *hashAlgo;
       HashContext *hashContext;
 
       //Retrieve the hash algorithm used for signing
-      if(context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA256)
+      if(context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA256 ||
+         context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA256)
+      {
+         //The hashing is intrinsic to the signature algorithm
          hashAlgo = tlsGetHashAlgo(TLS_HASH_ALGO_SHA256);
-      else if(context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA384)
+      }
+      else if(context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA384 ||
+         context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA384)
+      {
+         //The hashing is intrinsic to the signature algorithm
          hashAlgo = tlsGetHashAlgo(TLS_HASH_ALGO_SHA384);
-      else if(context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA512)
+      }
+      else if(context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA512 ||
+         context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA512)
+      {
+         //The hashing is intrinsic to the signature algorithm
          hashAlgo = tlsGetHashAlgo(TLS_HASH_ALGO_SHA512);
+      }
       else
+      {
+         //Select the relevant hash algorithm
          hashAlgo = tlsGetHashAlgo(context->signHashAlgo);
+      }
 
       //Make sure the hash algorithm is supported
       if(hashAlgo != NULL)
@@ -1076,10 +593,9 @@ error_t tls12GenerateServerKeySignature(TlsContext *context,
             hashAlgo->update(hashContext, params, paramsLen);
             hashAlgo->final(hashContext, NULL);
 
-#if (TLS_DHE_RSA_SUPPORT == ENABLED || TLS_ECDHE_RSA_SUPPORT == ENABLED)
-            //DHE_RSA or ECDHE_RSA key exchange method?
-            if(context->keyExchMethod == TLS_KEY_EXCH_DHE_RSA ||
-               context->keyExchMethod == TLS_KEY_EXCH_ECDHE_RSA)
+#if (TLS_RSA_SIGN_SUPPORT == ENABLED)
+            //RSA signature scheme?
+            if(context->signAlgo == TLS_SIGN_ALGO_RSA)
             {
                RsaPrivateKey privateKey;
 
@@ -1097,42 +613,9 @@ error_t tls12GenerateServerKeySignature(TlsContext *context,
                //Check status code
                if(!error)
                {
-#if (TLS_RSA_SIGN_SUPPORT == ENABLED)
-                  //RSASSA-PKCS1-v1_5 signature scheme?
-                  if(context->signAlgo == TLS_SIGN_ALGO_RSA)
-                  {
-                     //Set the relevant signature algorithm
-                     signature->algorithm.signature = TLS_SIGN_ALGO_RSA;
-                     signature->algorithm.hash = context->signHashAlgo;
-
-                     //Generate RSA signature (RSASSA-PKCS1-v1_5 signature scheme)
-                     error = rsassaPkcs1v15Sign(&privateKey, hashAlgo,
-                        hashContext->digest, signature->value, written);
-                  }
-                  else
-#endif
-#if (TLS_RSA_PSS_SIGN_SUPPORT == ENABLED)
-                  //RSASSA-PSS signature scheme?
-                  if(context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA256 ||
-                     context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA384 ||
-                     context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA512)
-                  {
-                     //Set the relevant signature algorithm
-                     signature->algorithm.signature = context->signAlgo;
-                     signature->algorithm.hash = TLS_HASH_ALGO_INTRINSIC;
-
-                     //Generate RSA signature (RSASSA-PSS signature scheme)
-                     error = rsassaPssSign(context->prngAlgo, context->prngContext,
-                        &privateKey, hashAlgo, hashAlgo->digestSize,
-                        hashContext->digest, signature->value, written);
-                  }
-                  else
-#endif
-                  //Invalid signature scheme?
-                  {
-                     //Report an error
-                     error = ERROR_UNSUPPORTED_SIGNATURE_ALGO;
-                  }
+                  //Generate RSA signature (RSASSA-PKCS1-v1_5 signature scheme)
+                  error = rsassaPkcs1v15Sign(&privateKey, hashAlgo,
+                     hashContext->digest, signature->value, written);
                }
 
                //Release previously allocated resources
@@ -1140,9 +623,45 @@ error_t tls12GenerateServerKeySignature(TlsContext *context,
             }
             else
 #endif
-#if (TLS_DHE_DSS_SUPPORT == ENABLED)
-            //DHE_DSS key exchange method?
-            if(context->keyExchMethod == TLS_KEY_EXCH_DHE_DSS)
+#if (TLS_RSA_PSS_SIGN_SUPPORT == ENABLED)
+            //RSA-PSS signature scheme?
+            if(context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA256 ||
+               context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA384 ||
+               context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA512 ||
+               context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA256 ||
+               context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA384 ||
+               context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA512)
+            {
+               RsaPrivateKey privateKey;
+
+               //Initialize RSA private key
+               rsaInitPrivateKey(&privateKey);
+
+               //Set the relevant signature algorithm
+               signature->algorithm.signature = context->signAlgo;
+               signature->algorithm.hash = TLS_HASH_ALGO_INTRINSIC;
+
+               //Decode the PEM structure that holds the RSA private key
+               error = pemImportRsaPrivateKey(context->cert->privateKey,
+                  context->cert->privateKeyLen, &privateKey);
+
+               //Check status code
+               if(!error)
+               {
+                  //Generate RSA signature (RSASSA-PSS signature scheme)
+                  error = rsassaPssSign(context->prngAlgo, context->prngContext,
+                     &privateKey, hashAlgo, hashAlgo->digestSize,
+                     hashContext->digest, signature->value, written);
+               }
+
+               //Release previously allocated resources
+               rsaFreePrivateKey(&privateKey);
+            }
+            else
+#endif
+#if (TLS_DSA_SIGN_SUPPORT == ENABLED)
+            //DSA signature scheme?
+            if(context->signAlgo == TLS_SIGN_ALGO_DSA)
             {
                //Set the relevant signature algorithm
                signature->algorithm.signature = TLS_SIGN_ALGO_DSA;
@@ -1154,9 +673,9 @@ error_t tls12GenerateServerKeySignature(TlsContext *context,
             }
             else
 #endif
-#if (TLS_ECDHE_ECDSA_SUPPORT == ENABLED)
-            //ECDHE_ECDSA key exchange method?
-            if(context->keyExchMethod == TLS_KEY_EXCH_ECDHE_ECDSA)
+#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED)
+            //ECDSA signature scheme?
+            if(context->signAlgo == TLS_SIGN_ALGO_ECDSA)
             {
                //Set the relevant signature algorithm
                signature->algorithm.signature = TLS_SIGN_ALGO_ECDSA;
@@ -1168,7 +687,7 @@ error_t tls12GenerateServerKeySignature(TlsContext *context,
             }
             else
 #endif
-            //Invalid key exchange method?
+            //Invalid signature scheme?
             {
                //Report an error
                error = ERROR_UNSUPPORTED_SIGNATURE_ALGO;
@@ -1191,74 +710,84 @@ error_t tls12GenerateServerKeySignature(TlsContext *context,
    }
    else
 #endif
-#if (TLS_ED25519_SUPPORT == ENABLED || TLS_ED448_SUPPORT == ENABLED)
-   //EdDSA signature algorithm?
-   if(context->cert->type == TLS_CERT_ED25519_SIGN ||
-      context->cert->type == TLS_CERT_ED448_SIGN)
+#if (TLS_EDDSA_SIGN_SUPPORT == ENABLED)
+   //EdDSA signature scheme?
+   if(context->signAlgo == TLS_SIGN_ALGO_ED25519 ||
+      context->signAlgo == TLS_SIGN_ALGO_ED448)
    {
-#if (TLS_ECDHE_ECDSA_SUPPORT == ENABLED)
-      //ECDHE_ECDSA key exchange method?
-      if(context->keyExchMethod == TLS_KEY_EXCH_ECDHE_ECDSA)
+      uint8_t *buffer;
+
+      //A temporary buffer is needed to concatenate ClientHello.random +
+      //ServerHello.random + ServerKeyExchange.params
+      buffer = tlsAllocMem(paramsLen + 64);
+
+      //Successful memory allocation?
+      if(buffer != NULL)
       {
-         uint8_t *buffer;
+         //Data to be verified is run through the EdDSA algorithm with no
+         //hashing
+         memcpy(buffer, context->random, 64);
+         memcpy(buffer + 64, params, paramsLen);
 
-         //A temporary buffer is needed to concatenate ClientHello.random +
-         //ServerHello.random + ServerKeyExchange.params
-         buffer = tlsAllocMem(paramsLen + 64);
-
-         //Successful memory allocation?
-         if(buffer != NULL)
+#if (TLS_ED25519_SUPPORT == ENABLED)
+         //Ed25519 signature scheme?
+         if(context->signAlgo == TLS_SIGN_ALGO_ED25519)
          {
-            //Data to be verified is run through the EdDSA algorithm with no
-            //hashing
-            memcpy(buffer, context->random, 64);
-            memcpy(buffer + 64, params, paramsLen);
-
-            //Set the relevant signature algorithm
-            if(context->cert->type == TLS_CERT_ED25519_SIGN)
-            {
-               signature->algorithm.signature = TLS_SIGN_ALGO_ED25519;
-               signature->algorithm.hash = TLS_HASH_ALGO_INTRINSIC;
-            }
-            else
-            {
-               signature->algorithm.signature = TLS_SIGN_ALGO_ED448;
-               signature->algorithm.hash = TLS_HASH_ALGO_INTRINSIC;
-            }
+            //The hashing is intrinsic to the signature algorithm
+            signature->algorithm.signature = TLS_SIGN_ALGO_ED25519;
+            signature->algorithm.hash = TLS_HASH_ALGO_INTRINSIC;
 
             //Sign the key exchange parameters using EdDSA
             error = tlsGenerateEddsaSignature(context, buffer, paramsLen + 64,
                signature->value, written);
-
-            //Release previously allocated memory
-            tlsFreeMem(buffer);
          }
          else
+#endif
+#if (TLS_ED448_SUPPORT == ENABLED)
+         //Ed448 signature scheme?
+         if(context->signAlgo == TLS_SIGN_ALGO_ED448)
          {
-            //Failed to allocate memory
-            error = ERROR_OUT_OF_MEMORY;
+            //The hashing is intrinsic to the signature algorithm
+            signature->algorithm.signature = TLS_SIGN_ALGO_ED448;
+            signature->algorithm.hash = TLS_HASH_ALGO_INTRINSIC;
+
+            //Sign the key exchange parameters using EdDSA
+            error = tlsGenerateEddsaSignature(context, buffer, paramsLen + 64,
+               signature->value, written);
          }
+         else
+#endif
+         //Invalid signature scheme?
+         {
+            //Report an error
+            error = ERROR_UNSUPPORTED_SIGNATURE_ALGO;
+         }
+
+         //Release previously allocated memory
+         tlsFreeMem(buffer);
       }
       else
-#endif
-      //Invalid key exchange method?
       {
-         //Report an error
-         error = ERROR_UNSUPPORTED_SIGNATURE_ALGO;
+         //Failed to allocate memory
+         error = ERROR_OUT_OF_MEMORY;
       }
    }
    else
 #endif
-   //Invalid signature algorithm?
+   //Invalid signature scheme?
    {
       //Report an error
       error = ERROR_UNSUPPORTED_SIGNATURE_ALGO;
    }
 
-   //Fix the length of the digitally-signed element
-   signature->length = htons(*written);
-   //Adjust the length of the message
-   *written += sizeof(Tls12DigitalSignature);
+   //Check status code
+   if(!error)
+   {
+      //Fix the length of the digitally-signed element
+      signature->length = htons(*written);
+      //Adjust the length of the message
+      *written += sizeof(Tls12DigitalSignature);
+   }
 #else
    //Not implemented
    error = ERROR_NOT_IMPLEMENTED;
@@ -1372,6 +901,125 @@ error_t tlsCheckSignalingCipherSuiteValues(TlsContext *context,
 
 
 /**
+ * @brief Resume TLS session via session ID
+ * @param[in] context Pointer to the TLS context
+ * @param[in] sessionId Pointer to the session ID offered by the client
+ * @param[in] sessionIdLen Length of the session ID, in bytes
+ * @param[in] cipherSuites List of cipher suites offered by the client
+ * @param[in] extensions ClientHello extensions offered by the client
+ * @return Error code
+ **/
+
+error_t tlsResumeServerSession(TlsContext *context, const uint8_t *sessionId,
+   size_t sessionIdLen, const TlsCipherSuites *cipherSuites,
+   const TlsHelloExtensions *extensions)
+{
+   error_t error;
+
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //Initialize status code
+   error = NO_ERROR;
+
+#if (TLS_SESSION_RESUME_SUPPORT == ENABLED)
+   //Check whether session caching is supported
+   if(context->cache != NULL)
+   {
+      uint_t i;
+      uint_t n;
+      TlsSessionState *session;
+
+      //If the session ID was non-empty, the server will look in its
+      //session cache for a match
+      session = tlsFindCache(context->cache, sessionId, sessionIdLen);
+
+      //Matching session found?
+      if(session != NULL)
+      {
+         //Whenever a client already knows the highest protocol version known
+         //to a server (for example, when resuming a session), it should
+         //initiate the connection in that native protocol
+         if(session->version != context->version)
+            session = NULL;
+      }
+
+      //Matching session found?
+      if(session != NULL)
+      {
+         //Get the total number of cipher suites offered by the client
+         n = ntohs(cipherSuites->length) / 2;
+
+         //Loop through the list of cipher suite identifiers
+         for(i = 0; i < n; i++)
+         {
+            //Matching cipher suite?
+            if(ntohs(cipherSuites->value[i]) == session->cipherSuite)
+               break;
+         }
+
+         //If the cipher suite is not present in the list cipher suites offered
+         //by the client, the server must not perform the abbreviated handshake
+         if(i >= n)
+            session = NULL;
+      }
+
+#if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
+      //Matching session found?
+      if(session != NULL)
+      {
+         //ExtendedMasterSecret extension found?
+         if(extensions->extendedMasterSecret != NULL)
+         {
+            //If the original session did not use the ExtendedMasterSecret
+            //extension but the new ClientHello contains the extension, then
+            //the server must not perform the abbreviated handshake
+            if(!session->extendedMasterSecret)
+               session = NULL;
+         }
+      }
+#endif
+
+      //Check whether the server has decided to resume a previous session
+      if(session != NULL)
+      {
+         //Perform abbreviated handshake
+         context->resume = TRUE;
+         //Restore cached session parameters
+         tlsRestoreSessionState(context, session);
+
+         //Select the relevant cipher suite
+         error = tlsSelectCipherSuite(context, session->cipherSuite);
+      }
+      else
+      {
+         //Perform a full handshake
+         context->resume = FALSE;
+         //Session ID is limited to 32 bytes
+         context->sessionIdLen = 32;
+
+         //Generate a new random ID
+         error = context->prngAlgo->read(context->prngContext,
+            context->sessionId, context->sessionIdLen);
+      }
+   }
+   else
+#endif
+   {
+      //Perform a full handshake
+      context->resume = FALSE;
+      //The session cannot be resumed
+      context->sessionIdLen = 0;
+   }
+#else
+   //Not implemented
+   error = ERROR_NOT_IMPLEMENTED;
+#endif
+
+   //Return status code
+   return error;
+}
+
+
+/**
  * @brief Version negotiation
  * @param[in] context Pointer to the TLS context
  * @param[in] clientVersion Highest version number supported by the client (legacy version)
@@ -1397,7 +1045,7 @@ error_t tlsNegotiateVersion(TlsContext *context, uint16_t clientVersion,
       if(supportedVersionList != NULL && context->versionMax >= TLS_VERSION_1_2)
       {
          //If the SupportedVersions extension is present in the ClientHello,
-         //servers must only select a version of TLS present in that extension
+         //servers must only select a version of DTLS present in that extension
          error = dtlsParseClientSupportedVersionsExtension(context,
             (DtlsSupportedVersionList *) supportedVersionList);
       }
@@ -1431,11 +1079,25 @@ error_t tlsNegotiateVersion(TlsContext *context, uint16_t clientVersion,
          //servers must only select a version of TLS present in that extension
          error = tlsParseClientSupportedVersionsExtension(context,
             supportedVersionList);
+
+         //Check status code
+         if(!error)
+         {
+            //Check whether TLS 1.3 has been negotiated
+            if(context->version == TLS_VERSION_1_3)
+            {
+               //The legacy_version field must be set to 0x0303, which is the
+               //version number for TLS 1.2
+               if(clientVersion < TLS_VERSION_1_2)
+                  error = ERROR_VERSION_NOT_SUPPORTED;
+            }
+         }
       }
       else
       {
          //If the SupportedVersions extension is not present, servers must
-         //negotiate TLS 1.2 or prior
+         //negotiate TLS 1.2 or prior, even if the legacy_version of the
+         //ClientHello is 0x0304 or later (refer to RFC 8446, section 4.2.1)
          serverVersion = MIN(serverVersion, TLS_VERSION_1_2);
 
          //If a TLS server receives a ClientHello containing a version number
@@ -1456,69 +1118,277 @@ error_t tlsNegotiateVersion(TlsContext *context, uint16_t clientVersion,
 /**
  * @brief Cipher suite negotiation
  * @param[in] context Pointer to the TLS context
+ * @param[in] hashAlgo Desired KDF hash algorithm
  * @param[in] cipherSuites List of cipher suites offered by the client
  * @param[in] extensions ClientHello extensions offered by the client
  * @return Error code
  **/
 
-error_t tlsNegotiateCipherSuite(TlsContext *context,
-   const TlsCipherSuites *cipherSuites, const TlsHelloExtensions *extensions)
+error_t tlsNegotiateCipherSuite(TlsContext *context, const HashAlgo *hashAlgo,
+   const TlsCipherSuites *cipherSuites, TlsHelloExtensions *extensions)
 {
    error_t error;
    uint_t i;
    uint_t j;
+   uint_t k;
    uint_t n;
 
    //Initialize status code
    error = ERROR_HANDSHAKE_FAILED;
 
+   //If no SignatureAlgorithmsCert extension is present in the ClientHello
+   //message, then the SignatureAlgorithms extension also applies to signatures
+   //appearing in certificates (RFC 8446, section 4.2.3)
+   if(extensions->certSignAlgoList == NULL)
+   {
+      extensions->certSignAlgoList = extensions->signAlgoList;
+   }
+
    //Get the total number of cipher suites offered by the client
    n = ntohs(cipherSuites->length) / 2;
 
-   //Any preferred cipher suites?
-   if(context->numCipherSuites > 0)
+   //Select the most appropriate cipher suite (2-pass process)
+   for(k = 0; k < 2 && error; k++)
    {
-      //Loop through the list of allowed cipher suites (most preferred first)
-      for(i = 0; i < context->numCipherSuites && error; i++)
+      //Any preferred cipher suites?
+      if(context->numCipherSuites > 0)
       {
-         //Loop through the list of cipher suites offered by the client
+         //Loop through the list of allowed cipher suites (most preferred first)
+         for(i = 0; i < context->numCipherSuites && error; i++)
+         {
+            //Loop through the list of cipher suites offered by the client
+            for(j = 0; j < n && error; j++)
+            {
+               //If the list contains cipher suites the server does not
+               //recognize, support, or wish to use, the server must ignore
+               //those cipher suites, and process the remaining ones as usual
+               if(context->cipherSuites[i] == ntohs(cipherSuites->value[j]))
+               {
+                  //Select current cipher suite
+                  error = tlsSelectCipherSuite(context, context->cipherSuites[i]);
+
+                  //If a KDF hash algorithm has been specified, the server must
+                  //select a compatible cipher suite
+                  if(!error && hashAlgo != NULL)
+                  {
+                     //Make sure the selected cipher suite is compatible
+                     if(context->cipherSuite.prfHashAlgo != hashAlgo)
+                        error = ERROR_HANDSHAKE_FAILED;
+                  }
+
+                  //Check status code
+                  if(!error)
+                  {
+                     //Select the group to be used when performing (EC)DHE key
+                     //exchange
+                     error = tlsSelectGroup(context, extensions->supportedGroupList);
+                  }
+
+                  //Check status code
+                  if(!error)
+                  {
+                     //Select the appropriate certificate
+                     error = tlsSelectCertificate(context, extensions);
+                  }
+               }
+            }
+         }
+      }
+      else
+      {
+         //The cipher suite list contains the combinations of cryptographic
+         //algorithms supported by the client in order of the client's preference
          for(j = 0; j < n && error; j++)
          {
-            //Acceptable cipher suite?
-            if(context->cipherSuites[i] == ntohs(cipherSuites->value[j]))
-            {
-               //Select current cipher suite
-               error = tlsSelectCipherSuite(context, context->cipherSuites[i]);
+            //If the list contains cipher suites the server does not recognize,
+            //support, or wish to use, the server must ignore those cipher suites,
+            //and process the remaining ones as usual
+            error = tlsSelectCipherSuite(context, ntohs(cipherSuites->value[j]));
 
-               //If the list contains cipher suites the server does not recognize,
-               //support, or wish to use, the server must ignore those cipher suites,
-               //and process the remaining ones as usual
-               if(!error)
+            //If a KDF hash algorithm has been specified, the server must select
+            //a compatible cipher suite
+            if(!error && hashAlgo != NULL)
+            {
+               //Make sure the selected cipher suite is compatible
+               if(context->cipherSuite.prfHashAlgo != hashAlgo)
+                  error = ERROR_HANDSHAKE_FAILED;
+            }
+
+            //Check status code
+            if(!error)
+            {
+               //Select the group to be used when performing (EC)DHE key exchange
+               error = tlsSelectGroup(context, extensions->supportedGroupList);
+            }
+
+            //Check status code
+            if(!error)
+            {
+               //Select the appropriate certificate
+               error = tlsSelectCertificate(context, extensions);
+            }
+         }
+      }
+
+      //The second pass relaxes the constraints
+      extensions->certSignAlgoList = NULL;
+   }
+
+   //Return status code
+   return error;
+}
+
+
+/**
+ * @brief Select the group to be used when performing (EC)DHE key exchange
+ * @param[in] context Pointer to the TLS context
+ * @param[in] groupList List of named groups supported by the client
+ * @return Error code
+ **/
+
+error_t tlsSelectGroup(TlsContext *context,
+   const TlsSupportedGroupList *groupList)
+{
+   error_t error;
+
+   //Initialize status code
+   error = NO_ERROR;
+
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //SSL 3.0, TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
+   if(context->version <= TLS_VERSION_1_2)
+   {
+      //ECC cipher suite?
+      if(context->keyExchMethod == TLS_KEY_EXCH_ECDH_ANON ||
+         context->keyExchMethod == TLS_KEY_EXCH_ECDHE_RSA ||
+         context->keyExchMethod == TLS_KEY_EXCH_ECDHE_ECDSA ||
+         context->keyExchMethod == TLS_KEY_EXCH_ECDHE_PSK)
+      {
+         //One of the proposed ECC cipher suites must be negotiated only if the
+         //server can successfully complete the handshake while using the curves
+         //and point formats supported by the client
+         error = tlsSelectEcdheGroup(context, groupList);
+      }
+#if (TLS_FFDHE_SUPPORT == ENABLED)
+      //FFDHE cipher suite?
+      else if(context->keyExchMethod == TLS_KEY_EXCH_DH_ANON ||
+         context->keyExchMethod == TLS_KEY_EXCH_DHE_RSA ||
+         context->keyExchMethod == TLS_KEY_EXCH_DHE_DSS ||
+         context->keyExchMethod == TLS_KEY_EXCH_DHE_PSK)
+      {
+         //If none of the client-proposed FFDHE groups are known and acceptable
+         //to the server, then the server must not select an FFDHE cipher suite
+         error = tlsSelectFfdheGroup(context, groupList);
+      }
+#endif
+      else
+      {
+         //The selected cipher suite does not provide forward secrecy
+      }
+   }
+#endif
+
+   //Return status code
+   return error;
+}
+
+
+/**
+ * @brief Select the named curve to be used when performing ECDHE key exchange
+ * @param[in] context Pointer to the TLS context
+ * @param[in] groupList List of named groups supported by the peer
+ * @return Error code
+ **/
+
+error_t tlsSelectEcdheGroup(TlsContext *context,
+   const TlsSupportedGroupList *groupList)
+{
+   error_t error;
+   uint_t i;
+   uint_t j;
+   uint_t n;
+   uint16_t namedGroup;
+
+   //Initialize status code
+   error = ERROR_HANDSHAKE_FAILED;
+
+   //Reset the named group to its default value
+   context->namedGroup = TLS_GROUP_NONE;
+
+   //Check whether a list of named groups is offered by the client
+   if(groupList != NULL)
+   {
+      //Get the number of named groups present in the list
+      n = ntohs(groupList->length) / sizeof(uint16_t);
+
+      //Any preferred groups?
+      if(context->numSupportedGroups > 0)
+      {
+         //Loop through the list of allowed groups (most preferred first)
+         for(i = 0; i < context->numSupportedGroups && error; i++)
+         {
+            //Loop through the list of named groups the client supports
+            for(j = 0; j < n && error; j++)
+            {
+               //Convert the named group to host byte order
+               namedGroup = ntohs(groupList->value[j]);
+
+               //The named group to be used when performing ECDH key exchange
+               //must be one of those present in the SupportedGroups extension
+               if(context->supportedGroups[i] == namedGroup)
                {
-                  //Select cipher suite parameters
-                  error = tlsSelectCipherSuiteParams(context, extensions);
+                  //Acceptable elliptic curve found?
+                  if(tlsGetCurveInfo(context, namedGroup) != NULL)
+                  {
+                     //Save the named curve
+                     context->namedGroup = namedGroup;
+                     error = NO_ERROR;
+                  }
                }
+            }
+         }
+      }
+      else
+      {
+         //The named group to be used when performing ECDH key exchange must
+         //be one of those present in the SupportedGroups extension
+         for(j = 0; j < n && error; j++)
+         {
+            //Convert the named group to host byte order
+            namedGroup = ntohs(groupList->value[j]);
+
+            //Acceptable elliptic curve found?
+            if(tlsGetCurveInfo(context, namedGroup) != NULL)
+            {
+               //Save the named curve
+               context->namedGroup = namedGroup;
+               error = NO_ERROR;
             }
          }
       }
    }
    else
    {
-      //The cipher suite list contains the combinations of cryptographic
-      //algorithms supported by the client in order of the client's preference
-      for(j = 0; j < n && error; j++)
+      //A client that proposes ECC cipher suites may choose not to include
+      //the SupportedGroups extension. In this case, the server is free to
+      //choose any one of the elliptic curves it supports
+      if(tlsGetCurveInfo(context, TLS_GROUP_SECP256R1) != NULL)
       {
-         //Check whether the current cipher suite is supported
-         error = tlsSelectCipherSuite(context, ntohs(cipherSuites->value[j]));
 
-         //If the list contains cipher suites the server does not recognize,
-         //support, or wish to use, the server must ignore those cipher suites,
-         //and process the remaining ones as usual
-         if(!error)
-         {
-            //Select cipher suite parameters
-            error = tlsSelectCipherSuiteParams(context, extensions);
-         }
+         //Select secp256r1 elliptic curve
+         context->namedGroup = TLS_GROUP_SECP256R1;
+         error = NO_ERROR;
+      }
+      else if(tlsGetCurveInfo(context, TLS_GROUP_SECP384R1) != NULL)
+      {
+         //Select secp384r1 elliptic curve
+         context->namedGroup = TLS_GROUP_SECP384R1;
+         error = NO_ERROR;
+      }
+      else
+      {
+         //Just for sanity
+         context->namedGroup = TLS_GROUP_NONE;
       }
    }
 
@@ -1528,51 +1398,30 @@ error_t tlsNegotiateCipherSuite(TlsContext *context,
 
 
 /**
- * @brief Select cipher suite parameters
+ * @brief Certificate selection process
  * @param[in] context Pointer to the TLS context
  * @param[in] extensions ClientHello extensions offered by the client
  * @return Error code
  **/
 
-error_t tlsSelectCipherSuiteParams(TlsContext *context,
+error_t tlsSelectCertificate(TlsContext *context,
    const TlsHelloExtensions *extensions)
 {
    error_t error;
    uint_t i;
-   uint8_t certType;
+   uint_t n;
    bool_t acceptable;
+   uint8_t certTypes[2];
 
-   //ECC cipher suite?
-   if(context->keyExchMethod == TLS_KEY_EXCH_ECDH_ANON ||
-      context->keyExchMethod == TLS_KEY_EXCH_ECDHE_RSA ||
-      context->keyExchMethod == TLS_KEY_EXCH_ECDHE_ECDSA ||
-      context->keyExchMethod == TLS_KEY_EXCH_ECDHE_PSK)
-   {
-      //One of the proposed ECC cipher suites must be negotiated only if the
-      //server can successfully complete the handshake while using the curves
-      //and point formats supported by the client
-      error = tlsSelectNamedCurve(context, extensions->supportedGroupList);
-   }
-#if (TLS_FFDHE_SUPPORT == ENABLED)
-   //FFDHE cipher suite?
-   else if(context->keyExchMethod == TLS_KEY_EXCH_DH_ANON ||
-      context->keyExchMethod == TLS_KEY_EXCH_DHE_RSA ||
-      context->keyExchMethod == TLS_KEY_EXCH_DHE_DSS ||
-      context->keyExchMethod == TLS_KEY_EXCH_DHE_PSK)
-   {
-      //If none of the client-proposed FFDHE groups are known and acceptable
-      //to the server, then the server must not select an FFDHE cipher suite
-      error = tlsSelectFfdheGroup(context, extensions->supportedGroupList);
-   }
-#endif
-   else
-   {
-      //Successful processing
-      error = NO_ERROR;
-   }
+   //Initialize status code
+   error = NO_ERROR;
 
-   //Check status code
-   if(!error)
+   //Number of certificate types
+   n = 0;
+
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //SSL 3.0, TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
+   if(context->version <= TLS_VERSION_1_2)
    {
       //The server requires a valid certificate whenever the agreed-upon key
       //exchange method uses certificates for authentication
@@ -1583,59 +1432,108 @@ error_t tlsSelectCipherSuiteParams(TlsContext *context,
       {
          //RSA, DHE_RSA, ECDHE_RSA and RSA_PSK key exchange methods require
          //a RSA certificate
-         certType = TLS_CERT_RSA_SIGN;
+         certTypes[n++] = TLS_CERT_RSA_SIGN;
+      }
+      else if(context->keyExchMethod == TLS_KEY_EXCH_DH_RSA)
+      {
+         //In DH_RSA, the server's certificate must contain a Diffie-Hellman
+         //public key and be signed with RSA
+         certTypes[n++] = TLS_CERT_RSA_FIXED_DH;
+      }
+      else if(context->keyExchMethod == TLS_KEY_EXCH_ECDH_RSA)
+      {
+         //In ECDH_RSA, the server's certificate must contain an ECDH-capable
+         //public key and be signed with RSA
+         certTypes[n++] = TLS_CERT_RSA_FIXED_ECDH;
       }
       else if(context->keyExchMethod == TLS_KEY_EXCH_DHE_DSS)
       {
          //DHE_DSS key exchange method requires a DSA certificate
-         certType = TLS_CERT_DSS_SIGN;
+         certTypes[n++] = TLS_CERT_DSS_SIGN;
+      }
+      else if(context->keyExchMethod == TLS_KEY_EXCH_DH_DSS)
+      {
+         //In DH_DSS, the server's certificate must contain a Diffie-Hellman
+         //public key and be signed with DSA
+         certTypes[n++] = TLS_CERT_DSS_FIXED_DH;
       }
       else if(context->keyExchMethod == TLS_KEY_EXCH_ECDHE_ECDSA)
       {
          //ECDHE_ECDSA key exchange method requires an ECDSA certificate
-         certType = TLS_CERT_ECDSA_SIGN;
+         certTypes[n++] = TLS_CERT_ECDSA_SIGN;
+      }
+      else if(context->keyExchMethod == TLS_KEY_EXCH_ECDH_ECDSA)
+      {
+         //In ECDH_ECDSA, the server's certificate must contain an ECDH-capable
+         //public key and be signed with ECDSA
+         certTypes[n++] = TLS_CERT_ECDSA_FIXED_ECDH;
       }
       else
       {
          //DH_anon and ECDH_anon key exchange methods do not require any
          //certificate
-         certType = TLS_CERT_NONE;
       }
-
-      //Check whether a certificate is required
-      if(certType != TLS_CERT_NONE)
+   }
+   else
+#endif
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+   //TLS 1.3 currently selected?
+   if(context->version == TLS_VERSION_1_3)
+   {
+      //If PSK is not being used, then (EC)DHE and certificate-based
+      //authentication are always used
+      if(context->selectedIdentity < 0)
       {
-         //Do not accept the specified cipher suite unless a suitable
-         //certificate has been previously loaded by the user
-         error = ERROR_NO_CERTIFICATE;
+         //TLS 1.3 removes support for DSA certificates
+         certTypes[n++] = TLS_CERT_RSA_SIGN;
+         certTypes[n++] = TLS_CERT_ECDSA_SIGN;
+      }
+   }
+   else
+#endif
+   //Invalid TLS version?
+   {
+      //Abort certificate selection process
+      error = ERROR_INVALID_VERSION;
+   }
 
-         //Loop through the list of available certificates
-         for(i = 0; i < context->numCerts; i++)
+   //Check whether a certificate is required
+   if(n > 0)
+   {
+      //Reset currently selected certificate
+      context->cert = NULL;
+
+      //Loop through the list of available certificates
+      for(i = 0; i < context->numCerts && context->cert == NULL; i++)
+      {
+         //Check whether the current certificate is acceptable
+         acceptable = tlsIsCertificateAcceptable(context, &context->certs[i],
+            certTypes, n, extensions->signAlgoList, extensions->certSignAlgoList,
+            extensions->supportedGroupList, NULL);
+
+         //The certificate must be appropriate for the negotiated cipher
+         //suite and any negotiated extensions
+         if(acceptable)
          {
-            //Check whether the current certificate is acceptable
-            acceptable = tlsIsCertificateAcceptable(&context->certs[i],
-               &certType, 1, extensions->signAlgoList,
-               extensions->supportedGroupList, NULL);
+            //The hash algorithm to be used when generating signatures must
+            //be one of those present in the SignatureAlgorithms extension
+            error = tlsSelectSignatureScheme(context, &context->certs[i],
+               extensions->signAlgoList);
 
-            //The certificate must be appropriate for the negotiated cipher
-            //suite and any negotiated extensions
-            if(acceptable)
+            //Check status code
+            if(!error)
             {
-               //The hash algorithm to be used when generating signatures must
-               //be one of those present in the SignatureAlgorithms extension
-               error = tlsSelectSignHashAlgo(context, &context->certs[i],
-                  extensions->signAlgoList);
-
-               //If all the requirements were met, the certificate can be used
-               //in conjunction with the selected cipher suite
-               if(!error)
-               {
-                  context->cert = &context->certs[i];
-                  break;
-               }
+               //If all the requirements were met, the certificate can be
+               //used in conjunction with the selected cipher suite
+               context->cert = &context->certs[i];
             }
          }
       }
+
+      //Do not accept the specified cipher suite unless a suitable
+      //certificate has been found
+      if(context->cert == NULL)
+         error = ERROR_NO_CERTIFICATE;
    }
 
    //Return status code
@@ -1659,694 +1557,28 @@ error_t tlsParseCompressMethods(TlsContext *context,
    //Initialize status code
    error = ERROR_ILLEGAL_PARAMETER;
 
-   //The list of the compression methods supported by the client is sorted by
-   //client preference
-   for(i = 0; i < compressMethods->length && error; i++)
+   //Version of TLS prior to TLS 1.3?
+   if(context->version <= TLS_VERSION_1_2)
    {
-      //Check whether the current compression algorithm is supported
-      error = tlsSelectCompressMethod(context, compressMethods->value[i]);
-   }
-
-   //Return status code
-   return error;
-}
-
-
-/**
- * @brief Parse SupportedVersions extension
- * @param[in] context Pointer to the TLS context
- * @param[in] supportedVersionList Pointer to the SupportedVersions extension
- * @return Error code
- **/
-
-error_t tlsParseClientSupportedVersionsExtension(TlsContext *context,
-   const TlsSupportedVersionList *supportedVersionList)
-{
-   error_t error;
-   uint_t i;
-   uint_t j;
-   uint_t n;
-
-   //Supported TLS versions
-   const uint16_t supportedVersions[] =
-   {
-      TLS_VERSION_1_2,
-      TLS_VERSION_1_1,
-      TLS_VERSION_1_0,
-      SSL_VERSION_3_0
-   };
-
-   //Initialize status code
-   error = ERROR_VERSION_NOT_SUPPORTED;
-
-   //Retrieve the number of items in the list
-   n = supportedVersionList->length / sizeof(uint16_t);
-
-   //Loop through the list of TLS versions supported by the server
-   for(i = 0; i < arraysize(supportedVersions) && error; i++)
-   {
-      //The extension contains a list of TLS versions supported by the client
-      for(j = 0; j < n && error; j++)
+      //The list of the compression methods supported by the client is sorted
+      //by client preference
+      for(i = 0; i < compressMethods->length && error; i++)
       {
-         //Servers must only select a version of TLS present in that extension
-         //and must ignore any unknown versions
-         if(ntohs(supportedVersionList->value[j]) == supportedVersions[i])
-         {
-            //Set the TLS version to be used
-            error = tlsSelectVersion(context, supportedVersions[i]);
-         }
-      }
-   }
-
-   //Return status code
-   return error;
-}
-
-
-/**
- * @brief Parse SNI extension
- * @param[in] context Pointer to the TLS context
- * @param[in] serverNameList Pointer to the SNI extension
- * @return Error code
- **/
-
-error_t tlsParseClientSniExtension(TlsContext *context,
-   const TlsServerNameList *serverNameList)
-{
-#if (TLS_SNI_SUPPORT == ENABLED)
-   //SNI extension found?
-   if(serverNameList != NULL)
-   {
-      size_t i;
-      size_t n;
-      size_t length;
-      const TlsServerName *serverName;
-
-      //In order to provide the server name, clients may include ServerName
-      //extension
-      if(context->serverName != NULL)
-      {
-         //Release memory
-         tlsFreeMem(context->serverName);
-         context->serverName = NULL;
-      }
-
-      //Retrieve the length of the list
-      length = ntohs(serverNameList->length);
-
-      //Loop through the list of server names advertised by the client
-      for(i = 0; i < length; i += sizeof(TlsServerName) + n)
-      {
-         //Point to the current server name
-         serverName = (TlsServerName *) (serverNameList->value + i);
-
-         //Malformed extension?
-         if(length < (i + sizeof(TlsServerName)))
-            return ERROR_DECODING_FAILED;
-         if(length < (i + sizeof(TlsServerName) + ntohs(serverName->length)))
-            return ERROR_DECODING_FAILED;
-
-         //Retrieve the length of the server name
-         n = ntohs(serverName->length);
-
-         //Empty strings must not be included in the list
-         if(n > 0 && n <= TLS_MAX_SERVER_NAME_LEN)
-         {
-            //Currently, the only server names supported are DNS hostnames
-            if(serverName->type == TLS_NAME_TYPE_HOSTNAME)
-            {
-               //In practice, current client implementations only send one name
-               if(context->serverName == NULL)
-               {
-                  //Allocate a memory block to hold the server name
-                  context->serverName = tlsAllocMem(n + 1);
-                  //Failed to allocate memory?
-                  if(context->serverName == NULL)
-                     return ERROR_OUT_OF_MEMORY;
-
-                  //Save server name
-                  memcpy(context->serverName, serverName->hostname, n);
-                  //Properly terminate the string with a NULL character
-                  context->serverName[n] = '\0';
-               }
-            }
-         }
-      }
-   }
-#endif
-
-   //Successful processing
-   return NO_ERROR;
-}
-
-
-/**
- * @brief Parse MaxFragmentLength extension
- * @param[in] context Pointer to the TLS context
- * @param[in] maxFragLen Pointer to the MaxFragmentLength extension
- * @return Error code
- **/
-
-error_t tlsParseClientMaxFragLenExtension(TlsContext *context,
-   const uint8_t *maxFragLen)
-{
-   error_t error;
-
-   //Initialize status code
-   error = NO_ERROR;
-
-#if (TLS_MAX_FRAG_LEN_SUPPORT == ENABLED)
-   //MaxFragmentLength extension found?
-   if(maxFragLen != NULL)
-   {
-      size_t n;
-
-      //Retrieve the value advertised by the client
-      switch(*maxFragLen)
-      {
-      case TLS_MAX_FRAGMENT_LENGTH_512:
-         n = 512;
-         break;
-      case TLS_MAX_FRAGMENT_LENGTH_1024:
-         n = 1024;
-         break;
-      case TLS_MAX_FRAGMENT_LENGTH_2048:
-         n = 2048;
-         break;
-      case TLS_MAX_FRAGMENT_LENGTH_4096:
-         n = 4096;
-         break;
-      default:
-         n = 0;
-         break;
-      }
-
-      //Acceptable value?
-      if(n > 0)
-      {
-         //Once a maximum fragment length has been successfully negotiated,
-         //the server must immediately begin fragmenting messages (including
-         //handshake messages) to ensure that no fragment larger than the
-         //negotiated length is sent
-         context->maxFragLen = n;
-      }
-      else
-      {
-         //If a server receives a maximum fragment length negotiation request
-         //for a value other than the allowed values, it must abort the handshake
-         //with an illegal_parameter alert
-         error = ERROR_ILLEGAL_PARAMETER;
-      }
-
-      //The ClientHello includes a MaxFragmentLength extension
-      context->maxFragLenExtReceived = TRUE;
-   }
-   else
-   {
-      //The ClientHello does not contain any MaxFragmentLength extension
-      context->maxFragLenExtReceived = FALSE;
-   }
-#endif
-
-   //Return status code
-   return error;
-}
-
-
-/**
- * @brief Parse RecordSizeLimit extension
- * @param[in] context Pointer to the TLS context
- * @param[in] recordSizeLimit Pointer to the RecordSizeLimit extension
- * @return Error code
- **/
-
-error_t tlsParseClientRecordSizeLimitExtension(TlsContext *context,
-   const uint8_t *recordSizeLimit)
-{
-   error_t error;
-
-   //Initialize status code
-   error = NO_ERROR;
-
-#if (TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)
-   //RecordSizeLimit extension found?
-   if(recordSizeLimit != NULL)
-   {
-      uint16_t n;
-
-      //The value of RecordSizeLimit is the maximum size of record in octets
-      //that the peer is willing to receive
-      n = LOAD16BE(recordSizeLimit);
-
-      //Endpoints must not send a RecordSizeLimit extension with a value
-      //smaller than 64
-      if(n < 64)
-      {
-         //An endpoint must treat receipt of a smaller value as a fatal error
-         //and generate an illegal_parameter alert
-         error = ERROR_ILLEGAL_PARAMETER;
-      }
-      else
-      {
-         //The peer can include any limit up to the protocol-defined limit for
-         //maximum record size. Even if a larger value is provided by a peer, an
-         //endpoint must not send records larger than the protocol-defined limit
-         context->recordSizeLimit = MIN(n, TLS_MAX_RECORD_LENGTH);
-      }
-
-      //The ClientHello includes a RecordSizeLimit extension
-      context->recordSizeLimitExtReceived = TRUE;
-   }
-   else
-   {
-      //The ClientHello does not contain any RecordSizeLimit extension
-      context->recordSizeLimitExtReceived = FALSE;
-   }
-#endif
-
-   //Return status code
-   return error;
-}
-
-
-/**
- * @brief Parse EcPointFormats extension
- * @param[in] context Pointer to the TLS context
- * @param[in] ecPointFormatList Pointer to the EcPointFormats extension
- * @return Error code
- **/
-
-error_t tlsParseClientEcPointFormatsExtension(TlsContext *context,
-   const TlsEcPointFormatList *ecPointFormatList)
-{
-   error_t error;
-
-   //Initialize status code
-   error = NO_ERROR;
-
-#if (TLS_ECDH_ANON_SUPPORT == ENABLED || TLS_ECDHE_RSA_SUPPORT == ENABLED || \
-   TLS_ECDHE_ECDSA_SUPPORT == ENABLED || TLS_ECDHE_PSK_SUPPORT == ENABLED)
-   //EcPointFormats extension found?
-   if(ecPointFormatList != NULL)
-   {
-      uint_t i;
-
-      //Loop through the list of supported EC point formats
-      for(i = 0; i < ecPointFormatList->length; i++)
-      {
-         //Uncompressed point format?
-         if(ecPointFormatList->value[i] == TLS_EC_POINT_FORMAT_UNCOMPRESSED)
-         {
-            break;
-         }
-      }
-
-      //The uncompressed point format must be supported by any TLS application
-      //that supports this extension (refer to RFC 4492, section 5.1)
-      if(i >= ecPointFormatList->length)
-      {
-         //Report an error
-         error = ERROR_ILLEGAL_PARAMETER;
-      }
-
-      //The ClientHello includes a EcPointFormats extension
-      context->ecPointFormatsExtReceived = TRUE;
-   }
-   else
-   {
-      //If no SupportedPointsFormat extension is sent, the uncompressed format
-      //has to be used
-      context->ecPointFormatsExtReceived = FALSE;
-   }
-#endif
-
-   //Return status code
-   return error;
-}
-
-
-/**
- * @brief Parse ALPN extension
- * @param[in] context Pointer to the TLS context
- * @param[in] protocolNameList Pointer to the ALPN extension
- * @return Error code
- **/
-
-error_t tlsParseClientAlpnExtension(TlsContext *context,
-   const TlsProtocolNameList *protocolNameList)
-{
-#if (TLS_ALPN_SUPPORT == ENABLED)
-   //ALPN extension found?
-   if(protocolNameList != NULL)
-   {
-      size_t i;
-      size_t n;
-      size_t length;
-      const TlsProtocolName *protocolName;
-
-      //When session resumption is used, the previous contents of this
-      //extension are irrelevant
-      if(context->selectedProtocol != NULL)
-      {
-         //Release memory
-         tlsFreeMem(context->selectedProtocol);
-         context->selectedProtocol = NULL;
-      }
-
-      //Retrieve the length of the list
-      length = ntohs(protocolNameList->length);
-
-      //The list must not be be empty
-      if(length == 0)
-         return ERROR_DECODING_FAILED;
-
-      //Loop through the list of protocols advertised by the client
-      for(i = 0; i < length; i += sizeof(TlsProtocolName) + n)
-      {
-         //Point to the current protocol
-         protocolName = (TlsProtocolName *) (protocolNameList->value + i);
-
-         //Malformed extension?
-         if(length < (i + sizeof(TlsProtocolName)))
-            return ERROR_DECODING_FAILED;
-         if(length < (i + sizeof(TlsProtocolName) + protocolName->length))
-            return ERROR_DECODING_FAILED;
-
-         //Retrieve the length of the protocol name
-         n = protocolName->length;
-
-         //Empty strings must not be included in the list
-         if(n == 0)
-            return ERROR_DECODING_FAILED;
-
-         //Check whether the protocol is supported by the server
-         if(tlsIsAlpnProtocolSupported(context, protocolName->value, n))
-         {
-            //Select the current protocol
-            if(context->selectedProtocol == NULL)
-            {
-               //Allocate a memory block to hold the protocol name
-               context->selectedProtocol = tlsAllocMem(n + 1);
-               //Failed to allocate memory?
-               if(context->selectedProtocol == NULL)
-                  return ERROR_OUT_OF_MEMORY;
-
-               //Save protocol name
-               memcpy(context->selectedProtocol, protocolName->value, n);
-               //Properly terminate the string with a NULL character
-               context->selectedProtocol[n] = '\0';
-            }
-         }
-      }
-
-      //ALPN protocol selection failed?
-      if(context->protocolList != NULL && context->selectedProtocol == NULL)
-      {
-         //Report an error if unknown ALPN protocols are disallowed
-         if(!context->unknownProtocolsAllowed)
-         {
-            //In the event that the server supports no protocols that the
-            //client advertises, then the server shall respond with a fatal
-            //no_application_protocol alert
-            return ERROR_NO_APPLICATION_PROTOCOL;
-         }
-      }
-   }
-#endif
-
-   //Successful processing
-   return NO_ERROR;
-}
-
-
-/**
- * @brief Parse ClientCertType extension
- * @param[in] context Pointer to the TLS context
- * @param[in] clientCertTypeList Pointer to the ClientCertType extension
- * @return Error code
- **/
-
-error_t tlsParseClientCertTypeListExtension(TlsContext *context,
-   const TlsCertTypeList *clientCertTypeList)
-{
-   error_t error;
-
-   //Initialize status code
-   error = NO_ERROR;
-
-#if (TLS_RAW_PUBLIC_KEY_SUPPORT == ENABLED)
-   //ClientCertType extension found?
-   if(clientCertTypeList != NULL)
-   {
-      //If the server does not send any CertificateRequest message, then the
-      //ClientCertType extension in the ServerHello must be omitted
-      if(context->clientAuthMode != TLS_CLIENT_AUTH_NONE)
-      {
-         uint_t i;
-
-         //The ClientCertType extension carries a list of supported certificate
-         //types, sorted by client preference
-         for(i = 0; i < clientCertTypeList->length; i++)
-         {
-            //Check certificate type
-            if(clientCertTypeList->value[i] == TLS_CERT_FORMAT_X509)
-            {
-               //Select X.509 certificate format
-               context->peerCertFormat = TLS_CERT_FORMAT_X509;
-               //Exit immediately
-               break;
-            }
-            else if(clientCertTypeList->value[i] == TLS_CERT_FORMAT_RAW_PUBLIC_KEY)
-            {
-               //Ensure the server is able to process raw public keys
-               if(context->rpkVerifyCallback != NULL)
-               {
-                  //Select raw public key format
-                  context->peerCertFormat = TLS_CERT_FORMAT_RAW_PUBLIC_KEY;
-                  //Exit immediately
-                  break;
-               }
-            }
-            else
-            {
-               //Unsupported certificate type
-            }
-         }
-
-         //If the server does not have any certificate type in common with the
-         //client, then the server terminates the session with a fatal alert
-         if(i >= clientCertTypeList->length)
-         {
-            //Report an error
-            error = ERROR_UNSUPPORTED_CERTIFICATE;
-         }
-
-         //The ClientHello includes a ClientCertType extension
-         context->clientCertTypeExtReceived = TRUE;
+         //Check whether the current compression algorithm is supported
+         error = tlsSelectCompressMethod(context, compressMethods->value[i]);
       }
    }
    else
    {
-      //The ClientHello does not contain any ClientCertType extension
-      context->clientCertTypeExtReceived = FALSE;
-      //Select default certificate format
-      context->peerCertFormat = TLS_CERT_FORMAT_X509;
-   }
-#endif
-
-   //Return status code
-   return error;
-}
-
-
-/**
- * @brief Parse ServerCertType extension
- * @param[in] context Pointer to the TLS context
- * @param[in] serverCertTypeList Pointer to the ServerCertType extension
- * @return Error code
- **/
-
-error_t tlsParseServerCertTypeListExtension(TlsContext *context,
-   const TlsCertTypeList *serverCertTypeList)
-{
-   error_t error;
-
-   //Initialize status code
-   error = NO_ERROR;
-
-#if (TLS_RAW_PUBLIC_KEY_SUPPORT == ENABLED)
-   //ServerCertType extension found?
-   if(serverCertTypeList != NULL)
-   {
-      uint_t i;
-
-      //The ServerCertType extension carries a list of supported certificate
-      //types, sorted by client preference
-      for(i = 0; i < serverCertTypeList->length; i++)
+      //For every TLS 1.3 ClientHello, this vector must contain exactly one
+      //byte, set to zero which corresponds to the null compression method
+      if(compressMethods->length == 1)
       {
-         //Check certificate type
-         if(serverCertTypeList->value[i] == TLS_CERT_FORMAT_X509 ||
-            serverCertTypeList->value[i] == TLS_CERT_FORMAT_RAW_PUBLIC_KEY)
-         {
-            //The certificate type is selected from one of the values provided
-            //by the client
-            context->certFormat = (TlsCertificateFormat) serverCertTypeList->value[i];
-
-            //We are done
-            break;
-         }
-      }
-
-      //If the server does not have any certificate type in common with the
-      //client, then the server terminates the session with a fatal alert
-      if(i >= serverCertTypeList->length)
-      {
-         //Report an error
-         error = ERROR_UNSUPPORTED_CERTIFICATE;
-      }
-
-      //The ClientHello includes a ServerCertType extension
-      context->serverCertTypeExtReceived = TRUE;
-   }
-   else
-   {
-      //The ClientHello does not contain any ServerCertType extension
-      context->serverCertTypeExtReceived = FALSE;
-      //Select default certificate format
-      context->certFormat = TLS_CERT_FORMAT_X509;
-   }
-#endif
-
-   //Return status code
-   return error;
-}
-
-
-/**
- * @brief Parse ExtendedMasterSecret extension
- * @param[in] context Pointer to the TLS context
- * @param[in] extendedMasterSecret Pointer to the ExtendedMasterSecret extension
- * @return Error code
- **/
-
-error_t tlsParseClientEmsExtension(TlsContext *context,
-   const uint8_t *extendedMasterSecret)
-{
-   error_t error;
-
-   //Initialize status code
-   error = NO_ERROR;
-
-#if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
-   //ExtendedMasterSecret extension found?
-   if(extendedMasterSecret != NULL)
-   {
-      //SSL 3.0 currently selected?
-      if(context->version == SSL_VERSION_3_0)
-      {
-         //If the client chooses to support SSL 3.0, the resulting session
-         //must use the legacy master secret computation
-         context->extendedMasterSecretExtReceived = FALSE;
-      }
-      else
-      {
-         //Use the extended master secret computation
-         context->extendedMasterSecretExtReceived = TRUE;
+         //If a ClientHello is received with any other value in this field,
+         //the server must abort the handshake with an illegal_parameter alert
+         error = tlsSelectCompressMethod(context, compressMethods->value[0]);
       }
    }
-   else
-   {
-      //Abbreviated handshake?
-      if(context->resume)
-      {
-         //If the original session used the ExtendedMasterSecret extension but
-         //the new ClientHello does not contain it, the server must abort the
-         //abbreviated handshake
-         if(context->extendedMasterSecretExtReceived)
-         {
-            //Report an error
-            error = ERROR_HANDSHAKE_FAILED;
-         }
-      }
-
-      //If the client and server choose to continue a full handshake without
-      //the extension, they must use the standard master secret derivation
-      //for the new session
-      context->extendedMasterSecretExtReceived = FALSE;
-   }
-#endif
-
-   //Return status code
-   return error;
-}
-
-
-/**
- * @brief Parse RenegotiationInfo extension
- * @param[in] context Pointer to the TLS context
- * @param[in] renegoInfo Pointer to the RenegotiationInfo extension
- * @return Error code
- **/
-
-error_t tlsParseClientRenegoInfoExtension(TlsContext *context,
-   const TlsRenegoInfo *renegoInfo)
-{
-   error_t error;
-
-   //Initialize status code
-   error = NO_ERROR;
-
-#if (TLS_SECURE_RENEGOTIATION_SUPPORT == ENABLED)
-   //RenegotiationInfo extension found?
-   if(renegoInfo != NULL)
-   {
-      //Initial handshake?
-      if(context->clientVerifyDataLen == 0)
-      {
-         //Set the secure_renegotiation flag to TRUE
-         context->secureRenegoFlag = TRUE;
-
-         //The server must then verify that the length of the
-         //renegotiated_connection field is zero
-         if(renegoInfo->length != 0)
-         {
-            //If it is not, the server must abort the handshake
-            error = ERROR_HANDSHAKE_FAILED;
-         }
-      }
-      //Secure renegotiation?
-      else
-      {
-         //Check the length of the renegotiated_connection field
-         if(renegoInfo->length != context->clientVerifyDataLen)
-         {
-            //The server must abort the handshake
-            error = ERROR_HANDSHAKE_FAILED;
-         }
-         else
-         {
-            //Verify that the value of the renegotiated_connection field
-            //is equal to the saved client_verify_data value
-            if(memcmp(renegoInfo->value, context->clientVerifyData,
-               context->clientVerifyDataLen))
-            {
-               //If it is not, the server must abort the handshake
-               error = ERROR_HANDSHAKE_FAILED;
-            }
-         }
-      }
-   }
-   else
-   {
-      //Secure renegotiation?
-      if(context->clientVerifyDataLen != 0 || context->serverVerifyDataLen != 0)
-      {
-         //The server must verify that the renegotiation_info extension is
-         //present. If it is not, the server must abort the handshake
-         error = ERROR_HANDSHAKE_FAILED;
-      }
-   }
-#endif
 
    //Return status code
    return error;
@@ -2380,42 +1612,16 @@ error_t tlsParsePskIdentity(TlsContext *context,
    //Retrieve the length of the PSK identity
    n = ntohs(pskIdentity->length);
 
-#if (TLS_PSK_SUPPORT == ENABLED || TLS_RSA_PSK_SUPPORT == ENABLED || \
-   TLS_DHE_PSK_SUPPORT == ENABLED || TLS_ECDHE_PSK_SUPPORT == ENABLED)
-   //Check whether the PSK identity has already been configured
-   if(context->pskIdentity != NULL)
-   {
-      //Release memory
-      tlsFreeMem(context->pskIdentity);
-      context->pskIdentity = NULL;
-   }
-
-   //Valid PSK identity?
-   if(n > 0)
-   {
-      //Allocate a memory block to hold the PSK identity
-      context->pskIdentity = tlsAllocMem(n + 1);
-      //Failed to allocate memory?
-      if(context->pskIdentity == NULL)
-         return ERROR_OUT_OF_MEMORY;
-
-      //Save the PSK identity
-      memcpy(context->pskIdentity, pskIdentity->value, n);
-      //Properly terminate the string
-      context->pskIdentity[n] = '\0';
-   }
-
+#if (TLS_PSK_KE_SUPPORT == ENABLED || TLS_RSA_PSK_KE_SUPPORT == ENABLED || \
+   TLS_DHE_PSK_KE_SUPPORT == ENABLED || TLS_ECDHE_PSK_KE_SUPPORT == ENABLED)
    //Any registered callback?
    if(context->pskCallback != NULL)
    {
       error_t error;
 
-      //Invoke user callback function
-      if(context->pskIdentity != NULL)
-         error = context->pskCallback(context, context->pskIdentity);
-      else
-         error = context->pskCallback(context, "");
-
+      //The server selects which key to use depending on the the PSK identity
+      //provided by the client
+      error = context->pskCallback(context, pskIdentity->value, n);
       //Any error to report?
       if(error)
          return ERROR_UNKNOWN_IDENTITY;
@@ -2444,7 +1650,11 @@ error_t tlsParseClientKeyParams(TlsContext *context,
 {
    error_t error;
 
-#if (TLS_RSA_SUPPORT == ENABLED || TLS_RSA_PSK_SUPPORT == ENABLED)
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //Initialize status code
+   error = NO_ERROR;
+
+#if (TLS_RSA_KE_SUPPORT == ENABLED || TLS_RSA_PSK_KE_SUPPORT == ENABLED)
    //RSA key exchange method?
    if(context->keyExchMethod == TLS_KEY_EXCH_RSA ||
       context->keyExchMethod == TLS_KEY_EXCH_RSA_PSK)
@@ -2521,8 +1731,8 @@ error_t tlsParseClientKeyParams(TlsContext *context,
    }
    else
 #endif
-#if (TLS_DH_ANON_SUPPORT == ENABLED || TLS_DHE_RSA_SUPPORT == ENABLED || \
-   TLS_DHE_DSS_SUPPORT == ENABLED || TLS_DHE_PSK_SUPPORT == ENABLED)
+#if (TLS_DH_ANON_KE_SUPPORT == ENABLED || TLS_DHE_RSA_KE_SUPPORT == ENABLED || \
+   TLS_DHE_DSS_KE_SUPPORT == ENABLED || TLS_DHE_PSK_KE_SUPPORT == ENABLED)
    //Diffie-Hellman key exchange method?
    if(context->keyExchMethod == TLS_KEY_EXCH_DH_ANON ||
       context->keyExchMethod == TLS_KEY_EXCH_DHE_RSA ||
@@ -2579,8 +1789,8 @@ error_t tlsParseClientKeyParams(TlsContext *context,
    }
    else
 #endif
-#if (TLS_ECDH_ANON_SUPPORT == ENABLED || TLS_ECDHE_RSA_SUPPORT == ENABLED || \
-   TLS_ECDHE_ECDSA_SUPPORT == ENABLED || TLS_ECDHE_PSK_SUPPORT == ENABLED)
+#if (TLS_ECDH_ANON_KE_SUPPORT == ENABLED || TLS_ECDHE_RSA_KE_SUPPORT == ENABLED || \
+   TLS_ECDHE_ECDSA_KE_SUPPORT == ENABLED || TLS_ECDHE_PSK_KE_SUPPORT == ENABLED)
    //ECDH key exchange method?
    if(context->keyExchMethod == TLS_KEY_EXCH_ECDH_ANON ||
       context->keyExchMethod == TLS_KEY_EXCH_ECDHE_RSA ||
@@ -2640,6 +1850,10 @@ error_t tlsParseClientKeyParams(TlsContext *context,
       //The specified key exchange method is not supported
       error = ERROR_UNSUPPORTED_KEY_EXCH_METHOD;
    }
+#else
+   //Not implemented
+   error = ERROR_NOT_IMPLEMENTED;
+#endif
 
    //Return status code
    return error;

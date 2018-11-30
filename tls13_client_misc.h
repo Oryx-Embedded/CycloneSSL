@@ -1,6 +1,6 @@
 /**
- * @file ssl_misc.h
- * @brief SSL 3.0 helper functions
+ * @file tls13_client_misc.h
+ * @brief Helper functions for TLS 1.3 client
  *
  * @section License
  *
@@ -26,11 +26,10 @@
  * @version 1.9.0
  **/
 
-#ifndef _SSL_MISC_H
-#define _SSL_MISC_H
+#ifndef _TLS13_CLIENT_MISC_H
+#define _TLS13_CLIENT_MISC_H
 
 //Dependencies
-#include "core/crypto.h"
 #include "tls.h"
 
 //C++ guard
@@ -38,16 +37,15 @@
    extern "C" {
 #endif
 
-//SSL 3.0 related constants
-extern const uint8_t sslPad1[48];
-extern const uint8_t sslPad2[48];
+//TLS 1.3 client specific functions
+bool_t tls13IsHelloRetryRequest(const TlsServerHello *message, size_t length);
 
-//SSL 3.0 related functions
-error_t sslExpandKey(const uint8_t *secret, size_t secretLen,
-   const uint8_t *random, size_t randomLen, uint8_t *output, size_t outputLen);
+error_t tls13ComputePskBinders(TlsContext *context, const void *clientHello,
+   size_t clientHelloLen, const Tls13PskIdentityList *identityList,
+   Tls13PskBinderList *binderList);
 
-error_t sslComputeMac(TlsEncryptionEngine *encryptionEngine,
-   const TlsRecord *record, const uint8_t *data, size_t dataLen, uint8_t *mac);
+error_t tls13SendEarlyData(TlsContext *context, const void *data,
+   size_t length, size_t *written);
 
 //C++ guard
 #ifdef __cplusplus

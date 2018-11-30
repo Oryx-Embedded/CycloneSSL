@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.6
+ * @version 1.9.0
  **/
 
 #ifndef _TLS_CACHE_H
@@ -39,7 +39,10 @@
 
 //Session cache management
 TlsCache *tlsInitCache(uint_t size);
-TlsSession *tlsFindCache(TlsCache *cache, const uint8_t *id, size_t length);
+
+TlsSessionState *tlsFindCache(TlsCache *cache, const uint8_t *sessionId,
+   size_t sessionIdLen);
+
 error_t tlsSaveToCache(TlsContext *context);
 error_t tlsRemoveFromCache(TlsContext *context);
 void tlsFreeCache(TlsCache *cache);

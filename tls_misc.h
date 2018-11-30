@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.6
+ * @version 1.9.0
  **/
 
 #ifndef _TLS_MISC_H
@@ -40,14 +40,11 @@
 //TLS related functions
 void tlsProcessError(TlsContext *context, error_t errorCode);
 
-error_t tlsGenerateRandomValue(TlsContext *context, TlsRandom *random);
+error_t tlsGenerateRandomValue(TlsContext *context, uint8_t *random);
 
 error_t tlsSelectVersion(TlsContext *context, uint16_t version);
 error_t tlsSelectCipherSuite(TlsContext *context, uint16_t identifier);
 error_t tlsSelectCompressMethod(TlsContext *context, uint8_t identifier);
-
-error_t tlsSelectNamedCurve(TlsContext *context,
-   const TlsSupportedGroupList *groupList);
 
 error_t tlsInitEncryptionEngine(TlsContext *context,
    TlsEncryptionEngine *encryptionEngine, TlsConnectionEnd entity,
@@ -66,7 +63,7 @@ error_t tlsReadEcPoint(const EcDomainParameters *params,
 
 const char_t *tlsGetVersionName(uint16_t version);
 const HashAlgo *tlsGetHashAlgo(uint8_t hashAlgoId);
-const EcCurveInfo *tlsGetCurveInfo(uint16_t namedCurve);
+const EcCurveInfo *tlsGetCurveInfo(TlsContext *context, uint16_t namedCurve);
 TlsNamedGroup tlsGetNamedCurve(const uint8_t *oid, size_t length);
 
 size_t tlsComputeEncryptionOverhead(TlsEncryptionEngine *encryptionEngine,

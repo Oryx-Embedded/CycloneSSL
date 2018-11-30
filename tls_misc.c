@@ -23,7 +23,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.8.6
+ * @version 1.9.0
  **/
 
 //Switch to the appropriate trace level
@@ -34,12 +34,13 @@
 #include "tls.h"
 #include "tls_cipher_suites.h"
 #include "tls_common.h"
+#include "tls_ffdhe.h"
 #include "tls_misc.h"
+#include "tls13_key_material.h"
 #include "encoding/oid.h"
-#include "date_time.h"
 #include "debug.h"
 
-//Check SSL library configuration
+//Check TLS library configuration
 #if (TLS_SUPPORT == ENABLED)
 
 
@@ -53,7 +54,8 @@
 void tlsProcessError(TlsContext *context, error_t errorCode)
 {
    //Check current state
-   if(context->state != TLS_STATE_CLOSED)
+   if(context->state != TLS_STATE_INIT &&
+      context->state != TLS_STATE_CLOSED)
    {
       //Check status code
       switch(errorCode)
@@ -63,6 +65,9 @@ void tlsProcessError(TlsContext *context, error_t errorCode)
          break;
       //The read/write operation would have blocked
       case ERROR_WOULD_BLOCK:
+         break;
+      //Failed to allocate memory
+      case ERROR_OUT_OF_MEMORY:
          break;
       //The read/write operation has failed
       case ERROR_WRITE_FAILED:
@@ -110,6 +115,7 @@ void tlsProcessError(TlsContext *context, error_t errorCode)
          tlsSendAlert(context, TLS_ALERT_LEVEL_FATAL, TLS_ALERT_DECODE_ERROR);
          break;
       //A handshake cryptographic operation failed
+      case ERROR_DECRYPTION_FAILED:
       case ERROR_INVALID_SIGNATURE:
          tlsSendAlert(context, TLS_ALERT_LEVEL_FATAL, TLS_ALERT_DECRYPT_ERROR);
          break;
@@ -120,6 +126,10 @@ void tlsProcessError(TlsContext *context, error_t errorCode)
       //Inappropriate fallback detected by the server
       case ERROR_INAPPROPRIATE_FALLBACK:
          tlsSendAlert(context, TLS_ALERT_LEVEL_FATAL, TLS_ALERT_INAPPROPRIATE_FALLBACK);
+         break;
+      //Handshake message not containing an extension that is mandatory
+      case ERROR_MISSING_EXTENSION:
+         tlsSendAlert(context, TLS_ALERT_LEVEL_FATAL, TLS_ALERT_MISSING_EXTENSION);
          break;
       //The ServerHello contains an extension not present in the ClientHello
       case ERROR_UNSUPPORTED_EXTENSION:
@@ -145,41 +155,54 @@ void tlsProcessError(TlsContext *context, error_t errorCode)
  * @return Error code
  **/
 
-error_t tlsGenerateRandomValue(TlsContext *context, TlsRandom *random)
+error_t tlsGenerateRandomValue(TlsContext *context, uint8_t *random)
 {
    error_t error;
-   uint32_t time;
 
    //Verify that the pseudorandom number generator is properly configured
    if(context->prngAlgo != NULL && context->prngContext != NULL)
    {
-      //Get current time
-      time = (uint32_t) getCurrentUnixTime();
-
-      //Clocks are not required to be set correctly by the basic TLS protocol
-      if(time != 0)
-      {
-         //Generate the random value. The first four bytes code the current
-         //time and date in standard Unix format
-         random->gmtUnixTime = htonl(time);
-
-         //The last 28 bytes contain securely-generated random bytes
-         error = context->prngAlgo->read(context->prngContext,
-            random->randomBytes, 28);
-      }
-      else
-      {
-         //Generate a 32-byte random value using a cryptographically-safe
-         //pseudorandom number generator
-         error = context->prngAlgo->read(context->prngContext,
-            (uint8_t *) random, 32);
-      }
+      //Generate a 32-byte random value using a cryptographically-safe
+      //pseudorandom number generator
+      error = context->prngAlgo->read(context->prngContext, random, 32);
    }
    else
    {
       //Report an error
       error = ERROR_NOT_CONFIGURED;
    }
+
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+   //Check status code
+   if(!error)
+   {
+      //TLS 1.3 has a downgrade protection mechanism embedded in the server's
+      //random value
+      if(context->entity == TLS_CONNECTION_END_SERVER)
+      {
+         //Check negotiated version
+         if(context->version <= TLS_VERSION_1_1 &&
+            context->versionMax >= TLS_VERSION_1_2)
+         {
+            //If negotiating TLS 1.1 or below, TLS 1.3 servers must, and TLS 1.2
+            //servers should, set the last eight bytes of their random value to
+            //the bytes 44 4F 57 4E 47 52 44 00
+            memcpy(random + 24, tls11DowngradeRandom, 8);
+         }
+         else if(context->version == TLS_VERSION_1_2 &&
+            context->versionMax >= TLS_VERSION_1_3)
+         {
+            //If negotiating TLS 1.2, TLS 1.3 servers must set the last eight
+            //bytes of their random value to the bytes 44 4F 57 4E 47 52 44 01
+            memcpy(random + 24, tls12DowngradeRandom, 8);
+         }
+         else
+         {
+            //No downgrade protection mechanism
+         }
+      }
+   }
+#endif
 
    //Return status code
    return error;
@@ -197,22 +220,16 @@ error_t tlsSelectVersion(TlsContext *context, uint16_t version)
 {
    error_t error;
 
+   //Initialize status code
+   error = ERROR_VERSION_NOT_SUPPORTED;
+
    //Check TLS version
    if(version >= context->versionMin && version <= context->versionMax)
    {
       //Save the TLS protocol version to be used
       context->version = version;
-
       //The specified TLS version is acceptable
       error = NO_ERROR;
-   }
-   else
-   {
-      //Debug message
-      TRACE_WARNING("TLS version not supported!\r\n");
-
-      //The specified TLS version is not acceptable
-      error = ERROR_VERSION_NOT_SUPPORTED;
    }
 
    //Return status code
@@ -232,80 +249,56 @@ error_t tlsSelectCipherSuite(TlsContext *context, uint16_t identifier)
    error_t error;
    uint_t i;
    uint_t n;
-   bool_t acceptable;
    const TlsCipherSuiteInfo *cipherSuite;
 
-   //Initialize pointer
-   cipherSuite = NULL;
+   //Initialize status code
+   error = ERROR_HANDSHAKE_FAILED;
+
+   //Determine the number of supported cipher suites
+   n = tlsGetNumSupportedCipherSuites();
+
+   //Loop through the list of supported cipher suites
+   for(cipherSuite = NULL, i = 0; i < n; i++)
+   {
+      //Compare cipher suite identifiers
+      if(tlsSupportedCipherSuites[i].identifier == identifier)
+      {
+         //The cipher suite is supported
+         cipherSuite = &tlsSupportedCipherSuites[i];
+         break;
+      }
+   }
 
    //Restrict the use of certain cipher suites
    if(context->numCipherSuites > 0)
    {
-      //This flag will be set if the specified cipher suite is acceptable
-      acceptable = FALSE;
-
       //Loop through the list of allowed cipher suites
       for(i = 0; i < context->numCipherSuites; i++)
       {
          //Compare cipher suite identifiers
          if(context->cipherSuites[i] == identifier)
-         {
-            acceptable = TRUE;
             break;
-         }
       }
+
+      //Check whether the use of the cipher suite is restricted
+      if(i >= context->numCipherSuites)
+         cipherSuite = NULL;
    }
-   else
+
+   //Acceptable cipher suite?
+   if(cipherSuite != NULL)
    {
-      //The use of the cipher suite is not restricted
-      acceptable = TRUE;
-   }
-
-   //No restrictions exist concerning the use of the specified cipher suite?
-   if(acceptable)
-   {
-      //This flag will be set if the specified cipher suite is acceptable
-      acceptable = FALSE;
-
-      //Determine the number of supported cipher suites
-      n = tlsGetNumSupportedCipherSuites();
-
-      //Loop through the list of supported cipher suites
-      for(i = 0; i < n; i++)
+      //Check whether the cipher suite can be negotiated with the negotiated
+      //protocol version
+      if(!tlsIsCipherSuiteAcceptable(cipherSuite, context->version,
+         context->version, context->transportProtocol))
       {
-         //Point to the current item
-         cipherSuite = &tlsSupportedCipherSuites[i];
-
-         //Compare cipher suite identifiers
-         if(cipherSuite->identifier == identifier)
-         {
-            acceptable = TRUE;
-            break;
-         }
+         cipherSuite = NULL;
       }
    }
-
-   //SSL 3.0, TLS 1.0 or TLS 1.1 currently selected?
-   if(acceptable && context->version <= TLS_VERSION_1_1)
-   {
-      //TLS 1.2 cipher suites must not be negotiated in older versions of TLS
-      if(cipherSuite->prfHashAlgo != NULL)
-         acceptable = FALSE;
-   }
-
-#if (DTLS_SUPPORT == ENABLED)
-   //DTLS protocol?
-   if(acceptable && context->transportProtocol == TLS_TRANSPORT_PROTOCOL_DATAGRAM)
-   {
-      //The only stream cipher described in TLS 1.2 is RC4, which cannot be
-      //randomly accessed. RC4 must not be used with DTLS
-      if(cipherSuite->cipherMode == CIPHER_MODE_STREAM)
-         acceptable = FALSE;
-   }
-#endif
 
    //Ensure that the selected cipher suite matches all the criteria
-   if(acceptable)
+   if(cipherSuite != NULL)
    {
       //Save the negotiated cipher suite
       context->cipherSuite = *cipherSuite;
@@ -333,15 +326,8 @@ error_t tlsSelectCipherSuite(TlsContext *context, uint16_t identifier)
          //The length of the verify data depends on the cipher suite for TLS 1.2
       }
 
-      //Successful processing
+      //The specified cipher suite is acceptable
       error = NO_ERROR;
-   }
-   else
-   {
-      //Debug message
-      TRACE_DEBUG("Cipher suite not supported!\r\n");
-      //The specified cipher suite is not supported
-      error = ERROR_HANDSHAKE_FAILED;
    }
 
    //Return status code
@@ -358,71 +344,22 @@ error_t tlsSelectCipherSuite(TlsContext *context, uint16_t identifier)
 
 error_t tlsSelectCompressMethod(TlsContext *context, uint8_t identifier)
 {
-   //Check if the requested compression algorithm is supported
-   if(identifier != TLS_COMPRESSION_METHOD_NULL)
-      return ERROR_ILLEGAL_PARAMETER;
+   error_t error;
 
-   //Save compression method identifier
-   context->compressMethod = identifier;
-   //Successful processing
-   return NO_ERROR;
-}
+   //Initialize status code
+   error = ERROR_ILLEGAL_PARAMETER;
 
-
-/**
- * @brief Select the named curve to be used when performing ECDH key exchange
- * @param[in] context Pointer to the TLS context
- * @param[in] groupList List of named groups supported by the client
- * @return Error code
- **/
-
-error_t tlsSelectNamedCurve(TlsContext *context,
-   const TlsSupportedGroupList *groupList)
-{
-   uint_t i;
-   uint_t n;
-
-   //Check whether a list of named groups is offered by the client
-   if(groupList != NULL)
+   //Null compression method?
+   if(identifier == TLS_COMPRESSION_METHOD_NULL)
    {
-      //Reset the named group to its default value
-      context->namedGroup = TLS_GROUP_NONE;
-
-      //Get the number of named groups present in the list
-      n = ntohs(groupList->length) / sizeof(uint16_t);
-
-      //The named curve to be used when performing ECDH key exchange must be
-      //one of those present in the list
-      for(i = 0; i < n; i++)
-      {
-         //Acceptable elliptic curve found?
-         if(tlsGetCurveInfo(ntohs(groupList->value[i])) != NULL)
-         {
-            //Save the named curve
-            context->namedGroup = ntohs(groupList->value[i]);
-            //We are done
-            break;
-         }
-      }
-   }
-   else
-   {
-      //A client that proposes ECC cipher suites may choose not to include
-      //the SupportedGroups extension. In this case, the server is free to
-      //choose any one of the elliptic curves it supports
-      if(tlsGetCurveInfo(TLS_GROUP_SECP256R1) != NULL)
-         context->namedGroup = TLS_GROUP_SECP256R1;
-      else if(tlsGetCurveInfo(TLS_GROUP_SECP384R1) != NULL)
-         context->namedGroup = TLS_GROUP_SECP384R1;
-      else
-         context->namedGroup = TLS_GROUP_NONE;
+      //Save compression method identifier
+      context->compressMethod = identifier;
+      //The requested compression algorithm is supported
+      error = NO_ERROR;
    }
 
-   //If no acceptable choices are presented, then return an error
-   if(context->namedGroup == TLS_GROUP_NONE)
-      return ERROR_FAILURE;
-   else
-      return NO_ERROR;
+   //Return status code
+   return error;
 }
 
 
@@ -441,11 +378,13 @@ error_t tlsInitEncryptionEngine(TlsContext *context,
    const uint8_t *secret)
 {
    error_t error;
-   const uint8_t *p;
+   const CipherAlgo *cipherAlgo;
    TlsCipherSuiteInfo *cipherSuite;
 
    //Point to the negotiated cipher suite
    cipherSuite = &context->cipherSuite;
+   //Point to the cipher algorithm
+   cipherAlgo = cipherSuite->cipherAlgo;
 
    //Save the negotiated TLS version
    encryptionEngine->version = context->version;
@@ -464,118 +403,188 @@ error_t tlsInitEncryptionEngine(TlsContext *context,
    memset(&encryptionEngine->dtlsSeqNum, 0, sizeof(DtlsSequenceNumber));
 #endif
 
-   //Set appropriate length for MAC key, encryption key, IV and
-   //authentication tag
+   //Set appropriate length for MAC key, encryption key, authentication
+   //tag and IV
    encryptionEngine->macKeyLen = cipherSuite->macKeyLen;
    encryptionEngine->encKeyLen = cipherSuite->encKeyLen;
    encryptionEngine->fixedIvLen = cipherSuite->fixedIvLen;
    encryptionEngine->recordIvLen = cipherSuite->recordIvLen;
    encryptionEngine->authTagLen = cipherSuite->authTagLen;
 
-   //Check whether client or server write keys shall be used
-   if(entity == TLS_CONNECTION_END_CLIENT)
-   {
-      //Point to the key material
-      p = context->keyBlock;
-      //Save MAC key
-      memcpy(encryptionEngine->macKey, p, cipherSuite->macKeyLen);
-
-      //Advance current position in the key block
-      p += 2 * cipherSuite->macKeyLen;
-      //Save encryption key
-      memcpy(encryptionEngine->encKey, p, cipherSuite->encKeyLen);
-
-      //Advance current position in the key block
-      p += 2 * cipherSuite->encKeyLen;
-      //Save initialization vector
-      memcpy(encryptionEngine->iv, p, cipherSuite->fixedIvLen);
-   }
-   //TLS operates as a server?
-   else
-   {
-      //Point to the key material
-      p = context->keyBlock + cipherSuite->macKeyLen;
-      //Save MAC key
-      memcpy(encryptionEngine->macKey, p, cipherSuite->macKeyLen);
-
-      //Advance current position in the key block
-      p += cipherSuite->macKeyLen + cipherSuite->encKeyLen;
-      //Save encryption key
-      memcpy(encryptionEngine->encKey, p, cipherSuite->encKeyLen);
-
-      //Advance current position in the key block
-      p += cipherSuite->encKeyLen + cipherSuite->fixedIvLen;
-      //Save initialization vector
-      memcpy(encryptionEngine->iv, p, cipherSuite->fixedIvLen);
-   }
-
    //Set cipher and hash algorithms
    encryptionEngine->cipherAlgo = cipherSuite->cipherAlgo;
    encryptionEngine->cipherMode = cipherSuite->cipherMode;
    encryptionEngine->hashAlgo = cipherSuite->hashAlgo;
 
-   //Set HMAC context
+   //Initialize cipher context
+   encryptionEngine->cipherContext = NULL;
+
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //Initialize HMAC context
    encryptionEngine->hmacContext = &context->hmacContext;
+#endif
 
-   //Check cipher mode of operation
-   if(encryptionEngine->cipherMode == CIPHER_MODE_STREAM ||
-      encryptionEngine->cipherMode == CIPHER_MODE_CBC ||
-      encryptionEngine->cipherMode == CIPHER_MODE_CCM ||
-      encryptionEngine->cipherMode == CIPHER_MODE_GCM)
+#if (TLS_GCM_CIPHER_SUPPORT == ENABLED)
+   //Initialize GCM context
+   encryptionEngine->gcmContext = NULL;
+#endif
+
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //SSL 3.0, TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
+   if(context->version <= TLS_VERSION_1_2)
    {
-      //Allocate a memory buffer to hold the encryption context
-      encryptionEngine->cipherContext = tlsAllocMem(encryptionEngine->cipherAlgo->contextSize);
+      const uint8_t *p;
 
-      //Successful memory allocation?
-      if(encryptionEngine->cipherContext != NULL)
+      //Check whether client or server write keys shall be used
+      if(entity == TLS_CONNECTION_END_CLIENT)
       {
-         //Configure the encryption engine with the write key
-         error = encryptionEngine->cipherAlgo->init(encryptionEngine->cipherContext,
-            encryptionEngine->encKey, encryptionEngine->encKeyLen);
+         //Point to the key material
+         p = context->keyBlock;
+         //Save MAC key
+         memcpy(encryptionEngine->macKey, p, cipherSuite->macKeyLen);
+
+         //Advance current position in the key block
+         p += 2 * cipherSuite->macKeyLen;
+         //Save encryption key
+         memcpy(encryptionEngine->encKey, p, cipherSuite->encKeyLen);
+
+         //Advance current position in the key block
+         p += 2 * cipherSuite->encKeyLen;
+         //Save initialization vector
+         memcpy(encryptionEngine->iv, p, cipherSuite->fixedIvLen);
       }
       else
       {
-         //Failed to allocate memory
-         error = ERROR_OUT_OF_MEMORY;
+         //Point to the key material
+         p = context->keyBlock + cipherSuite->macKeyLen;
+         //Save MAC key
+         memcpy(encryptionEngine->macKey, p, cipherSuite->macKeyLen);
+
+         //Advance current position in the key block
+         p += cipherSuite->macKeyLen + cipherSuite->encKeyLen;
+         //Save encryption key
+         memcpy(encryptionEngine->encKey, p, cipherSuite->encKeyLen);
+
+         //Advance current position in the key block
+         p += cipherSuite->encKeyLen + cipherSuite->fixedIvLen;
+         //Save initialization vector
+         memcpy(encryptionEngine->iv, p, cipherSuite->fixedIvLen);
       }
 
-#if (TLS_GCM_CIPHER_SUPPORT == ENABLED)
-      //GCM AEAD cipher?
-      if(encryptionEngine->cipherMode == CIPHER_MODE_GCM)
-      {
-         //Check status code
-         if(!error)
-         {
-            //Allocate a memory buffer to hold the GCM context
-            encryptionEngine->gcmContext = tlsAllocMem(sizeof(GcmContext));
-
-            //Successful memory allocation?
-            if(encryptionEngine->gcmContext != NULL)
-            {
-               //Initialize GCM context
-               error = gcmInit(encryptionEngine->gcmContext,
-                  encryptionEngine->cipherAlgo, encryptionEngine->cipherContext);
-            }
-            else
-            {
-               //Failed to allocate memory
-               error = ERROR_OUT_OF_MEMORY;
-            }
-         }
-      }
-#endif
-   }
-   else if(encryptionEngine->cipherMode == CIPHER_MODE_NULL ||
-      encryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
-   {
-      //We are done
+      //Successful processing
       error = NO_ERROR;
    }
    else
+#endif
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+   //TLS 1.3 currently selected?
+   if(context->version == TLS_VERSION_1_3)
    {
-      //Unsupported mode of operation
-      error = ERROR_FAILURE;
+      const HashAlgo *hashAlgo;
+
+      //The hash function used by HKDF is the cipher suite hash algorithm
+      hashAlgo = cipherSuite->prfHashAlgo;
+
+      //Make sure the hash algorithm is valid
+      if(hashAlgo != NULL)
+      {
+         //Calculate the write key
+         error = tls13HkdfExpandLabel(hashAlgo, secret, hashAlgo->digestSize,
+            "key", NULL, 0, encryptionEngine->encKey, cipherSuite->encKeyLen);
+
+         //Debug message
+         TRACE_DEBUG("Write Key:\r\n");
+         TRACE_DEBUG_ARRAY("  ", encryptionEngine->encKey, cipherSuite->encKeyLen);
+
+         //Check status code
+         if(!error)
+         {
+            //Calculate the write IV
+            error = tls13HkdfExpandLabel(hashAlgo, secret, hashAlgo->digestSize,
+               "iv", NULL, 0, encryptionEngine->iv, cipherSuite->fixedIvLen);
+         }
+
+         //Debug message
+         TRACE_DEBUG("Write IV:\r\n");
+         TRACE_DEBUG_ARRAY("  ", encryptionEngine->iv, cipherSuite->fixedIvLen);
+      }
+      else
+      {
+         //Invalid HKDF hash algorithm
+         error = ERROR_FAILURE;
+      }
    }
+   else
+#endif
+   //Invalid TLS version?
+   {
+      //Report an error
+      error = ERROR_INVALID_VERSION;
+   }
+
+   //Check status code
+   if(!error)
+   {
+      //Check cipher mode of operation
+      if(encryptionEngine->cipherMode == CIPHER_MODE_STREAM ||
+         encryptionEngine->cipherMode == CIPHER_MODE_CBC ||
+         encryptionEngine->cipherMode == CIPHER_MODE_CCM ||
+         encryptionEngine->cipherMode == CIPHER_MODE_GCM)
+      {
+         //Allocate encryption context
+         encryptionEngine->cipherContext = tlsAllocMem(cipherAlgo->contextSize);
+
+         //Successful memory allocation?
+         if(encryptionEngine->cipherContext != NULL)
+         {
+            //Configure the encryption engine with the write key
+            error = cipherAlgo->init(encryptionEngine->cipherContext,
+               encryptionEngine->encKey, cipherSuite->encKeyLen);
+         }
+         else
+         {
+            //Failed to allocate memory
+            error = ERROR_OUT_OF_MEMORY;
+         }
+      }
+      else if(encryptionEngine->cipherMode == CIPHER_MODE_NULL ||
+         encryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
+      {
+         //No need to allocate an encryption context
+         error = NO_ERROR;
+      }
+      else
+      {
+         //Unsupported mode of operation
+         error = ERROR_FAILURE;
+      }
+   }
+
+#if (TLS_GCM_CIPHER_SUPPORT == ENABLED)
+   //Check status code
+   if(!error)
+   {
+      //GCM cipher mode?
+      if(encryptionEngine->cipherMode == CIPHER_MODE_GCM)
+      {
+         //Allocate a memory buffer to hold the GCM context
+         encryptionEngine->gcmContext = tlsAllocMem(sizeof(GcmContext));
+
+         //Successful memory allocation?
+         if(encryptionEngine->gcmContext != NULL)
+         {
+            //Initialize GCM context
+            error = gcmInit(encryptionEngine->gcmContext, cipherAlgo,
+               encryptionEngine->cipherContext);
+         }
+         else
+         {
+            //Failed to allocate memory
+            error = ERROR_OUT_OF_MEMORY;
+         }
+      }
+   }
+#endif
 
    //Return status code
    return error;
@@ -589,21 +598,35 @@ error_t tlsInitEncryptionEngine(TlsContext *context,
 
 void tlsFreeEncryptionEngine(TlsEncryptionEngine *encryptionEngine)
 {
-   //Release cipher context
+   //Valid cipher context?
    if(encryptionEngine->cipherContext != NULL)
    {
+      //Erase cipher context
+      memset(encryptionEngine->cipherContext, 0,
+         encryptionEngine->cipherAlgo->contextSize);
+
+      //Release memory
       tlsFreeMem(encryptionEngine->cipherContext);
       encryptionEngine->cipherContext = NULL;
    }
 
 #if (TLS_GCM_CIPHER_SUPPORT == ENABLED)
-   //Release GCM context
+   //Valid GCM context?
    if(encryptionEngine->gcmContext != NULL)
    {
+      //Erase GCM context
+      memset(encryptionEngine->gcmContext, 0, sizeof(GcmContext));
+
+      //Release memory
       tlsFreeMem(encryptionEngine->gcmContext);
       encryptionEngine->gcmContext = NULL;
    }
 #endif
+
+   //Reset encryption parameters
+   encryptionEngine->cipherAlgo = NULL;
+   encryptionEngine->cipherMode = CIPHER_MODE_NULL;
+   encryptionEngine->hashAlgo = NULL;
 }
 
 
@@ -689,8 +712,8 @@ error_t tlsReadMpi(Mpi *a, const uint8_t *data, size_t size, size_t *length)
 error_t tlsWriteEcPoint(const EcDomainParameters *params,
    const EcPoint *a, uint8_t *data, size_t *length)
 {
-#if (TLS_ECDH_ANON_SUPPORT == ENABLED || TLS_ECDHE_RSA_SUPPORT == ENABLED || \
-   TLS_ECDHE_ECDSA_SUPPORT == ENABLED || TLS_ECDHE_PSK_SUPPORT == ENABLED)
+#if (TLS_ECDH_ANON_KE_SUPPORT == ENABLED || TLS_ECDHE_RSA_KE_SUPPORT == ENABLED || \
+   TLS_ECDHE_ECDSA_KE_SUPPORT == ENABLED || TLS_ECDHE_PSK_KE_SUPPORT == ENABLED)
    error_t error;
 
    //Convert the EC point to an octet string
@@ -726,8 +749,8 @@ error_t tlsWriteEcPoint(const EcDomainParameters *params,
 error_t tlsReadEcPoint(const EcDomainParameters *params,
    EcPoint *a, const uint8_t *data, size_t size, size_t *length)
 {
-#if (TLS_ECDH_ANON_SUPPORT == ENABLED || TLS_ECDHE_RSA_SUPPORT == ENABLED || \
-   TLS_ECDHE_ECDSA_SUPPORT == ENABLED || TLS_ECDHE_PSK_SUPPORT == ENABLED)
+#if (TLS_ECDH_ANON_KE_SUPPORT == ENABLED || TLS_ECDHE_RSA_KE_SUPPORT == ENABLED || \
+   TLS_ECDHE_ECDSA_KE_SUPPORT == ENABLED || TLS_ECDHE_PSK_KE_SUPPORT == ENABLED)
    error_t error;
    size_t n;
 
@@ -738,7 +761,11 @@ error_t tlsReadEcPoint(const EcDomainParameters *params,
    //The EC point representation is preceded by a length field
    n = data[0];
 
-   //Valid EC point representation?
+   //Invalid EC point representation?
+   if(n == 0)
+      return ERROR_DECODING_FAILED;
+
+   //Buffer underrun?
    if(size < (n + 1))
       return ERROR_DECODING_FAILED;
 
@@ -774,6 +801,7 @@ const char_t *tlsGetVersionName(uint16_t version)
       "TLS 1.0",
       "TLS 1.1",
       "TLS 1.2",
+      "TLS 1.3",
       "DTLS 1.0",
       "DTLS 1.2",
       "Unknown"
@@ -788,12 +816,14 @@ const char_t *tlsGetVersionName(uint16_t version)
       return label[2];
    else if(version == TLS_VERSION_1_2)
       return label[3];
-   else if(version == DTLS_VERSION_1_0)
+   else if(version == TLS_VERSION_1_3)
       return label[4];
-   else if(version == DTLS_VERSION_1_2)
+   else if(version == DTLS_VERSION_1_0)
       return label[5];
-   else
+   else if(version == DTLS_VERSION_1_2)
       return label[6];
+   else
+      return label[7];
 }
 
 
@@ -859,19 +889,20 @@ const HashAlgo *tlsGetHashAlgo(uint8_t hashAlgoId)
 
 /**
  * @brief Get the EC domain parameters that match the specified named curve
+ * @param[in] context Pointer to the TLS context
  * @param[in] namedCurve Elliptic curve identifier
  * @return Elliptic curve domain parameters
  **/
 
-const EcCurveInfo *tlsGetCurveInfo(uint16_t namedCurve)
+const EcCurveInfo *tlsGetCurveInfo(TlsContext *context, uint16_t namedCurve)
 {
+   uint_t i;
    const EcCurveInfo *curveInfo;
 
    //Default elliptic curve domain parameters
    curveInfo = NULL;
 
-#if (TLS_ECDH_ANON_SUPPORT == ENABLED || TLS_ECDHE_RSA_SUPPORT == ENABLED || \
-   TLS_ECDHE_ECDSA_SUPPORT == ENABLED || TLS_ECDHE_PSK_SUPPORT == ENABLED)
+#if (TLS_ECDH_SUPPORT == ENABLED)
    //Check named curve
    switch(namedCurve)
    {
@@ -959,13 +990,13 @@ const EcCurveInfo *tlsGetCurveInfo(uint16_t namedCurve)
       curveInfo = ecGetCurveInfo(BRAINPOOLP512R1_OID, sizeof(BRAINPOOLP512R1_OID));
       break;
 #endif
-#if (TLS_CURVE25519_SUPPORT == ENABLED)
+#if (TLS_X25519_SUPPORT == ENABLED)
    //Curve25519 elliptic curve?
    case TLS_GROUP_ECDH_X25519:
       curveInfo = ecGetCurveInfo(X25519_OID, sizeof(X25519_OID));
       break;
 #endif
-#if (TLS_CURVE448_SUPPORT == ENABLED)
+#if (TLS_X448_SUPPORT == ENABLED)
    //Curve448 elliptic curve?
    case TLS_GROUP_ECDH_X448:
       curveInfo = ecGetCurveInfo(X448_OID, sizeof(X448_OID));
@@ -977,6 +1008,22 @@ const EcCurveInfo *tlsGetCurveInfo(uint16_t namedCurve)
       break;
    }
 #endif
+
+   //Restrict the use of certain elliptic curves
+   if(context->numSupportedGroups > 0)
+   {
+      //Loop through the list of allowed named groups
+      for(i = 0; i < context->numSupportedGroups; i++)
+      {
+         //Compare named groups
+         if(context->supportedGroups[i] == namedCurve)
+            break;
+      }
+
+      //Check whether the use of the elliptic curve is restricted
+      if(i >= context->numSupportedGroups)
+         curveInfo = NULL;
+   }
 
    //Return elliptic curve domain parameters, if any
    return curveInfo;
@@ -997,7 +1044,7 @@ TlsNamedGroup tlsGetNamedCurve(const uint8_t *oid, size_t length)
    //Default named curve
    namedCurve = TLS_GROUP_NONE;
 
-#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED || TLS_ECDHE_ECDSA_SUPPORT == ENABLED)
+#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED)
    //Invalid parameters?
    if(oid == NULL || length == 0)
    {
