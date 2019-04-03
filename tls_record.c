@@ -4,7 +4,9 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ *
+ * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -23,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.0
+ * @version 1.9.2
  **/
 
 //Switch to the appropriate trace level
@@ -32,14 +34,9 @@
 //Dependencies
 #include <string.h>
 #include "tls.h"
-#include "tls_common.h"
 #include "tls_record.h"
-#include "tls_misc.h"
-#include "ssl_misc.h"
-#include "cipher_mode/cbc.h"
-#include "aead/ccm.h"
-#include "aead/gcm.h"
-#include "aead/chacha20_poly1305.h"
+#include "tls_record_encryption.h"
+#include "tls_record_decryption.h"
 #include "debug.h"
 
 //Check TLS library configuration
@@ -109,9 +106,19 @@ error_t tlsWriteProtocolData(TlsContext *context,
          //Do not exceed the negotiated maximum fragment length
          n = MIN(n, context->maxFragLen);
 #endif
+
 #if (TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)
-         //Maximum record size the peer is willing to receive
-         n = MIN(n, context->recordSizeLimit);
+         //The value of RecordSizeLimit is used to limit the size of records
+         //that are created when encoding application data and the protected
+         //handshake message into records
+         if(context->encryptionEngine.cipherMode != CIPHER_MODE_NULL ||
+            context->encryptionEngine.hashAlgo != NULL)
+         {
+            //An endpoint must not generate a protected record with plaintext
+            //that is larger than the RecordSizeLimit value it receives from
+            //its peer (refer to RFC 8449, section 4)
+            n = MIN(n, context->encryptionEngine.recordSizeLimit);
+         }
 #endif
          //Send TLS record
          error = tlsWriteRecord(context, p, n, context->txBufferType);
@@ -695,6 +702,24 @@ error_t tlsProcessRecord(TlsContext *context, TlsRecord *record)
    if(ntohs(record->length) > TLS_MAX_RECORD_LENGTH)
       return ERROR_RECORD_OVERFLOW;
 
+#if (TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)
+   //Check whether the RecordSizeLimit extension has been negotiated
+   if(context->recordSizeLimitExtReceived)
+   {
+      //The value of RecordSizeLimit is used to limit the size of records
+      //that are created when encoding application data and the protected
+      //handshake message into records
+      if(decryptionEngine->cipherMode != CIPHER_MODE_NULL ||
+         decryptionEngine->hashAlgo != NULL)
+      {
+         //A TLS endpoint that receives a record larger than its advertised
+         //limit must generate a fatal record_overflow alert
+         if(ntohs(record->length) > decryptionEngine->recordSizeLimit)
+            return ERROR_RECORD_OVERFLOW;
+      }
+   }
+#endif
+
 #if (TLS_MAX_EMPTY_RECORDS > 0)
    //Empty record received?
    if(ntohs(record->length) == 0)
@@ -714,584 +739,6 @@ error_t tlsProcessRecord(TlsContext *context, TlsRecord *record)
 #endif
 
    //Successful processing
-   return NO_ERROR;
-}
-
-
-/**
- * @brief Encrypt an outgoing TLS record
- * @param[in] context Pointer to the TLS context
- * @param[in] encryptionEngine Pointer to the encryption engine
- * @param[in,out] record TLS record to be encrypted
- * @return Error code
- **/
-
-error_t tlsEncryptRecord(TlsContext *context,
-   TlsEncryptionEngine *encryptionEngine, void *record)
-{
-   error_t error;
-   size_t length;
-   uint8_t *data;
-
-   //Get the length of the TLS record
-   length = tlsGetRecordLength(context, record);
-   //Point to the payload
-   data = tlsGetRecordData(context, record);
-
-   //Message authentication is required?
-   if(encryptionEngine->hashAlgo != NULL)
-   {
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= SSL_VERSION_3_0)
-      //SSL 3.0 currently selected?
-      if(encryptionEngine->version == SSL_VERSION_3_0)
-      {
-         //SSL 3.0 uses an older obsolete version of the HMAC construction
-         error = sslComputeMac(encryptionEngine, record, data, length,
-            data + length);
-         //Any error to report?
-         if(error)
-            return error;
-      }
-      else
-#endif
-#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
-      //TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
-      if(encryptionEngine->version >= TLS_VERSION_1_0)
-      {
-         //TLS uses a HMAC construction
-         error = tlsComputeMac(context, encryptionEngine, record, data,
-            length, data + length);
-         //Any error to report?
-         if(error)
-            return error;
-      }
-      else
-#endif
-      //Invalid TLS version?
-      {
-         //Report an error
-         return ERROR_INVALID_VERSION;
-      }
-
-      //Debug message
-      TRACE_DEBUG("Write sequence number:\r\n");
-      TRACE_DEBUG_ARRAY("  ", &encryptionEngine->seqNum, sizeof(TlsSequenceNumber));
-      TRACE_DEBUG("Computed MAC:\r\n");
-      TRACE_DEBUG_ARRAY("  ", data + length, encryptionEngine->hashAlgo->digestSize);
-
-      //Adjust the length of the message
-      length += encryptionEngine->hashAlgo->digestSize;
-      //Fix length field
-      tlsSetRecordLength(context, record, length);
-
-      //Increment sequence number
-      tlsIncSequenceNumber(&encryptionEngine->seqNum);
-   }
-
-   //Encryption is required?
-   if(encryptionEngine->cipherMode != CIPHER_MODE_NULL)
-   {
-      //Debug message
-      TRACE_DEBUG("Record to be encrypted (%" PRIuSIZE " bytes):\r\n", length);
-      TRACE_DEBUG_ARRAY("  ", record, length + sizeof(TlsRecord));
-
-#if (TLS_STREAM_CIPHER_SUPPORT == ENABLED)
-      //Stream cipher?
-      if(encryptionEngine->cipherMode == CIPHER_MODE_STREAM)
-      {
-         //Encrypt record contents
-         encryptionEngine->cipherAlgo->encryptStream(encryptionEngine->cipherContext,
-            data, data, length);
-      }
-      else
-#endif
-#if (TLS_CBC_CIPHER_SUPPORT == ENABLED)
-      //CBC block cipher?
-      if(encryptionEngine->cipherMode == CIPHER_MODE_CBC)
-      {
-         size_t i;
-         size_t paddingLen;
-
-#if (TLS_MAX_VERSION >= TLS_VERSION_1_1 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
-         //TLS 1.1 and 1.2 use an explicit IV
-         if(encryptionEngine->version >= TLS_VERSION_1_1)
-         {
-            //Make room for the IV at the beginning of the data
-            memmove(data + encryptionEngine->recordIvLen, data, length);
-
-            //The initialization vector should be chosen at random
-            error = context->prngAlgo->read(context->prngContext, data,
-               encryptionEngine->recordIvLen);
-            //Any error to report?
-            if(error)
-               return error;
-
-            //Adjust the length of the message
-            length += encryptionEngine->recordIvLen;
-         }
-#endif
-         //Get the actual amount of bytes in the last block
-         paddingLen = (length + 1) % encryptionEngine->cipherAlgo->blockSize;
-
-         //Padding is added to force the length of the plaintext to be an
-         //integral multiple of the cipher's block length
-         if(paddingLen > 0)
-            paddingLen = encryptionEngine->cipherAlgo->blockSize - paddingLen;
-
-         //Write padding bytes
-         for(i = 0; i <= paddingLen; i++)
-            data[length + i] = (uint8_t) paddingLen;
-
-         //Compute the length of the resulting message
-         length += paddingLen + 1;
-         //Fix length field
-         tlsSetRecordLength(context, record, length);
-
-         //Debug message
-         TRACE_DEBUG("Record with padding (%" PRIuSIZE " bytes):\r\n", length);
-         TRACE_DEBUG_ARRAY("  ", record, length + sizeof(TlsRecord));
-
-         //CBC encryption
-         error = cbcEncrypt(encryptionEngine->cipherAlgo,
-            encryptionEngine->cipherContext, encryptionEngine->iv, data, data, length);
-         //Any error to report?
-         if(error)
-            return error;
-      }
-      else
-#endif
-#if (TLS_CCM_CIPHER_SUPPORT == ENABLED || TLS_CCM_8_CIPHER_SUPPORT == ENABLED || \
-   TLS_GCM_CIPHER_SUPPORT == ENABLED || TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
-      //AEAD cipher?
-      if(encryptionEngine->cipherMode == CIPHER_MODE_CCM ||
-         encryptionEngine->cipherMode == CIPHER_MODE_GCM ||
-         encryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
-      {
-         uint8_t *tag;
-         size_t aadLen;
-         size_t nonceLen;
-         uint8_t aad[13];
-         uint8_t nonce[12];
-
-         //TLS 1.3 currently selected?
-         if(encryptionEngine->version == TLS_VERSION_1_3)
-         {
-            //The type field indicates the higher-level protocol used to process
-            //the enclosed fragment
-            data[length++] = tlsGetRecordType(context, record);
-
-            //In TLS 1.3, the outer opaque_type field of a TLS record is always
-            //set to the value 23 (application data)
-            tlsSetRecordType(context, record, TLS_TYPE_APPLICATION_DATA);
-
-            //Fix the length field of the TLS record
-            tlsSetRecordLength(context, record, length +
-               encryptionEngine->authTagLen);
-         }
-
-         //Additional data to be authenticated
-         tlsFormatAad(context, encryptionEngine, record, aad, &aadLen);
-
-         //Check the length of the nonce explicit part
-         if(encryptionEngine->recordIvLen != 0)
-         {
-            //Make room for the explicit nonce at the beginning of the record
-            memmove(data + encryptionEngine->recordIvLen, data, length);
-
-            //The explicit part of the nonce is chosen by the sender and is
-            //carried in each TLS record
-            error = context->prngAlgo->read(context->prngContext, data,
-               encryptionEngine->recordIvLen);
-            //Any error to report?
-            if(error)
-               return error;
-         }
-
-         //Generate the nonce
-         tlsFormatNonce(context, encryptionEngine, record, data, nonce,
-            &nonceLen);
-
-         //Point to the plaintext
-         data += encryptionEngine->recordIvLen;
-         //Point to the buffer where to store the authentication tag
-         tag = data + length;
-
-#if (TLS_CCM_CIPHER_SUPPORT == ENABLED || TLS_CCM_8_CIPHER_SUPPORT == ENABLED)
-         //CCM AEAD cipher?
-         if(encryptionEngine->cipherMode == CIPHER_MODE_CCM)
-         {
-            //Authenticated encryption using CCM
-            error = ccmEncrypt(encryptionEngine->cipherAlgo,
-               encryptionEngine->cipherContext, nonce, nonceLen, aad, aadLen,
-               data, data, length, tag, encryptionEngine->authTagLen);
-         }
-         else
-#endif
-#if (TLS_GCM_CIPHER_SUPPORT == ENABLED)
-         //GCM AEAD cipher?
-         if(encryptionEngine->cipherMode == CIPHER_MODE_GCM)
-         {
-            //Authenticated encryption using GCM
-            error = gcmEncrypt(encryptionEngine->gcmContext, nonce, nonceLen,
-               aad, aadLen, data, data, length, tag, encryptionEngine->authTagLen);
-         }
-         else
-#endif
-#if (TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
-         //ChaCha20Poly1305 AEAD cipher?
-         if(encryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
-         {
-            //Authenticated encryption using ChaCha20Poly1305
-            error = chacha20Poly1305Encrypt(encryptionEngine->encKey,
-               encryptionEngine->encKeyLen, nonce, nonceLen, aad, aadLen,
-               data, data, length, tag, encryptionEngine->authTagLen);
-         }
-         else
-#endif
-         //Invalid cipher mode?
-         {
-            //The specified cipher mode is not supported
-            error = ERROR_UNSUPPORTED_CIPHER_MODE;
-         }
-
-         //Failed to encrypt data?
-         if(error)
-            return error;
-
-         //Compute the length of the resulting message
-         length += encryptionEngine->recordIvLen + encryptionEngine->authTagLen;
-         //Fix length field
-         tlsSetRecordLength(context, record, length);
-
-         //Increment sequence number
-         tlsIncSequenceNumber(&encryptionEngine->seqNum);
-      }
-      else
-#endif
-      //Invalid cipher mode?
-      {
-         //The specified cipher mode is not supported
-         return ERROR_UNSUPPORTED_CIPHER_MODE;
-      }
-
-      //Debug message
-      TRACE_DEBUG("Encrypted record (%" PRIuSIZE " bytes):\r\n", length);
-      TRACE_DEBUG_ARRAY("  ", record, length + sizeof(TlsRecord));
-   }
-
-   //Successful encryption
-   return NO_ERROR;
-}
-
-
-/**
- * @brief Decrypt an incoming TLS record
- * @param[in] context Pointer to the TLS context
- * @param[in] decryptionEngine Pointer to the decryption engine
- * @param[in,out] record TLS record to be decrypted
- * @return Error code
- **/
-
-error_t tlsDecryptRecord(TlsContext *context,
-   TlsEncryptionEngine *decryptionEngine, void *record)
-{
-   error_t error;
-   size_t length;
-   uint8_t *data;
-
-   //Get the length of the TLS record
-   length = tlsGetRecordLength(context, record);
-   //Point to the payload
-   data = tlsGetRecordData(context, record);
-
-   //Decrypt record if necessary
-   if(decryptionEngine->cipherMode != CIPHER_MODE_NULL)
-   {
-      //Debug message
-      TRACE_DEBUG("Record to be decrypted (%" PRIuSIZE " bytes):\r\n", length);
-      TRACE_DEBUG_ARRAY("  ", record, length + sizeof(TlsRecord));
-
-#if (TLS_STREAM_CIPHER_SUPPORT == ENABLED)
-      //Stream cipher?
-      if(decryptionEngine->cipherMode == CIPHER_MODE_STREAM)
-      {
-         //Decrypt record contents
-         decryptionEngine->cipherAlgo->decryptStream(decryptionEngine->cipherContext,
-            data, data, length);
-      }
-      else
-#endif
-#if (TLS_CBC_CIPHER_SUPPORT == ENABLED)
-      //CBC block cipher?
-      if(decryptionEngine->cipherMode == CIPHER_MODE_CBC)
-      {
-         size_t i;
-         size_t paddingLen;
-
-         //The length of the data must be a multiple of the block size
-         if((length % decryptionEngine->cipherAlgo->blockSize) != 0)
-            return ERROR_BAD_RECORD_MAC;
-
-         //CBC decryption
-         error = cbcDecrypt(decryptionEngine->cipherAlgo,
-            decryptionEngine->cipherContext, decryptionEngine->iv, data, data, length);
-         //Any error to report?
-         if(error)
-            return error;
-
-         //Debug message
-         TRACE_DEBUG("Record with padding (%" PRIuSIZE " bytes):\r\n", length);
-         TRACE_DEBUG_ARRAY("  ", record, length + sizeof(TlsRecord));
-
-#if (TLS_MAX_VERSION >= TLS_VERSION_1_1 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
-         //TLS 1.1 and 1.2 use an explicit IV
-         if(decryptionEngine->version >= TLS_VERSION_1_1)
-         {
-            //Make sure the message length is acceptable
-            if(length < decryptionEngine->recordIvLen)
-               return ERROR_BAD_RECORD_MAC;
-
-            //Adjust the length of the message
-            length -= decryptionEngine->recordIvLen;
-
-            //Discard the first cipher block (corresponding to the explicit IV)
-            memmove(data, data + decryptionEngine->recordIvLen, length);
-         }
-#endif
-         //Make sure the message length is acceptable
-         if(length < decryptionEngine->cipherAlgo->blockSize)
-            return ERROR_BAD_RECORD_MAC;
-
-         //Compute the length of the padding string
-         paddingLen = data[length - 1];
-         //Erroneous padding length?
-         if(paddingLen >= length)
-            return ERROR_BAD_RECORD_MAC;
-
-         //The receiver must check the padding
-         for(i = 0; i <= paddingLen; i++)
-         {
-            //Each byte in the padding data must be filled with the padding
-            //length value
-            if(data[length - 1 - i] != paddingLen)
-               return ERROR_BAD_RECORD_MAC;
-         }
-
-         //Remove padding bytes
-         length -= paddingLen + 1;
-         //Fix the length field of the TLS record
-         tlsSetRecordLength(context, record, length);
-      }
-      else
-#endif
-#if (TLS_CCM_CIPHER_SUPPORT == ENABLED || TLS_CCM_8_CIPHER_SUPPORT == ENABLED || \
-   TLS_GCM_CIPHER_SUPPORT == ENABLED || TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
-      //AEAD cipher?
-      if(decryptionEngine->cipherMode == CIPHER_MODE_CCM ||
-         decryptionEngine->cipherMode == CIPHER_MODE_GCM ||
-         decryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
-      {
-         uint8_t *ciphertext;
-         uint8_t *tag;
-         size_t aadLen;
-         size_t nonceLen;
-         uint8_t aad[13];
-         uint8_t nonce[12];
-
-         //Make sure the message length is acceptable
-         if(length < (decryptionEngine->recordIvLen + decryptionEngine->authTagLen))
-            return ERROR_BAD_RECORD_MAC;
-
-         //Calculate the length of the ciphertext
-         length -= decryptionEngine->recordIvLen + decryptionEngine->authTagLen;
-
-         //Version of TLS prior to TLS 1.3?
-         if(decryptionEngine->version <= TLS_VERSION_1_2)
-         {
-            //Fix the length field of the TLS record
-            tlsSetRecordLength(context, record, length);
-         }
-         else
-         {
-            //The length must not exceed 2^14 octets + 1 octet for ContentType +
-            //the maximum AEAD expansion. An endpoint that receives a record
-            //that exceeds this length must terminate the connection with a
-            //record_overflow alert
-            if(length > (TLS_MAX_RECORD_LENGTH + 1))
-               return ERROR_RECORD_OVERFLOW;
-
-            //In TLS 1.3, the outer opaque_type field of a TLS record is always
-            //set to the value 23 (application data)
-            if(tlsGetRecordType(context, record) != TLS_TYPE_APPLICATION_DATA)
-               return ERROR_BAD_RECORD_MAC;
-         }
-
-         //Additional data to be authenticated
-         tlsFormatAad(context, decryptionEngine, record, aad, &aadLen);
-
-         //Generate the nonce
-         tlsFormatNonce(context, decryptionEngine, record, data, nonce,
-            &nonceLen);
-
-         //Point to the ciphertext
-         ciphertext = data + decryptionEngine->recordIvLen;
-         //Point to the authentication tag
-         tag = ciphertext + length;
-
-#if (TLS_CCM_CIPHER_SUPPORT == ENABLED || TLS_CCM_8_CIPHER_SUPPORT == ENABLED)
-         //CCM AEAD cipher?
-         if(decryptionEngine->cipherMode == CIPHER_MODE_CCM)
-         {
-            //Authenticated decryption using CCM
-            error = ccmDecrypt(decryptionEngine->cipherAlgo,
-               decryptionEngine->cipherContext, nonce, nonceLen, aad, aadLen,
-               ciphertext, ciphertext, length, tag, decryptionEngine->authTagLen);
-         }
-         else
-#endif
-#if (TLS_GCM_CIPHER_SUPPORT == ENABLED)
-         //GCM AEAD cipher?
-         if(decryptionEngine->cipherMode == CIPHER_MODE_GCM)
-         {
-            //Authenticated decryption using GCM
-            error = gcmDecrypt(decryptionEngine->gcmContext, nonce, nonceLen,
-               aad, aadLen, ciphertext, ciphertext, length, tag,
-               decryptionEngine->authTagLen);
-         }
-         else
-#endif
-#if (TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
-         //ChaCha20Poly1305 AEAD cipher?
-         if(decryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
-         {
-            //Authenticated decryption using ChaCha20Poly1305
-            error = chacha20Poly1305Decrypt(decryptionEngine->encKey,
-               decryptionEngine->encKeyLen, nonce, 12, aad, aadLen, data,
-               data, length, tag, decryptionEngine->authTagLen);
-         }
-         else
-#endif
-         //Invalid cipher mode?
-         {
-            //The specified cipher mode is not supported
-            error = ERROR_UNSUPPORTED_CIPHER_MODE;
-         }
-
-         //Wrong authentication tag?
-         if(error)
-            return ERROR_BAD_RECORD_MAC;
-
-         //Discard the explicit part of the nonce
-         if(decryptionEngine->recordIvLen != 0)
-         {
-            memmove(data, data + decryptionEngine->recordIvLen, length);
-         }
-
-         //TLS 1.3 currently selected?
-         if(decryptionEngine->version == TLS_VERSION_1_3)
-         {
-            //Upon successful decryption of an encrypted record, the receiving
-            //implementation scans the field from the end toward the beginning
-            //until it finds a non-zero octet
-            while(length > 0 && data[length - 1] == 0)
-            {
-               length--;
-            }
-
-            //If a receiving implementation does not find a non-zero octet
-            //in the cleartext, it must terminate the connection with an
-            //unexpected_message alert
-            if(length == 0)
-               return ERROR_UNEXPECTED_MESSAGE;
-
-            //Retrieve the length of the plaintext
-            length--;
-
-            //The actual content type of the record is found in the type field
-            tlsSetRecordType(context, record, data[length]);
-            //Fix the length field of the TLS record
-            tlsSetRecordLength(context, record, length);
-         }
-
-         //Increment sequence number
-         tlsIncSequenceNumber(&decryptionEngine->seqNum);
-      }
-      else
-#endif
-      //Invalid cipher mode?
-      {
-         //The specified cipher mode is not supported
-         return ERROR_UNSUPPORTED_CIPHER_MODE;
-      }
-
-      //Debug message
-      TRACE_DEBUG("Decrypted record (%" PRIuSIZE " bytes):\r\n", length);
-      TRACE_DEBUG_ARRAY("  ", record, length + sizeof(TlsRecord));
-   }
-
-   //Check message authentication code if necessary
-   if(decryptionEngine->hashAlgo != NULL)
-   {
-      //Make sure the message length is acceptable
-      if(length < decryptionEngine->hashAlgo->digestSize)
-         return ERROR_BAD_RECORD_MAC;
-
-      //Adjust the length of the message
-      length -= decryptionEngine->hashAlgo->digestSize;
-      //Fix the length field of the TLS record
-      tlsSetRecordLength(context, record, length);
-
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= SSL_VERSION_3_0)
-      //SSL 3.0 currently selected?
-      if(decryptionEngine->version == SSL_VERSION_3_0)
-      {
-         //SSL 3.0 uses an older obsolete version of the HMAC construction
-         error = sslComputeMac(decryptionEngine, record, data, length,
-            decryptionEngine->hmacContext->digest);
-         //Any error to report?
-         if(error)
-            return error;
-      }
-      else
-#endif
-#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
-      //TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
-      if(decryptionEngine->version >= TLS_VERSION_1_0)
-      {
-         //TLS uses a HMAC construction
-         error = tlsComputeMac(context, decryptionEngine, record, data,
-            length, decryptionEngine->hmacContext->digest);
-         //Any error to report?
-         if(error)
-            return error;
-      }
-      else
-#endif
-      //Invalid TLS version?
-      {
-         //Report an error
-         return ERROR_INVALID_VERSION;
-      }
-
-      //Debug message
-      TRACE_DEBUG("Read sequence number:\r\n");
-      TRACE_DEBUG_ARRAY("  ", &decryptionEngine->seqNum, sizeof(TlsSequenceNumber));
-      TRACE_DEBUG("Computed MAC:\r\n");
-      TRACE_DEBUG_ARRAY("  ", decryptionEngine->hmacContext->digest, decryptionEngine->hashAlgo->digestSize);
-
-      //Check the message authentication code
-      if(memcmp(data + length, decryptionEngine->hmacContext->digest,
-         decryptionEngine->hashAlgo->digestSize))
-      {
-         //Invalid MAC
-         return ERROR_BAD_RECORD_MAC;
-      }
-
-      //Increment sequence number
-      tlsIncSequenceNumber(&decryptionEngine->seqNum);
-   }
-
-   //Successful decryption
    return NO_ERROR;
 }
 
@@ -1442,69 +889,6 @@ uint8_t *tlsGetRecordData(TlsContext *context, void *record)
 
 
 /**
- * @brief Compute message authentication code
- * @param[in] context Pointer to the TLS context
- * @param[in] encryptionEngine Pointer to the encryption/decryption engine
- * @param[in] record Pointer to the TLS record
- * @param[in] data Pointer to the record data
- * @param[in] dataLen Length of the data
- * @param[out] mac The computed MAC value
- * @return Error code
- **/
-
-error_t tlsComputeMac(TlsContext *context, TlsEncryptionEngine *encryptionEngine,
-   void *record, const uint8_t *data, size_t dataLen, uint8_t *mac)
-{
-   //Initialize HMAC calculation
-   hmacInit(encryptionEngine->hmacContext, encryptionEngine->hashAlgo,
-      encryptionEngine->macKey, encryptionEngine->macKeyLen);
-
-#if (DTLS_SUPPORT == ENABLED)
-   //DTLS protocol?
-   if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_DATAGRAM)
-   {
-      const DtlsRecord *dtlsRecord;
-
-      //Point to the DTLS record
-      dtlsRecord = (DtlsRecord *) record;
-
-      //Compute the MAC over the 64-bit value formed by concatenating the epoch
-      //and the sequence number in the order they appear on the wire
-      hmacUpdate(encryptionEngine->hmacContext, (void *) &dtlsRecord->epoch, 2);
-      hmacUpdate(encryptionEngine->hmacContext, &dtlsRecord->seqNum, 6);
-
-      //Compute MAC over the record contents
-      hmacUpdate(encryptionEngine->hmacContext, &dtlsRecord->type, 3);
-      hmacUpdate(encryptionEngine->hmacContext, (void *) &dtlsRecord->length, 2);
-      hmacUpdate(encryptionEngine->hmacContext, data, dataLen);
-   }
-   else
-#endif
-   //TLS protocol?
-   {
-      const TlsRecord *tlsRecord;
-
-      //Point to the TLS record
-      tlsRecord = (TlsRecord *) record;
-
-      //Compute MAC over the implicit sequence number
-      hmacUpdate(encryptionEngine->hmacContext, &encryptionEngine->seqNum,
-         sizeof(TlsSequenceNumber));
-
-      //Compute MAC over the record contents
-      hmacUpdate(encryptionEngine->hmacContext, tlsRecord, sizeof(TlsRecord));
-      hmacUpdate(encryptionEngine->hmacContext, data, dataLen);
-   }
-
-   //Append the resulting MAC to the message
-   hmacFinal(encryptionEngine->hmacContext, mac);
-
-   //Successful processing
-   return NO_ERROR;
-}
-
-
-/**
  * @brief Format additional authenticated data (AAD)
  * @param[in] context Pointer to the TLS context
  * @param[in] encryptionEngine Pointer to the encryption engine
@@ -1550,18 +934,12 @@ void tlsFormatAad(TlsContext *context, TlsEncryptionEngine *encryptionEngine,
       }
       else
       {
-#if (TLS_VERSION_1_3 == TLS_VERSION_1_3_DRAFT(23) || \
-   TLS_VERSION_1_3 == TLS_VERSION_1_3_DRAFT(24))
-         //The additional data input is empty (zero length)
-         *aadLen = 0;
-#else
          //The additional data input is the record header (refer to RFC 8446,
          //section 5.2)
          memcpy(aad, record, 5);
 
          //Length of the additional data, in bytes
          *aadLen = 5;
-#endif
       }
    }
 }

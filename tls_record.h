@@ -4,7 +4,9 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ *
+ * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -23,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.0
+ * @version 1.9.2
  **/
 
 #ifndef _TLS_RECORD_H
@@ -52,20 +54,11 @@ error_t tlsReadRecord(TlsContext *context, uint8_t *data,
 
 error_t tlsProcessRecord(TlsContext *context, TlsRecord *record);
 
-error_t tlsEncryptRecord(TlsContext *context,
-   TlsEncryptionEngine *encryptionEngine, void *record);
-
-error_t tlsDecryptRecord(TlsContext *context,
-   TlsEncryptionEngine *decryptionEngine, void *record);
-
 void tlsSetRecordType(TlsContext *context, void *record, uint8_t type);
 uint8_t tlsGetRecordType(TlsContext *context, void *record);
 void tlsSetRecordLength(TlsContext *context, void *record, size_t length);
 size_t tlsGetRecordLength(TlsContext *context, void *record);
 uint8_t *tlsGetRecordData(TlsContext *context, void *record);
-
-error_t tlsComputeMac(TlsContext *context, TlsEncryptionEngine *encryptionEngine,
-   void *record, const uint8_t *data, size_t dataLen, uint8_t *mac);
 
 void tlsFormatAad(TlsContext *context, TlsEncryptionEngine *encryptionEngine,
    const void *record, uint8_t *aad, size_t *aadLen);

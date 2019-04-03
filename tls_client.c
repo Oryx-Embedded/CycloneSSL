@@ -4,7 +4,9 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ *
+ * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -29,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.0
+ * @version 1.9.2
  **/
 
 //Switch to the appropriate trace level
@@ -151,10 +153,16 @@ error_t tlsSendClientHello(TlsContext *context)
             if(!error)
             {
                //Any preferred ECDHE or FFDHE group?
-               if(context->preferredGroup != TLS_GROUP_NONE)
+               if(tls13IsGroupSupported(context, context->preferredGroup))
                {
                   //Pregenerate key share using preferred named group
                   error = tls13GenerateKeyShare(context, context->preferredGroup);
+               }
+               else
+               {
+                  //Request group selection from the server, at the cost of an
+                  //additional round trip
+                  context->preferredGroup = TLS_GROUP_NONE;
                }
             }
          }
@@ -860,9 +868,9 @@ error_t tlsParseServerHello(TlsContext *context,
    const TlsServerHello *message, size_t length)
 {
    error_t error;
+   uint16_t cipherSuite;
+   uint8_t compressMethod;
    const uint8_t *p;
-   TlsCipherSuite cipherSuite;
-   TlsCompressMethod compressMethod;
    TlsHelloExtensions extensions;
 
    //Debug message
@@ -899,26 +907,26 @@ error_t tlsParseServerHello(TlsContext *context,
    length -= message->sessionIdLen;
 
    //Malformed ServerHello message?
-   if(length < sizeof(TlsCipherSuite))
+   if(length < sizeof(uint16_t))
       return ERROR_DECODING_FAILED;
 
    //Get the negotiated cipher suite
    cipherSuite = LOAD16BE(p);
    //Point to the next field
-   p += sizeof(TlsCipherSuite);
+   p += sizeof(uint16_t);
    //Remaining bytes to process
-   length -= sizeof(TlsCipherSuite);
+   length -= sizeof(uint16_t);
 
    //Malformed ServerHello message?
-   if(length < sizeof(TlsCompressMethod))
+   if(length < sizeof(uint8_t))
       return ERROR_DECODING_FAILED;
 
    //Get the negotiated compression method
    compressMethod = *p;
    //Point to the next field
-   p += sizeof(TlsCompressMethod);
+   p += sizeof(uint8_t);
    //Remaining bytes to process
-   length -= sizeof(TlsCompressMethod);
+   length -= sizeof(uint8_t);
 
    //Server version
    TRACE_INFO("  serverVersion = 0x%04" PRIX16 " (%s)\r\n",
@@ -939,6 +947,11 @@ error_t tlsParseServerHello(TlsContext *context,
 
    //Compression method
    TRACE_INFO("  compressMethod = 0x%02" PRIX8 "\r\n", compressMethod);
+
+   //The CRIME exploit takes advantage of TLS compression, so conservative
+   //implementations do not accept compression at the TLS level
+   if(compressMethod != TLS_COMPRESSION_METHOD_NULL)
+      return ERROR_ILLEGAL_PARAMETER;
 
    //Parse the list of extensions offered by the server
    error = tlsParseHelloExtensions(TLS_TYPE_SERVER_HELLO, p, length,
@@ -990,7 +1003,7 @@ error_t tlsParseServerHello(TlsContext *context,
 
       //Check whether the server has decided to resume a previous session
       error = tlsResumeClientSession(context, message->sessionId,
-         message->sessionIdLen, cipherSuite, compressMethod);
+         message->sessionIdLen, cipherSuite);
       //Any error to report?
       if(error)
          return error;
@@ -998,12 +1011,6 @@ error_t tlsParseServerHello(TlsContext *context,
       //Set cipher suite
       error = tlsSelectCipherSuite(context, cipherSuite);
       //Specified cipher suite not supported?
-      if(error)
-         return error;
-
-      //Set compression method
-      error = tlsSelectCompressMethod(context, compressMethod);
-      //Specified compression method not supported?
       if(error)
          return error;
 
@@ -1170,12 +1177,6 @@ error_t tlsParseServerHello(TlsContext *context,
          if(cipherSuite != context->cipherSuite.identifier)
             return ERROR_ILLEGAL_PARAMETER;
       }
-
-      //Set compression method
-      error = tlsSelectCompressMethod(context, compressMethod);
-      //Specified compression method not supported?
-      if(error)
-         return error;
 
       //If using (EC)DHE key establishment, servers offer exactly one
       //KeyShareEntry in the ServerHello
@@ -1501,6 +1502,13 @@ error_t tlsParseCertificateRequest(TlsContext *context,
          n = ntohs(supportedSignAlgos->length);
          //Malformed CertificateRequest message?
          if(n > length)
+            return ERROR_DECODING_FAILED;
+
+         //The supported_signature_algorithms field cannot be emtpy (refer to
+         //RFC 5246, section 7.4.4)
+         if(n == 0)
+            return ERROR_DECODING_FAILED;
+         if((n % 2) != 0)
             return ERROR_DECODING_FAILED;
 
          //Point to the next field

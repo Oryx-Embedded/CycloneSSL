@@ -4,7 +4,9 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ *
+ * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -23,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.0
+ * @version 1.9.2
  **/
 
 //Switch to the appropriate trace level
@@ -193,7 +195,7 @@ error_t tls13SendNewSessionTicket(TlsContext *context)
    error = NO_ERROR;
 
    //Send as many NewSessionTicket messages as requested
-   if(context->newSessionTicketCount < TLS_NEW_SESSION_TICKET_COUNT)
+   if(context->newSessionTicketCount < TLS13_NEW_SESSION_TICKET_COUNT)
    {
       //Point to the buffer where to format the message
       message = (Tls13NewSessionTicket *) (context->txBuffer + context->txBufferLen);
@@ -278,16 +280,16 @@ error_t tls13FormatHelloRetryRequest(TlsContext *context,
    //The cipher_suite field contains the cipher suite selected by the server
    STORE16BE(context->cipherSuite.identifier, p);
    //Advance data pointer
-   p += sizeof(TlsCipherSuite);
+   p += sizeof(uint16_t);
    //Adjust the length of the message
-   *length += sizeof(TlsCipherSuite);
+   *length += sizeof(uint16_t);
 
    //The legacy_compression_method field must have the value 0
    *p = TLS_COMPRESSION_METHOD_NULL;
    //Advance data pointer
-   p += sizeof(TlsCompressMethod);
+   p += sizeof(uint8_t);
    //Adjust the length of the message
-   *length += sizeof(TlsCompressMethod);
+   *length += sizeof(uint8_t);
 
    //Point to the list of extensions
    extensionList = (TlsExtensionList *) p;

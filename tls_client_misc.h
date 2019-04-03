@@ -4,7 +4,9 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ *
+ * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -23,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.0
+ * @version 1.9.2
  **/
 
 #ifndef _TLS_CLIENT_MISC_H
@@ -73,7 +75,7 @@ error_t tlsSelectClientVersion(TlsContext *context,
    const TlsServerHello *message, const TlsHelloExtensions *extensions);
 
 error_t tlsResumeClientSession(TlsContext *context, const uint8_t *sessionId,
-   size_t sessionIdLen, uint16_t cipherSuite, uint8_t compressMethod);
+   size_t sessionIdLen, uint16_t cipherSuite);
 
 //C++ guard
 #ifdef __cplusplus

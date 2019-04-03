@@ -4,7 +4,9 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ *
+ * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -23,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.0
+ * @version 1.9.2
  **/
 
 #ifndef _TLS_MISC_H
@@ -44,7 +46,6 @@ error_t tlsGenerateRandomValue(TlsContext *context, uint8_t *random);
 
 error_t tlsSelectVersion(TlsContext *context, uint16_t version);
 error_t tlsSelectCipherSuite(TlsContext *context, uint16_t identifier);
-error_t tlsSelectCompressMethod(TlsContext *context, uint8_t identifier);
 
 error_t tlsInitEncryptionEngine(TlsContext *context,
    TlsEncryptionEngine *encryptionEngine, TlsConnectionEnd entity,
@@ -68,6 +69,8 @@ TlsNamedGroup tlsGetNamedCurve(const uint8_t *oid, size_t length);
 
 size_t tlsComputeEncryptionOverhead(TlsEncryptionEngine *encryptionEngine,
    size_t payloadLen);
+
+bool_t tlsCheckDnsHostname(const char_t *name, size_t length);
 
 //C++ guard
 #ifdef __cplusplus

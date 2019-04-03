@@ -4,7 +4,9 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ *
+ * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -23,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.0
+ * @version 1.9.2
  **/
 
 //Switch to the appropriate trace level
@@ -180,41 +182,50 @@ error_t tlsFormatClientSniExtension(TlsContext *context,
    //extension
    if(context->serverName != NULL)
    {
-      TlsExtension *extension;
-      TlsServerNameList *serverNameList;
-      TlsServerName *serverName;
-
       //Determine the length of the server name
       n = strlen(context->serverName);
 
-      //Add SNI (Server Name Indication) extension
-      extension = (TlsExtension *) p;
-      //Type of the extension
-      extension->type = HTONS(TLS_EXT_SERVER_NAME);
+      //The server name must be a valid DNS hostname
+      if(tlsCheckDnsHostname(context->serverName, n))
+      {
+         TlsExtension *extension;
+         TlsServerNameList *serverNameList;
+         TlsServerName *serverName;
 
-      //Point to the list of server names
-      serverNameList = (TlsServerNameList *) extension->value;
+         //Add SNI (Server Name Indication) extension
+         extension = (TlsExtension *) p;
+         //Type of the extension
+         extension->type = HTONS(TLS_EXT_SERVER_NAME);
 
-      //Point to the server name
-      serverName = (TlsServerName *) serverNameList->value;
-      //Fill in the type and the length fields
-      serverName->type = TLS_NAME_TYPE_HOSTNAME;
-      serverName->length = htons(n);
-      //Copy server name
-      memcpy(serverName->hostname, context->serverName, n);
+         //Point to the list of server names
+         serverNameList = (TlsServerNameList *) extension->value;
+         //In practice, current client implementations only send one name
+         serverName = (TlsServerName *) serverNameList->value;
 
-      //Compute the length, in byte, of the structure
-      n += sizeof(TlsServerName);
-      //Fix the length of the list
-      serverNameList->length = htons(n);
+         //Fill in the type and the length fields
+         serverName->type = TLS_NAME_TYPE_HOSTNAME;
+         serverName->length = htons(n);
+         //Copy server name
+         memcpy(serverName->hostname, context->serverName, n);
 
-      //Consider the 2-byte length field that precedes the list
-      n += sizeof(TlsServerNameList);
-      //Fix the length of the extension
-      extension->length = htons(n);
+         //Compute the length, in byte, of the structure
+         n += sizeof(TlsServerName);
+         //Fix the length of the list
+         serverNameList->length = htons(n);
 
-      //Compute the length, in bytes, of the ServerName extension
-      n += sizeof(TlsExtension);
+         //Consider the 2-byte length field that precedes the list
+         n += sizeof(TlsServerNameList);
+         //Fix the length of the extension
+         extension->length = htons(n);
+
+         //Compute the length, in bytes, of the ServerName extension
+         n += sizeof(TlsExtension);
+      }
+      else
+      {
+         //The server name is not a valid DNS hostname
+         n = 0;
+      }
    }
 #endif
 
@@ -313,7 +324,6 @@ error_t tlsFormatClientRecordSizeLimitExtension(TlsContext *context,
    //maximum record size (refer to RFC 8449, section 4)
    recordSizeLimit = MIN(context->rxBufferMaxLen, TLS_MAX_RECORD_LENGTH);
 
-#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
    //Check whether TLS 1.3 is supported
    if(context->versionMax >= TLS_VERSION_1_3 &&
       context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM)
@@ -321,7 +331,6 @@ error_t tlsFormatClientRecordSizeLimitExtension(TlsContext *context,
       //The value includes the content type and padding added in TLS 1.3
       recordSizeLimit++;
    }
-#endif
 
    //The value of RecordSizeLimit is the maximum size of record in octets
    //that the endpoint is willing to receive
@@ -977,11 +986,6 @@ error_t tlsParseServerMaxFragLenExtension(TlsContext *context,
 error_t tlsParseServerRecordSizeLimitExtension(TlsContext *context,
    const uint8_t *recordSizeLimit)
 {
-   error_t error;
-
-   //Initialize status code
-   error = NO_ERROR;
-
 #if (TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)
    //RecordSizeLimit extension found?
    if(recordSizeLimit != NULL)
@@ -998,28 +1002,37 @@ error_t tlsParseServerRecordSizeLimitExtension(TlsContext *context,
       {
          //An endpoint must treat receipt of a smaller value as a fatal error
          //and generate an illegal_parameter alert
-         error = ERROR_ILLEGAL_PARAMETER;
+         return ERROR_ILLEGAL_PARAMETER;
       }
-      else
+
+      //TLS 1.3 currently selected?
+      if(context->version == TLS_VERSION_1_3)
       {
-#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
-         //TLS 1.3 currently selected?
-         if(context->version == TLS_VERSION_1_3)
-         {
-            //The value includes the content type and padding added in TLS 1.3
-            n--;
-         }
-#endif
-         //The peer can include any limit up to the protocol-defined limit for
-         //maximum record size. Even if a larger value is provided by a peer, an
-         //endpoint must not send records larger than the protocol-defined limit
-         context->recordSizeLimit = MIN(n, TLS_MAX_RECORD_LENGTH);
+         //The value includes the content type and padding added in TLS 1.3
+         n--;
       }
+
+      //The peer can include any limit up to the protocol-defined limit for
+      //maximum record size. Even if a larger value is provided by a peer, an
+      //endpoint must not send records larger than the protocol-defined limit
+      context->recordSizeLimit = MIN(n, TLS_MAX_RECORD_LENGTH);
+
+      //The RecordSizeLimit extension has been successfully negotiated
+      context->recordSizeLimitExtReceived = TRUE;
+   }
+   else
+   {
+      //If this extension is not negotiated, endpoints can send records of any
+      //size permitted by the protocol or other negotiated extensions
+      context->recordSizeLimit = TLS_MAX_RECORD_LENGTH;
+
+      //The RecordSizeLimit extension is not supported by the server
+      context->recordSizeLimitExtReceived = FALSE;
    }
 #endif
 
-   //Return status code
-   return error;
+   //Successful processing
+   return NO_ERROR;
 }
 
 

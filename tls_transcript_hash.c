@@ -4,7 +4,9 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ *
+ * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -23,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.0
+ * @version 1.9.2
  **/
 
 //Switch to the appropriate trace level
@@ -53,28 +55,28 @@ error_t tlsInitTranscriptHash(TlsContext *context)
 {
 #if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
    //MD5 context already instantiated?
-   if(context->handshakeMd5Context != NULL)
+   if(context->transcriptMd5Context != NULL)
    {
-      tlsFreeMem(context->handshakeMd5Context);
-      context->handshakeMd5Context = NULL;
+      tlsFreeMem(context->transcriptMd5Context);
+      context->transcriptMd5Context = NULL;
    }
 #endif
 
 #if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //SHA-1 context already instantiated?
-   if(context->handshakeSha1Context != NULL)
+   if(context->transcriptSha1Context != NULL)
    {
-      tlsFreeMem(context->handshakeSha1Context);
-      context->handshakeSha1Context = NULL;
+      tlsFreeMem(context->transcriptSha1Context);
+      context->transcriptSha1Context = NULL;
    }
 #endif
 
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
    //Hash algorithm context already instantiated?
-   if(context->handshakeHashContext != NULL)
+   if(context->transcriptHashContext != NULL)
    {
-      tlsFreeMem(context->handshakeHashContext);
-      context->handshakeHashContext = NULL;
+      tlsFreeMem(context->transcriptHashContext);
+      context->transcriptHashContext = NULL;
    }
 #endif
 
@@ -83,13 +85,13 @@ error_t tlsInitTranscriptHash(TlsContext *context)
    if(context->version <= TLS_VERSION_1_1)
    {
       //Allocate MD5 context
-      context->handshakeMd5Context = tlsAllocMem(sizeof(Md5Context));
+      context->transcriptMd5Context = tlsAllocMem(sizeof(Md5Context));
       //Failed to allocate memory?
-      if(context->handshakeMd5Context == NULL)
+      if(context->transcriptMd5Context == NULL)
          return ERROR_OUT_OF_MEMORY;
 
       //Initialize MD5 context
-      md5Init(context->handshakeMd5Context);
+      md5Init(context->transcriptMd5Context);
    }
 #endif
 
@@ -98,13 +100,13 @@ error_t tlsInitTranscriptHash(TlsContext *context)
    if(context->version <= TLS_VERSION_1_2)
    {
       //Allocate SHA-1 context
-      context->handshakeSha1Context = tlsAllocMem(sizeof(Sha1Context));
+      context->transcriptSha1Context = tlsAllocMem(sizeof(Sha1Context));
       //Failed to allocate memory?
-      if(context->handshakeSha1Context == NULL)
+      if(context->transcriptSha1Context == NULL)
          return ERROR_OUT_OF_MEMORY;
 
       //Initialize SHA-1 context
-      sha1Init(context->handshakeSha1Context);
+      sha1Init(context->transcriptSha1Context);
    }
 #endif
 
@@ -121,13 +123,13 @@ error_t tlsInitTranscriptHash(TlsContext *context)
          return ERROR_FAILURE;
 
       //Allocate hash algorithm context
-      context->handshakeHashContext = tlsAllocMem(hashAlgo->contextSize);
+      context->transcriptHashContext = tlsAllocMem(hashAlgo->contextSize);
       //Failed to allocate memory?
-      if(context->handshakeHashContext == NULL)
+      if(context->transcriptHashContext == NULL)
          return ERROR_OUT_OF_MEMORY;
 
       //Initialize the hash algorithm context
-      hashAlgo->init(context->handshakeHashContext);
+      hashAlgo->init(context->transcriptHashContext);
    }
 #endif
 
@@ -198,10 +200,10 @@ void tlsUpdateTranscriptHash(TlsContext *context, const void *data,
    if(context->version <= TLS_VERSION_1_1)
    {
       //Valid MD5 context?
-      if(context->handshakeMd5Context != NULL)
+      if(context->transcriptMd5Context != NULL)
       {
          //Update MD5 hash value with message contents
-         md5Update(context->handshakeMd5Context, data, length);
+         md5Update(context->transcriptMd5Context, data, length);
       }
    }
 #endif
@@ -211,10 +213,10 @@ void tlsUpdateTranscriptHash(TlsContext *context, const void *data,
    if(context->version <= TLS_VERSION_1_2)
    {
       //Valid SHA-1 context?
-      if(context->handshakeSha1Context != NULL)
+      if(context->transcriptSha1Context != NULL)
       {
          //Update SHA-1 hash value with message contents
-         sha1Update(context->handshakeSha1Context, data, length);
+         sha1Update(context->transcriptSha1Context, data, length);
       }
    }
 #endif
@@ -229,10 +231,10 @@ void tlsUpdateTranscriptHash(TlsContext *context, const void *data,
       hashAlgo = context->cipherSuite.prfHashAlgo;
 
       //Valid hash algorithm?
-      if(hashAlgo != NULL && context->handshakeHashContext != NULL)
+      if(hashAlgo != NULL && context->transcriptHashContext != NULL)
       {
          //Update hash value with message contents
-         hashAlgo->update(context->handshakeHashContext, data, length);
+         hashAlgo->update(context->transcriptHashContext, data, length);
       }
    }
 #endif
@@ -341,30 +343,30 @@ void tlsFreeTranscriptHash(TlsContext *context)
 {
 #if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
    //Release MD5 hash context
-   if(context->handshakeMd5Context != NULL)
+   if(context->transcriptMd5Context != NULL)
    {
-      memset(context->handshakeMd5Context, 0, sizeof(Md5Context));
-      tlsFreeMem(context->handshakeMd5Context);
-      context->handshakeMd5Context = NULL;
+      memset(context->transcriptMd5Context, 0, sizeof(Md5Context));
+      tlsFreeMem(context->transcriptMd5Context);
+      context->transcriptMd5Context = NULL;
    }
 #endif
 
 #if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //Release SHA-1 hash context
-   if(context->handshakeSha1Context != NULL)
+   if(context->transcriptSha1Context != NULL)
    {
-      memset(context->handshakeSha1Context, 0, sizeof(Sha1Context));
-      tlsFreeMem(context->handshakeSha1Context);
-      context->handshakeSha1Context = NULL;
+      memset(context->transcriptSha1Context, 0, sizeof(Sha1Context));
+      tlsFreeMem(context->transcriptSha1Context);
+      context->transcriptSha1Context = NULL;
    }
 #endif
 
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
    //Release transcript hash context
-   if(context->handshakeHashContext != NULL)
+   if(context->transcriptHashContext != NULL)
    {
-      tlsFreeMem(context->handshakeHashContext);
-      context->handshakeHashContext = NULL;
+      tlsFreeMem(context->transcriptHashContext);
+      context->transcriptHashContext = NULL;
    }
 #endif
 }
@@ -400,7 +402,7 @@ error_t tlsComputeVerifyData(TlsContext *context, TlsConnectionEnd entity,
       //Compute MD5(masterSecret + pad2 + MD5(handshakeMessages + label +
       //masterSecret + pad1))
       error = tlsFinalizeTranscriptHash(context, MD5_HASH_ALGO,
-         context->handshakeMd5Context, label, verifyData);
+         context->transcriptMd5Context, label, verifyData);
 
       //Check status code
       if(!error)
@@ -408,7 +410,7 @@ error_t tlsComputeVerifyData(TlsContext *context, TlsConnectionEnd entity,
          //Compute SHA(masterSecret + pad2 + SHA(handshakeMessages + label +
          //masterSecret + pad1))
          error = tlsFinalizeTranscriptHash(context, SHA1_HASH_ALGO,
-            context->handshakeSha1Context, label, verifyData + MD5_DIGEST_SIZE);
+            context->transcriptSha1Context, label, verifyData + MD5_DIGEST_SIZE);
       }
    }
    else
@@ -422,14 +424,14 @@ error_t tlsComputeVerifyData(TlsContext *context, TlsConnectionEnd entity,
 
       //Finalize MD5 hash computation
       error = tlsFinalizeTranscriptHash(context, MD5_HASH_ALGO,
-         context->handshakeMd5Context, "", digest);
+         context->transcriptMd5Context, "", digest);
 
       //Check status code
       if(!error)
       {
          //Finalize SHA-1 hash computation
          error = tlsFinalizeTranscriptHash(context, SHA1_HASH_ALGO,
-            context->handshakeSha1Context, "", digest + MD5_DIGEST_SIZE);
+            context->transcriptSha1Context, "", digest + MD5_DIGEST_SIZE);
       }
 
       //Check status code
@@ -460,7 +462,7 @@ error_t tlsComputeVerifyData(TlsContext *context, TlsConnectionEnd entity,
       hashAlgo = context->cipherSuite.prfHashAlgo;
 
       //Valid hash algorithm?
-      if(hashAlgo != NULL && context->handshakeHashContext != NULL)
+      if(hashAlgo != NULL && context->transcriptHashContext != NULL)
       {
          //Allocate hash algorithm context
          hashContext = tlsAllocMem(hashAlgo->contextSize);
@@ -469,7 +471,7 @@ error_t tlsComputeVerifyData(TlsContext *context, TlsConnectionEnd entity,
          if(hashContext != NULL)
          {
             //The original hash context must be preserved
-            memcpy(hashContext, context->handshakeHashContext,
+            memcpy(hashContext, context->transcriptHashContext,
                hashAlgo->contextSize);
 
             //Finalize hash computation
@@ -516,7 +518,7 @@ error_t tlsComputeVerifyData(TlsContext *context, TlsConnectionEnd entity,
       hashAlgo = context->cipherSuite.prfHashAlgo;
 
       //Valid hash algorithm?
-      if(hashAlgo != NULL && context->handshakeHashContext != NULL)
+      if(hashAlgo != NULL && context->transcriptHashContext != NULL)
       {
          //Check whether the computation is performed at client or server side
          if(entity == TLS_CONNECTION_END_CLIENT)
@@ -534,7 +536,7 @@ error_t tlsComputeVerifyData(TlsContext *context, TlsConnectionEnd entity,
          {
             //Compute the transcript hash
             error = tlsFinalizeTranscriptHash(context, hashAlgo,
-               context->handshakeHashContext, "", digest);
+               context->transcriptHashContext, "", digest);
          }
 
          //Check status code

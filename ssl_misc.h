@@ -4,7 +4,9 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ *
+ * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -23,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.0
+ * @version 1.9.2
  **/
 
 #ifndef _SSL_MISC_H
@@ -48,6 +50,13 @@ error_t sslExpandKey(const uint8_t *secret, size_t secretLen,
 
 error_t sslComputeMac(TlsEncryptionEngine *encryptionEngine,
    const TlsRecord *record, const uint8_t *data, size_t dataLen, uint8_t *mac);
+
+uint32_t sslVerifyPadding(TlsEncryptionEngine *decryptionEngine,
+   const uint8_t *data, size_t dataLen, size_t *paddingLen);
+
+uint32_t sslVerifyMac(TlsEncryptionEngine *decryptionEngine,
+   const TlsRecord *record, const uint8_t *data, size_t dataLen,
+   size_t maxDataLen, const uint8_t *mac);
 
 //C++ guard
 #ifdef __cplusplus

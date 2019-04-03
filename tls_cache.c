@@ -4,7 +4,9 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ *
+ * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -23,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.0
+ * @version 1.9.2
  **/
 
 //Switch to the appropriate trace level
@@ -100,13 +102,12 @@ TlsSessionState *tlsFindCache(TlsCache *cache, const uint8_t *sessionId,
    systime_t time;
    TlsSessionState *session;
 
-   //Check whether session caching is supported
-   if(cache == NULL)
+   //Check parameters
+   if(cache == NULL || sessionId == NULL || sessionIdLen == 0)
       return NULL;
 
-   //Ensure the session ID is valid
-   if(sessionId == NULL || sessionIdLen == 0)
-      return NULL;
+   //Initialize session state
+   session = NULL;
 
    //Get current time
    time = osGetSystemTime();
@@ -127,7 +128,7 @@ TlsSessionState *tlsFindCache(TlsCache *cache, const uint8_t *sessionId,
          if((time - session->timestamp) >= TLS_SESSION_CACHE_LIFETIME)
          {
             //This session is no more valid and should be removed from the cache
-            memset(session, 0, sizeof(TlsSessionState));
+            tlsFreeSessionState(session);
          }
       }
    }
@@ -135,26 +136,25 @@ TlsSessionState *tlsFindCache(TlsCache *cache, const uint8_t *sessionId,
    //Search the cache for the specified session ID
    for(i = 0; i < cache->size; i++)
    {
-      //Point to the current entry
-      session = &cache->sessions[i];
-
       //Check whether the current identifier matches the specified session ID
-      if(session->sessionIdLen == sessionIdLen &&
-         !memcmp(session->sessionId, sessionId, sessionIdLen))
+      if(cache->sessions[i].sessionIdLen == sessionIdLen &&
+         !memcmp(cache->sessions[i].sessionId, sessionId, sessionIdLen))
       {
-         //Release exclusive access to the session cache
-         osReleaseMutex(&cache->mutex);
-         //Return session parameters
-         return session;
+         //A matching session has been found
+         session = &cache->sessions[i];
+         break;
       }
    }
 
    //Release exclusive access to the session cache
    osReleaseMutex(&cache->mutex);
-#endif
 
-   //No matching entry in session cache
+   //Return a pointer to the matching session, if any
+   return session;
+#else
+   //Not implemented
    return NULL;
+#endif
 }
 
 
@@ -177,9 +177,11 @@ error_t tlsSaveToCache(TlsContext *context)
    //Check parameters
    if(context == NULL)
       return ERROR_INVALID_PARAMETER;
+
    //Check whether session caching is supported
    if(context->cache == NULL)
       return ERROR_FAILURE;
+
    //Ensure the session ID is valid
    if(context->sessionIdLen == 0)
       return NO_ERROR;
@@ -245,6 +247,7 @@ error_t tlsSaveToCache(TlsContext *context)
 
    //Release exclusive access to the session cache
    osReleaseMutex(&context->cache->mutex);
+
    //Return status code
    return error;
 #else
@@ -269,6 +272,7 @@ error_t tlsRemoveFromCache(TlsContext *context)
    //Check parameters
    if(context == NULL)
       return ERROR_INVALID_PARAMETER;
+
    //Check whether session caching is supported
    if(context->cache == NULL)
       return ERROR_FAILURE;
@@ -291,7 +295,7 @@ error_t tlsRemoveFromCache(TlsContext *context)
          !memcmp(session->sessionId, context->sessionId, session->sessionIdLen))
       {
          //Drop current entry
-         memset(session, 0, sizeof(TlsSessionState));
+         tlsFreeSessionState(session);
       }
    }
 
@@ -311,21 +315,24 @@ error_t tlsRemoveFromCache(TlsContext *context)
 
 void tlsFreeCache(TlsCache *cache)
 {
-   size_t n;
+   uint_t i;
 
-   //Invalid session cache?
-   if(cache == NULL)
-      return;
+   //Valid session cache?
+   if(cache != NULL)
+   {
+      //Loop through the session cache
+      for(i = 0; i < cache->size; i++)
+      {
+         //Release current entry
+         tlsFreeSessionState(&cache->sessions[i]);
+      }
 
-   //Release previously allocated resources
-   osDeleteMutex(&cache->mutex);
+      //Release mutex object
+      osDeleteMutex(&cache->mutex);
 
-   //Compute the number of bytes allocated for the session cache
-   n = sizeof(TlsCache) + cache->size * sizeof(TlsSessionState);
-
-   //Clear the session cache before freeing memory
-   memset(cache, 0, n);
-   tlsFreeMem(cache);
+      //Properly dispose the session cache
+      tlsFreeMem(cache);
+   }
 }
 
 #endif

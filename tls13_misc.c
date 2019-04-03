@@ -4,7 +4,9 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ *
+ * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -23,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.0
+ * @version 1.9.2
  **/
 
 //Switch to the appropriate trace level
@@ -112,8 +114,8 @@ error_t tls13ComputePskBinder(TlsContext *context, const void *clientHello,
       return ERROR_OUT_OF_MEMORY;
 
    //Intialize transcript hash
-   if(context->handshakeHashContext != NULL)
-      memcpy(hashContext, context->handshakeHashContext, hash->contextSize);
+   if(context->transcriptHashContext != NULL)
+      memcpy(hashContext, context->transcriptHashContext, hash->contextSize);
    else
       hash->init(hashContext);
 
@@ -473,7 +475,7 @@ error_t tls13GenerateSignature(TlsContext *context, uint8_t *p,
 
    //Compute the transcript hash
    error = tlsFinalizeTranscriptHash(context, hashAlgo,
-      context->handshakeHashContext, "", buffer + 98);
+      context->transcriptHashContext, "", buffer + 98);
 
    //Check status code
    if(!error)
@@ -737,7 +739,7 @@ error_t tls13VerifySignature(TlsContext *context, const uint8_t *p,
 
    //Compute the transcript hash
    error = tlsFinalizeTranscriptHash(context, hashAlgo,
-      context->handshakeHashContext, "", buffer + 98);
+      context->transcriptHashContext, "", buffer + 98);
 
    //Check status code
    if(!error)
@@ -789,7 +791,7 @@ error_t tls13VerifySignature(TlsContext *context, const uint8_t *p,
          if(hashAlgo != NULL)
             error = hashAlgo->compute(buffer, n, context->clientVerifyData);
          else
-            error = ERROR_INVALID_SIGNATURE;
+            error = ERROR_ILLEGAL_PARAMETER;
 
          //Check status code
          if(!error)
@@ -851,7 +853,7 @@ error_t tls13VerifySignature(TlsContext *context, const uint8_t *p,
          if(hashAlgo != NULL)
             error = hashAlgo->compute(buffer, n, context->clientVerifyData);
          else
-            error = ERROR_INVALID_SIGNATURE;
+            error = ERROR_ILLEGAL_PARAMETER;
 
          //Check status code
          if(!error)
@@ -877,7 +879,7 @@ error_t tls13VerifySignature(TlsContext *context, const uint8_t *p,
          else
          {
             //Invalid certificate
-            error = ERROR_INVALID_SIGNATURE;
+            error = ERROR_ILLEGAL_PARAMETER;
          }
       }
       else
@@ -896,7 +898,7 @@ error_t tls13VerifySignature(TlsContext *context, const uint8_t *p,
          else
          {
             //Invalid certificate
-            error = ERROR_INVALID_SIGNATURE;
+            error = ERROR_ILLEGAL_PARAMETER;
          }
       }
       else
@@ -904,7 +906,7 @@ error_t tls13VerifySignature(TlsContext *context, const uint8_t *p,
       //Unknown signature scheme?
       {
          //Report an error
-         error = ERROR_INVALID_SIGNATURE;
+         error = ERROR_ILLEGAL_PARAMETER;
       }
    }
 
@@ -927,8 +929,8 @@ error_t tls13DigestClientHello1(TlsContext *context)
    TlsHandshake *message;
    const HashAlgo *hash;
 
-   //Invalid has context?
-   if(context->handshakeHashContext == NULL)
+   //Invalid hash context?
+   if(context->transcriptHashContext == NULL)
       return ERROR_FAILURE;
 
    //The hash function used by HKDF is the cipher suite hash algorithm
@@ -946,14 +948,14 @@ error_t tls13DigestClientHello1(TlsContext *context)
    STORE24BE(hash->digestSize, message->length);
 
    //Compute Hash(ClientHello1)
-   hash->final(context->handshakeHashContext, message->data);
+   hash->final(context->transcriptHashContext, message->data);
    //Re-initialize hash algorithm context
-   hash->init(context->handshakeHashContext);
+   hash->init(context->transcriptHashContext);
 
    //When the server responds to a ClientHello with a HelloRetryRequest, the
    //value of ClientHello1 is replaced with a special synthetic handshake
    //message of handshake type MessageHash containing Hash(ClientHello1)
-   hash->update(context->handshakeHashContext, message,
+   hash->update(context->transcriptHashContext, message,
       hash->digestSize + sizeof(TlsHandshake));
 
    //Successful processing

@@ -4,7 +4,9 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ *
+ * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -23,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.0
+ * @version 1.9.2
  **/
 
 //Switch to the appropriate trace level
@@ -377,14 +379,14 @@ error_t tlsGenerateSignature(TlsContext *context, uint8_t *p,
 
       //Digest all the handshake messages starting at ClientHello using MD5
       error = tlsFinalizeTranscriptHash(context, MD5_HASH_ALGO,
-         context->handshakeMd5Context, "", context->clientVerifyData);
+         context->transcriptMd5Context, "", context->clientVerifyData);
 
       //Check status code
       if(!error)
       {
          //Digest all the handshake messages starting at ClientHello using SHA-1
          error = tlsFinalizeTranscriptHash(context, SHA1_HASH_ALGO,
-            context->handshakeSha1Context, "",
+            context->transcriptSha1Context, "",
             context->clientVerifyData + MD5_DIGEST_SIZE);
       }
 
@@ -415,7 +417,7 @@ error_t tlsGenerateSignature(TlsContext *context, uint8_t *p,
    {
       //Digest all the handshake messages starting at ClientHello
       error = tlsFinalizeTranscriptHash(context, SHA1_HASH_ALGO,
-         context->handshakeSha1Context, "", context->clientVerifyData);
+         context->transcriptSha1Context, "", context->clientVerifyData);
 
       //Check status code
       if(!error)
@@ -433,7 +435,7 @@ error_t tlsGenerateSignature(TlsContext *context, uint8_t *p,
    {
       //Digest all the handshake messages starting at ClientHello
       error = tlsFinalizeTranscriptHash(context, SHA1_HASH_ALGO,
-         context->handshakeSha1Context, "", context->clientVerifyData);
+         context->transcriptSha1Context, "", context->clientVerifyData);
 
       //Check status code
       if(!error)
@@ -496,14 +498,14 @@ error_t tlsVerifySignature(TlsContext *context, const uint8_t *p,
    {
       //Digest all the handshake messages starting at ClientHello using MD5
       error = tlsFinalizeTranscriptHash(context, MD5_HASH_ALGO,
-         context->handshakeMd5Context, "", context->clientVerifyData);
+         context->transcriptMd5Context, "", context->clientVerifyData);
 
       //Check status code
       if(!error)
       {
          //Digest all the handshake messages starting at ClientHello using SHA-1
          error = tlsFinalizeTranscriptHash(context, SHA1_HASH_ALGO,
-            context->handshakeSha1Context, "",
+            context->transcriptSha1Context, "",
             context->clientVerifyData + MD5_DIGEST_SIZE);
       }
 
@@ -524,7 +526,7 @@ error_t tlsVerifySignature(TlsContext *context, const uint8_t *p,
    {
       //Digest all the handshake messages starting at ClientHello
       error = tlsFinalizeTranscriptHash(context, SHA1_HASH_ALGO,
-         context->handshakeSha1Context, "", context->clientVerifyData);
+         context->transcriptSha1Context, "", context->clientVerifyData);
 
       //Check status code
       if(!error)
@@ -542,7 +544,7 @@ error_t tlsVerifySignature(TlsContext *context, const uint8_t *p,
    {
       //Digest all the handshake messages starting at ClientHello
       error = tlsFinalizeTranscriptHash(context, SHA1_HASH_ALGO,
-         context->handshakeSha1Context, "", context->clientVerifyData);
+         context->transcriptSha1Context, "", context->clientVerifyData);
 
       //Check status code
       if(!error)
@@ -616,13 +618,13 @@ error_t tls12GenerateSignature(TlsContext *context, uint8_t *p,
    {
       //Use SHA-1 hash algorithm
       error = tlsFinalizeTranscriptHash(context, SHA1_HASH_ALGO,
-         context->handshakeSha1Context, "", context->clientVerifyData);
+         context->transcriptSha1Context, "", context->clientVerifyData);
    }
    else if(hashAlgo == context->cipherSuite.prfHashAlgo)
    {
       //Use PRF hash algorithm (SHA-256 or SHA-384)
       error = tlsFinalizeTranscriptHash(context, hashAlgo,
-         context->handshakeHashContext, "", context->clientVerifyData);
+         context->transcriptHashContext, "", context->clientVerifyData);
    }
    else
    {
@@ -811,13 +813,13 @@ error_t tls12VerifySignature(TlsContext *context, const uint8_t *p,
    {
       //Use SHA-1 hash algorithm
       error = tlsFinalizeTranscriptHash(context, SHA1_HASH_ALGO,
-         context->handshakeSha1Context, "", context->clientVerifyData);
+         context->transcriptSha1Context, "", context->clientVerifyData);
    }
    else if(hashAlgo == context->cipherSuite.prfHashAlgo)
    {
       //Use PRF hash algorithm (SHA-256 or SHA-384)
       error = tlsFinalizeTranscriptHash(context, hashAlgo,
-         context->handshakeHashContext, "", context->clientVerifyData);
+         context->transcriptHashContext, "", context->clientVerifyData);
    }
    else
    {

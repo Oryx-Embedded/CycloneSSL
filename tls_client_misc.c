@@ -4,7 +4,9 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ *
+ * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -23,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.0
+ * @version 1.9.2
  **/
 
 //Switch to the appropriate trace level
@@ -1451,12 +1453,11 @@ error_t tlsSelectClientVersion(TlsContext *context,
  * @param[in] sessionId Pointer to the session ID provided by the server
  * @param[in] sessionIdLen Length of the session ID, in bytes
  * @param[in] cipherSuite Cipher suite selected by the server
- * @param[in] compressMethod Compression method selected by the server
  * @return Error code
  **/
 
 error_t tlsResumeClientSession(TlsContext *context, const uint8_t *sessionId,
-   size_t sessionIdLen, uint16_t cipherSuite, uint8_t compressMethod)
+   size_t sessionIdLen, uint16_t cipherSuite)
 {
    error_t error;
 
@@ -1466,15 +1467,12 @@ error_t tlsResumeClientSession(TlsContext *context, const uint8_t *sessionId,
 #if (TLS_SESSION_RESUME_SUPPORT == ENABLED)
    //Check whether the session ID matches the value that was supplied by the
    //client
-   if(sessionIdLen != 0 &&
-      sessionIdLen == context->sessionIdLen &&
+   if(sessionIdLen != 0 && sessionIdLen == context->sessionIdLen &&
       !memcmp(sessionId, context->sessionId, sessionIdLen))
    {
-      //For resumed sessions, the selected cipher suite and compression method
-      //shall be the same as the session being resumed
-      if(cipherSuite != 0 &&
-         cipherSuite == context->cipherSuite.identifier &&
-         compressMethod == context->compressMethod)
+      //For resumed sessions, the selected cipher suite shall be the same as
+      //the session being resumed
+      if(cipherSuite != 0 && cipherSuite == context->cipherSuite.identifier)
       {
          //Perform abbreviated handshake
          context->resume = TRUE;

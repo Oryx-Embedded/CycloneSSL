@@ -4,7 +4,9 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ *
+ * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -23,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.0
+ * @version 1.9.2
  **/
 
 //Switch to the appropriate trace level
@@ -336,34 +338,6 @@ error_t tlsSelectCipherSuite(TlsContext *context, uint16_t identifier)
 
 
 /**
- * @brief Set compression method
- * @param[in] context Pointer to the TLS context
- * @param[in] identifier Compression method identifier
- * @return Error code
- **/
-
-error_t tlsSelectCompressMethod(TlsContext *context, uint8_t identifier)
-{
-   error_t error;
-
-   //Initialize status code
-   error = ERROR_ILLEGAL_PARAMETER;
-
-   //Null compression method?
-   if(identifier == TLS_COMPRESSION_METHOD_NULL)
-   {
-      //Save compression method identifier
-      context->compressMethod = identifier;
-      //The requested compression algorithm is supported
-      error = NO_ERROR;
-   }
-
-   //Return status code
-   return error;
-}
-
-
-/**
  * @brief Initialize encryption engine
  * @param[in] context Pointer to the TLS context
  * @param[in] encryptionEngine Pointer to the encryption/decryption engine to
@@ -401,6 +375,21 @@ error_t tlsInitEncryptionEngine(TlsContext *context,
    //Sequence numbers are maintained separately for each epoch, with each
    //sequence number initially being 0 for each epoch
    memset(&encryptionEngine->dtlsSeqNum, 0, sizeof(DtlsSequenceNumber));
+#endif
+
+#if (TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)
+   //The value of RecordSizeLimit is used to limit the size of records
+   //that are created when encoding application data and the protected
+   //handshake message into records (refer to RFC 8449, section 4)
+   if(entity == context->entity)
+   {
+      encryptionEngine->recordSizeLimit = context->recordSizeLimit;
+   }
+   else
+   {
+      encryptionEngine->recordSizeLimit = MIN(context->rxBufferMaxLen,
+         TLS_MAX_RECORD_LENGTH);
+   }
 #endif
 
    //Set appropriate length for MAC key, encryption key, authentication
@@ -1209,6 +1198,55 @@ size_t tlsComputeEncryptionOverhead(TlsEncryptionEngine *encryptionEngine,
 
    //Return the total overhead caused by encryption
    return n;
+}
+
+
+/**
+ * @brief DNS hostname verification
+ * @param[in] name Pointer to the hostname
+ * @param[in] length Length of the hostname
+ * @return The function returns TRUE is the name is a valid DNS hostname
+ **/
+
+bool_t tlsCheckDnsHostname(const char_t *name, size_t length)
+{
+   size_t i;
+   bool_t valid;
+
+   //Initialize flag
+   valid = TRUE;
+
+   //Loop through the hostname
+   for(i = 0; i < length && valid; i++)
+   {
+      //DNS hostnames must start with a letter, end with a letter or
+      //digit, and have as interior characters only letters, digits,
+      //and hyphen (refer to RFC 1034, section 3.5)
+      if(name[i] == '-' || name[i] == '.')
+      {
+         //Valid character
+      }
+      else if(name[i] >= '0' && name[i] <= '9')
+      {
+         //Valid character
+      }
+      else if(name[i] >= 'A' && name[i] <= 'Z')
+      {
+         //Valid character
+      }
+      else if(name[i] >= 'a' && name[i] <= 'z')
+      {
+         //Valid character
+      }
+      else
+      {
+         //Invalid character
+         valid = FALSE;
+      }
+   }
+
+   //Return TRUE is the name is a valid DNS hostname
+   return valid;
 }
 
 #endif

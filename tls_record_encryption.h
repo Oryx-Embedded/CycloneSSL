@@ -1,6 +1,6 @@
 /**
- * @file tls13_server.h
- * @brief Handshake message processing (TLS 1.3 server)
+ * @file tls_record_encryption.h
+ * @brief TLS record encryption
  *
  * @section License
  *
@@ -28,8 +28,8 @@
  * @version 1.9.2
  **/
 
-#ifndef _TLS13_SERVER_H
-#define _TLS13_SERVER_H
+#ifndef _TLS_RECORD_ENCRYPTION_H
+#define _TLS_RECORD_ENCRYPTION_H
 
 //Dependencies
 #include "tls.h"
@@ -39,19 +39,24 @@
    extern "C" {
 #endif
 
-//TLS 1.3 server specific functions
-error_t tls13SendHelloRetryRequest(TlsContext *context);
-error_t tls13SendEncryptedExtensions(TlsContext *context);
-error_t tls13SendNewSessionTicket(TlsContext *context);
+//TLS related functions
+error_t tlsEncryptRecord(TlsContext *context,
+   TlsEncryptionEngine *encryptionEngine, void *record);
 
-error_t tls13FormatHelloRetryRequest(TlsContext *context,
-   Tls13HelloRetryRequest *message, size_t *length);
+error_t tlsEncryptAeadRecord(TlsContext *context,
+   TlsEncryptionEngine *encryptionEngine, void *record);
 
-error_t tls13FormatEncryptedExtensions(TlsContext *context,
-   Tls13EncryptedExtensions *message, size_t *length);
+error_t tlsEncryptCbcRecord(TlsContext *context,
+   TlsEncryptionEngine *encryptionEngine, void *record);
 
-error_t tls13FormatNewSessionTicket(TlsContext *context,
-   Tls13NewSessionTicket *message, size_t *length);
+error_t tlsEncryptStreamRecord(TlsContext *context,
+   TlsEncryptionEngine *encryptionEngine, void *record);
+
+error_t tlsAppendMessageAuthCode(TlsContext *context,
+   TlsEncryptionEngine *decryptionEngine, void *record);
+
+error_t tlsComputeMac(TlsContext *context, TlsEncryptionEngine *encryptionEngine,
+   void *record, const uint8_t *data, size_t dataLen, uint8_t *mac);
 
 //C++ guard
 #ifdef __cplusplus

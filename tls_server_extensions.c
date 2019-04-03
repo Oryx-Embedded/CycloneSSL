@@ -4,7 +4,9 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ *
+ * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -23,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.0
+ * @version 1.9.2
  **/
 
 //Switch to the appropriate trace level
@@ -194,14 +196,12 @@ error_t tlsFormatServerRecordSizeLimitExtension(TlsContext *context,
       //maximum record size (refer to RFC 8449, section 4)
       recordSizeLimit = MIN(context->rxBufferMaxLen, TLS_MAX_RECORD_LENGTH);
 
-#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
       //TLS 1.3 currently selected?
       if(context->version == TLS_VERSION_1_3)
       {
          //The value includes the content type and padding added in TLS 1.3
          recordSizeLimit++;
       }
-#endif
 
       //The value of RecordSizeLimit is the maximum size of record in octets
       //that the endpoint is willing to receive
@@ -665,25 +665,34 @@ error_t tlsParseClientSniExtension(TlsContext *context,
          n = ntohs(serverName->length);
 
          //Empty strings must not be included in the list
-         if(n > 0 && n <= TLS_MAX_SERVER_NAME_LEN)
-         {
-            //Currently, the only server names supported are DNS hostnames
-            if(serverName->type == TLS_NAME_TYPE_HOSTNAME)
-            {
-               //In practice, current client implementations only send one name
-               if(context->serverName == NULL)
-               {
-                  //Allocate a memory block to hold the server name
-                  context->serverName = tlsAllocMem(n + 1);
-                  //Failed to allocate memory?
-                  if(context->serverName == NULL)
-                     return ERROR_OUT_OF_MEMORY;
+         if(n == 0)
+            return ERROR_DECODING_FAILED;
 
-                  //Save server name
-                  memcpy(context->serverName, serverName->hostname, n);
-                  //Properly terminate the string with a NULL character
-                  context->serverName[n] = '\0';
-               }
+         //Currently, the only server names supported are DNS hostnames
+         if(serverName->type == TLS_NAME_TYPE_HOSTNAME)
+         {
+            //The server name must be a valid DNS hostname
+            if(!tlsCheckDnsHostname(serverName->hostname, n))
+               return ERROR_ILLEGAL_PARAMETER;
+
+            //The ServerNameList must not contain more than one name of the
+            //same type (refer to RFC 6066, section 3)
+            if(context->serverName != NULL)
+               return ERROR_ILLEGAL_PARAMETER;
+
+            //Check the length of the name
+            if(n <= TLS_MAX_SERVER_NAME_LEN)
+            {
+               //Allocate a memory block to hold the server name
+               context->serverName = tlsAllocMem(n + 1);
+               //Failed to allocate memory?
+               if(context->serverName == NULL)
+                  return ERROR_OUT_OF_MEMORY;
+
+               //Save server name
+               memcpy(context->serverName, serverName->hostname, n);
+               //Properly terminate the string with a NULL character
+               context->serverName[n] = '\0';
             }
          }
       }
@@ -778,11 +787,6 @@ error_t tlsParseClientMaxFragLenExtension(TlsContext *context,
 error_t tlsParseClientRecordSizeLimitExtension(TlsContext *context,
    const uint8_t *recordSizeLimit)
 {
-   error_t error;
-
-   //Initialize status code
-   error = NO_ERROR;
-
 #if (TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)
    //RecordSizeLimit extension found?
    if(recordSizeLimit != NULL)
@@ -799,36 +803,58 @@ error_t tlsParseClientRecordSizeLimitExtension(TlsContext *context,
       {
          //An endpoint must treat receipt of a smaller value as a fatal error
          //and generate an illegal_parameter alert
-         error = ERROR_ILLEGAL_PARAMETER;
+         return ERROR_ILLEGAL_PARAMETER;
       }
-      else
+
+      //TLS 1.3 currently selected?
+      if(context->version == TLS_VERSION_1_3)
       {
-#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
-         //TLS 1.3 currently selected?
-         if(context->version == TLS_VERSION_1_3)
-         {
-            //The value includes the content type and padding added in TLS 1.3
-            n--;
-         }
-#endif
-         //The peer can include any limit up to the protocol-defined limit for
-         //maximum record size. Even if a larger value is provided by a peer, an
-         //endpoint must not send records larger than the protocol-defined limit
-         context->recordSizeLimit = MIN(n, TLS_MAX_RECORD_LENGTH);
+         //The value includes the content type and padding added in TLS 1.3
+         n--;
       }
+
+      //Initial or updated ClientHello?
+      if(context->state == TLS_STATE_CLIENT_HELLO_2)
+      {
+         //When responding to a HelloRetryRequest, the client must send the
+         //same ClientHello without modification
+         if(!context->recordSizeLimitExtReceived ||
+            context->recordSizeLimit != n)
+         {
+            return ERROR_ILLEGAL_PARAMETER;
+         }
+      }
+
+      //The peer can include any limit up to the protocol-defined limit for
+      //maximum record size. Even if a larger value is provided by a peer, an
+      //endpoint must not send records larger than the protocol-defined limit
+      context->recordSizeLimit = MIN(n, TLS_MAX_RECORD_LENGTH);
 
       //The ClientHello includes a RecordSizeLimit extension
       context->recordSizeLimitExtReceived = TRUE;
    }
    else
    {
-      //The ClientHello does not contain any RecordSizeLimit extension
+      //Initial or updated ClientHello?
+      if(context->state == TLS_STATE_CLIENT_HELLO_2)
+      {
+         //When responding to a HelloRetryRequest, the client must send the
+         //same ClientHello without modification
+         if(context->recordSizeLimitExtReceived)
+            return ERROR_ILLEGAL_PARAMETER;
+      }
+
+      //If this extension is not negotiated, endpoints can send records of any
+      //size permitted by the protocol or other negotiated extensions
+      context->recordSizeLimit = TLS_MAX_RECORD_LENGTH;
+
+      //The RecordSizeLimit extension is not supported by the client
       context->recordSizeLimitExtReceived = FALSE;
    }
 #endif
 
-   //Return status code
-   return error;
+   //Successful processing
+   return NO_ERROR;
 }
 
 

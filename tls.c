@@ -4,7 +4,9 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ *
+ * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -29,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.0
+ * @version 1.9.2
  **/
 
 //Switch to the appropriate trace level
@@ -1684,9 +1686,22 @@ error_t tlsWrite(TlsContext *context, const void *data,
             //Do not exceed the negotiated maximum fragment length
             n = MIN(n, context->maxFragLen);
 #endif
+
 #if (TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)
             //Maximum record size the peer is willing to receive
             n = MIN(n, context->recordSizeLimit);
+#endif
+
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_0)
+            //The 1/n-1 record splitting technique is a workaround for the
+            //BEAST attack
+            if(context->version <= TLS_VERSION_1_0 &&
+               context->cipherSuite.cipherMode == CIPHER_MODE_CBC &&
+               context->txLastRecordLen != 1 &&
+               totalLength == 0)
+            {
+               n = 1;
+            }
 #endif
             //Send application data
             error = tlsWriteProtocolData(context, data, n,
@@ -1696,6 +1711,10 @@ error_t tlsWrite(TlsContext *context, const void *data,
          //Check status code
          if(!error)
          {
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_0)
+            //Save the length of the TLS record
+            context->txLastRecordLen = n;
+#endif
             //Advance data pointer
             data = (uint8_t *) data + n;
             //Update byte counter
@@ -1967,6 +1986,39 @@ error_t tlsRead(TlsContext *context, void *data,
 
 
 /**
+ * @brief Check whether some data is ready for transmission
+ * @param[in] context Pointer to the TLS context
+ * @return The function returns TRUE if some data is ready for transmission.
+ *   Otherwise, FALSE is returned
+ **/
+
+bool_t tlsIsTxReady(TlsContext *context)
+{
+   bool_t ready;
+
+   //Initialize flag
+   ready = FALSE;
+
+   //Make sure the TLS context is valid
+   if(context != NULL)
+   {
+      //TLS protocol?
+      if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM)
+      {
+         //Check whether some data is pending in the transmit buffer
+         if(context->txBufferPos < context->txBufferLen)
+         {
+            ready = TRUE;
+         }
+      }
+   }
+
+   //The function returns TRUE if some data is ready for transmission
+   return ready;
+}
+
+
+/**
  * @brief Check whether some data is available in the receive buffer
  * @param[in] context Pointer to the TLS context
  * @return The function returns TRUE if some data is pending and can be read
@@ -1975,32 +2027,35 @@ error_t tlsRead(TlsContext *context, void *data,
 
 bool_t tlsIsRxReady(TlsContext *context)
 {
-   bool_t ready = FALSE;
+   bool_t ready;
 
-   //Invalid TLS context?
-   if(context == NULL)
-      return ERROR_INVALID_PARAMETER;
+   //Initialize flag
+   ready = FALSE;
 
+   //Make sure the TLS context is valid
+   if(context != NULL)
+   {
 #if (DTLS_SUPPORT == ENABLED)
-   //DTLS protocol?
-   if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_DATAGRAM)
-   {
-      //Check whether a datagram is pending in the receive buffer
-      if(context->rxBufferLen > 0 ||
-         context->rxRecordLen > 0 ||
-         context->rxDatagramLen > 0)
+      //DTLS protocol?
+      if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_DATAGRAM)
       {
-         ready = TRUE;
+         //Check whether a datagram is pending in the receive buffer
+         if(context->rxBufferLen > 0 ||
+            context->rxRecordLen > 0 ||
+            context->rxDatagramLen > 0)
+         {
+            ready = TRUE;
+         }
       }
-   }
-   else
+      else
 #endif
-   //TLS protocol?
-   {
-      //Check whether some data is pending in the receive buffer
-      if(context->rxBufferLen > 0)
+      //TLS protocol?
       {
-         ready = TRUE;
+         //Check whether some data is pending in the receive buffer
+         if(context->rxBufferLen > 0)
+         {
+            ready = TRUE;
+         }
       }
    }
 
@@ -2354,7 +2409,6 @@ error_t tlsSaveSessionState(const TlsContext *context,
          //Save session parameters
          session->version = context->version;
          session->cipherSuite = context->cipherSuite.identifier;
-         session->compressMethod = context->compressMethod;
 
          //Save session identifier
          memcpy(session->sessionId, context->sessionId, context->sessionIdLen);
@@ -2367,6 +2421,32 @@ error_t tlsSaveSessionState(const TlsContext *context,
          //Extended master secret computation
          session->extendedMasterSecret = context->extendedMasterSecretExtReceived;
 #endif
+
+#if (TLS_SNI_SUPPORT == ENABLED)
+         //Any ServerName extension received by the server?
+         if(context->entity == TLS_CONNECTION_END_SERVER &&
+            context->serverName != NULL)
+         {
+            size_t n;
+
+            //Retrieve the length of the server name
+            n = strlen(context->serverName);
+
+            //Allocate a memory block to hold the server name
+            session->serverName = tlsAllocMem(n + 1);
+            //Failed to allocate memory?
+            if(session->serverName == NULL)
+            {
+               //Clean up side effects
+               tlsFreeSessionState(session);
+               //Report an error
+               return ERROR_OUT_OF_MEMORY;
+            }
+
+            //Copy the server name
+            strcpy(session->serverName, context->serverName);
+         }
+#endif
       }
    }
    else
@@ -2377,7 +2457,8 @@ error_t tlsSaveSessionState(const TlsContext *context,
    {
       //Valid session parameters?
       if(context->cipherSuite.identifier != 0 &&
-         context->cipherSuite.prfHashAlgo != NULL)
+         context->cipherSuite.prfHashAlgo != NULL &&
+         context->ticketLen > 0)
       {
          const HashAlgo *hashAlgo;
 
@@ -2396,7 +2477,6 @@ error_t tlsSaveSessionState(const TlsContext *context,
          //Save session parameters
          session->version = context->version;
          session->cipherSuite = context->cipherSuite.identifier;
-         session->compressMethod = context->compressMethod;
          session->ticketTimestamp = context->ticketTimestamp;
          session->ticketLifetime = context->ticketLifetime;
          session->ticketAgeAdd = context->ticketAgeAdd;
@@ -2480,7 +2560,6 @@ error_t tlsRestoreSessionState(TlsContext *context,
          //Restore session parameters
          context->version = session->version;
          context->cipherSuite.identifier = session->cipherSuite;
-         context->compressMethod = session->compressMethod;
 
          //Restore session identifier
          memcpy(context->sessionId, session->sessionId, session->sessionIdLen);
@@ -2506,7 +2585,6 @@ error_t tlsRestoreSessionState(TlsContext *context,
       {
          //Restore session parameters
          context->version = session->version;
-         context->compressMethod = session->compressMethod;
          context->ticketCipherSuite = session->cipherSuite;
          context->ticketHashAlgo = session->ticketHashAlgo;
          context->ticketTimestamp = session->ticketTimestamp;
@@ -2607,6 +2685,14 @@ void tlsFreeSessionState(TlsSessionState *session)
       if(session->ticketAlpn != NULL)
       {
          tlsFreeMem(session->ticketAlpn);
+      }
+#endif
+
+#if (TLS_SNI_SUPPORT == ENABLED)
+      //Release server name
+      if(session->serverName != NULL)
+      {
+         tlsFreeMem(session->serverName);
       }
 #endif
 

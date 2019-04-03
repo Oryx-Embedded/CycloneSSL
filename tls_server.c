@@ -4,7 +4,9 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ *
+ * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -29,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.0
+ * @version 1.9.2
  **/
 
 //Switch to the appropriate trace level
@@ -447,19 +449,23 @@ error_t tlsFormatServerHello(TlsContext *context,
    //Adjust the length of the message
    *length += message->sessionIdLen;
 
-   //The single cipher suite selected by the server
+   //The cipher_suite field contains the single cipher suite selected by
+   //the server
    STORE16BE(context->cipherSuite.identifier, p);
-   //Advance data pointer
-   p += sizeof(TlsCipherSuite);
-   //Adjust the length of the message
-   *length += sizeof(TlsCipherSuite);
 
-   //The single compression algorithm selected by the server
-   *p = context->compressMethod;
    //Advance data pointer
-   p += sizeof(TlsCompressMethod);
+   p += sizeof(uint16_t);
    //Adjust the length of the message
-   *length += sizeof(TlsCompressMethod);
+   *length += sizeof(uint16_t);
+
+   //The CRIME exploit takes advantage of TLS compression, so conservative
+   //implementations do not enable compression at the TLS level
+   *p = TLS_COMPRESSION_METHOD_NULL;
+
+   //Advance data pointer
+   p += sizeof(uint8_t);
+   //Adjust the length of the message
+   *length += sizeof(uint8_t);
 
    //Only extensions offered by the client can appear in the server's list
    extensionList = (TlsExtensionList *) p;
@@ -1390,6 +1396,15 @@ error_t tlsParseClientHello(TlsContext *context,
    //Save client random value
    memcpy(context->clientRandom, message->random, 32);
 
+#if (TLS_SNI_SUPPORT == ENABLED)
+   //In order to provide the server name, clients may include a ServerName
+   //extension
+   error = tlsParseClientSniExtension(context, extensions.serverNameList);
+   //Any error to report?
+   if(error)
+      return error;
+#endif
+
 #if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //SSL 3.0, TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
    if(context->version <= TLS_VERSION_1_2)
@@ -1486,15 +1501,6 @@ error_t tlsParseClientHello(TlsContext *context,
       //Just for sanity
       return ERROR_INVALID_VERSION;
    }
-
-#if (TLS_SNI_SUPPORT == ENABLED)
-   //In order to provide the server name, clients may include a ServerName
-   //extension
-   error = tlsParseClientSniExtension(context, extensions.serverNameList);
-   //Any error to report?
-   if(error)
-      return error;
-#endif
 
 #if (TLS_MAX_FRAG_LEN_SUPPORT == ENABLED && TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)
    //A server that supports the RecordSizeLimit extension must ignore a

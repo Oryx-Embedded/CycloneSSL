@@ -4,7 +4,9 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ *
+ * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -23,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.0
+ * @version 1.9.2
  **/
 
 //Switch to the appropriate trace level
@@ -206,14 +208,14 @@ error_t tlsGenerateExtendedMasterSecret(TlsContext *context)
 
       //Finalize MD5 hash computation
       error = tlsFinalizeTranscriptHash(context, MD5_HASH_ALGO,
-         context->handshakeMd5Context, "", sessionHash);
+         context->transcriptMd5Context, "", sessionHash);
 
       //Check status code
       if(!error)
       {
          //Finalize SHA-1 hash computation
          error = tlsFinalizeTranscriptHash(context, SHA1_HASH_ALGO,
-            context->handshakeSha1Context, "", sessionHash + MD5_DIGEST_SIZE);
+            context->transcriptSha1Context, "", sessionHash + MD5_DIGEST_SIZE);
       }
 
       //Check status code
@@ -244,7 +246,7 @@ error_t tlsGenerateExtendedMasterSecret(TlsContext *context)
       if(hashContext != NULL)
       {
          //The original hash context must be preserved
-         memcpy(hashContext, context->handshakeHashContext,
+         memcpy(hashContext, context->transcriptHashContext,
             hashAlgo->contextSize);
 
          //Finalize hash computation

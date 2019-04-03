@@ -4,7 +4,9 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ *
+ * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -23,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.0
+ * @version 1.9.2
  **/
 
 #ifndef _TLS_CIPHER_SUITES_H
@@ -397,15 +399,26 @@ typedef enum
    TLS_SRP_SHA_DSS_WITH_AES_128_CBC_SHA          = 0xC01F, //RFC 5054
    TLS_SRP_SHA_DSS_WITH_AES_256_CBC_SHA          = 0xC022, //RFC 5054
 
+   TLS_ECCPWD_WITH_AES_128_GCM_SHA256            = 0xC0B0, //RFC draft
+   TLS_ECCPWD_WITH_AES_256_GCM_SHA384            = 0xC0B1, //RFC draft
+   TLS_ECCPWD_WITH_AES_128_CCM_SHA256            = 0xC0B2, //RFC draft
+   TLS_ECCPWD_WITH_AES_256_CCM_SHA384            = 0xC0B3, //RFC draft
+
+   TLS_GOSTR341112_256_WITH_KUZNYECHIK_CTR_OMAC  = 0xC100, //RFC draft
+   TLS_GOSTR341112_256_WITH_MAGMA_CTR_OMAC       = 0xC101, //RFC draft
+   TLS_GOSTR341112_256_WITH_28147_CNT_IMIT       = 0xC102, //RFC draft
+
    TLS_AES_128_GCM_SHA256                        = 0x1301, //RFC 8446
    TLS_AES_256_GCM_SHA384                        = 0x1302, //RFC 8446
    TLS_AES_128_CCM_SHA256                        = 0x1304, //RFC 8446
    TLS_AES_128_CCM_8_SHA256                      = 0x1305, //RFC 8446
    TLS_CHACHA20_POLY1305_SHA256                  = 0x1303, //RFC 8446
+   TLS_SHA256_SHA256                             = 0xC0B4, //RFC draft
+   TLS_SHA384_SHA384                             = 0xC0B5, //RFC draft
 
    TLS_EMPTY_RENEGOTIATION_INFO_SCSV             = 0x00FF, //RFC 5746
    TLS_FALLBACK_SCSV                             = 0x5600  //RFC 7507
-} TlsCipherSuiteList;
+} TlsCipherSuite;
 
 
 /**

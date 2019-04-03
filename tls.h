@@ -4,7 +4,9 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ *
+ * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -23,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.0
+ * @version 1.9.2
  **/
 
 #ifndef _TLS_H
@@ -75,22 +77,21 @@ struct _TlsContext;
    #error Before compiling CycloneSSL Open, you must accept the terms of the GPL license
 #endif
 
+//Version string
+#define CYCLONE_SSL_VERSION_STRING "1.9.2"
+//Major version
+#define CYCLONE_SSL_MAJOR_VERSION 1
+//Minor version
+#define CYCLONE_SSL_MINOR_VERSION 9
+//Revision number
+#define CYCLONE_SSL_REV_NUMBER 2
 
 //TLS version numbers
 #define SSL_VERSION_3_0 0x0300
 #define TLS_VERSION_1_0 0x0301
 #define TLS_VERSION_1_1 0x0302
 #define TLS_VERSION_1_2 0x0303
-
-//TLS 1.3 draft version numbers
-#define TLS_VERSION_1_3_DRAFT(version) (0x7F00 + (version))
-
-//TLS 1.3 version number
-#ifndef TLS_VERSION_1_3
-   #define TLS_VERSION_1_3 0x0304
-#elif (TLS_VERSION_1_3 < TLS_VERSION_1_3_DRAFT(23) || TLS_VERSION_1_3 > TLS_VERSION_1_3_DRAFT(28))
-   #error TLS_VERSION_1_3 parameter is not valid
-#endif
+#define TLS_VERSION_1_3 0x0304
 
 //TLS support
 #ifndef TLS_SUPPORT
@@ -1009,7 +1010,7 @@ typedef enum
 {
    TLS_COMPRESSION_METHOD_NULL    = 0,
    TLS_COMPRESSION_METHOD_DEFLATE = 1
-} TlsCompressMethodList;
+} TlsCompressMethod;
 
 
 /**
@@ -1114,7 +1115,9 @@ typedef enum
    TLS_SIGN_ALGO_ED448               = 8,
    TLS_SIGN_ALGO_RSA_PSS_PSS_SHA256  = 9,
    TLS_SIGN_ALGO_RSA_PSS_PSS_SHA384  = 10,
-   TLS_SIGN_ALGO_RSA_PSS_PSS_SHA512  = 11
+   TLS_SIGN_ALGO_RSA_PSS_PSS_SHA512  = 11,
+   TLS_SIGN_ALGO_GOSTR34102012_256   = 64, //RFC draft
+   TLS_SIGN_ALGO_GOSTR34102012_512   = 65  //RFC draft
 } TlsSignatureAlgo;
 
 
@@ -1225,6 +1228,16 @@ typedef enum
    TLS_GROUP_BRAINPOOLP512R1      = 28,    //RFC 7027
    TLS_GROUP_ECDH_X25519          = 29,    //RFC 8422
    TLS_GROUP_ECDH_X448            = 30,    //RFC 8422
+   TLS13_GROUP_BRAINPOOLP256R1    = 31,    //RFC draft
+   TLS13_GROUP_BRAINPOOLP384R1    = 32,    //RFC draft
+   TLS13_GROUP_BRAINPOOLP512R1    = 33,    //RFC draft
+   TLS_GROUP_GC256A               = 34,    //RFC draft
+   TLS_GROUP_GC256B               = 35,    //RFC draft
+   TLS_GROUP_GC256C               = 36,    //RFC draft
+   TLS_GROUP_GC256D               = 37,    //RFC draft
+   TLS_GROUP_GC512A               = 38,    //RFC draft
+   TLS_GROUP_GC512B               = 39,    //RFC draft
+   TLS_GROUP_GC512C               = 40,    //RFC draft
    TLS_GROUP_FFDHE2048            = 256,   //RFC 7919
    TLS_GROUP_FFDHE3072            = 257,   //RFC 7919
    TLS_GROUP_FFDHE4096            = 258,   //RFC 7919
@@ -1319,13 +1332,6 @@ typedef __start_packed struct
 
 
 /**
- * @brief Cipher suite
- **/
-
-typedef uint16_t TlsCipherSuite;
-
-
-/**
  * @brief Cipher suites
  **/
 
@@ -1334,13 +1340,6 @@ typedef __start_packed struct
    uint16_t length;  //0-1
    uint16_t value[]; //2
 } __end_packed TlsCipherSuites;
-
-
-/**
- * @brief Compression method
- **/
-
-typedef uint8_t TlsCompressMethod;
 
 
 /**
@@ -1821,7 +1820,6 @@ typedef struct
 {
    uint16_t version;            ///<TLS protocol version
    uint16_t cipherSuite;        ///<Cipher suite identifier
-   uint8_t compressMethod;      ///<Compression method
    systime_t timestamp;         ///<Time stamp to manage entry lifetime
    uint8_t secret[48];          ///<Master secret (TLS 1.2) or ticket PSK (TLS 1.3)
 #if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
@@ -1838,6 +1836,9 @@ typedef struct
    TlsHashAlgo ticketHashAlgo;  ///<Hash algorithm associated with the ticket
    char_t *ticketAlpn;          ///<ALPN protocol associated with the ticket
    uint32_t maxEarlyDataSize;   ///<Maximum amount of 0-RTT data that the client is allowed to send
+#endif
+#if (TLS_SNI_SUPPORT == ENABLED)
+   char_t *serverName;          ///<ServerName extension
 #endif
 } TlsSessionState;
 
@@ -1947,6 +1948,9 @@ typedef struct
    uint16_t epoch;                ///<Counter value incremented on every cipher state change
    DtlsSequenceNumber dtlsSeqNum; ///<Record sequence number
 #endif
+#if (TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)
+   size_t recordSizeLimit;        ///<Maximum size of record in octets
+#endif
 } TlsEncryptionEngine;
 
 
@@ -2004,7 +2008,6 @@ struct _TlsContext
    uint8_t *cookie;                         ///<Cookie
    size_t cookieLen;                        ///<Length of the cookie
 
-   uint8_t compressMethod;                  ///<Negotiated compression algorithm
    TlsCipherSuiteInfo cipherSuite;          ///<Negotiated cipher suite
    TlsKeyExchMethod keyExchMethod;          ///<Key exchange method
    TlsSignatureAlgo signAlgo;               ///<Signature algorithm to be used
@@ -2061,17 +2064,21 @@ struct _TlsContext
    TlsEncryptionEngine encryptionEngine;    ///<Encryption engine
    TlsEncryptionEngine decryptionEngine;    ///<Decryption engine
 
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_0)
+   size_t txLastRecordLen;                  ///<Length of the previous TLS record
+#endif
+
 #if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
-   Md5Context *handshakeMd5Context;         ///<MD5 context used to compute verify data
+   Md5Context *transcriptMd5Context;        ///<MD5 context used to compute verify data
 #endif
 
 #if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    HmacContext hmacContext;                 ///<HMAC context
-   Sha1Context *handshakeSha1Context;       ///<SHA-1 context used to compute verify data
+   Sha1Context *transcriptSha1Context;      ///<SHA-1 context used to compute verify data
 #endif
 
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
-   HashContext *handshakeHashContext;       ///<Hash context used to compute verify data (TLS 1.2)
+   HashContext *transcriptHashContext;      ///<Hash context used to compute verify data (TLS 1.2)
 #endif
 
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
@@ -2339,6 +2346,7 @@ error_t tlsWrite(TlsContext *context, const void *data,
 error_t tlsRead(TlsContext *context, void *data,
    size_t size, size_t *received, uint_t flags);
 
+bool_t tlsIsTxReady(TlsContext *context);
 bool_t tlsIsRxReady(TlsContext *context);
 
 error_t tlsShutdown(TlsContext *context);

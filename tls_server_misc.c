@@ -4,7 +4,9 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ *
+ * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -23,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.0
+ * @version 1.9.2
  **/
 
 //Switch to the appropriate trace level
@@ -962,6 +964,36 @@ error_t tlsResumeServerSession(TlsContext *context, const uint8_t *sessionId,
             session = NULL;
       }
 
+#if (TLS_SNI_SUPPORT == ENABLED)
+      //Matching session found?
+      if(session != NULL)
+      {
+         //ServerName extension found?
+         if(session->serverName != NULL && context->serverName != NULL)
+         {
+            //A server that implements this extension must not accept the
+            //request to resume the session if the ServerName extension contains
+            //a different name (refer to RFC 6066, section 3)
+            if(strcmp(session->serverName, context->serverName))
+            {
+               //Instead, the server proceeds with a full handshake to establish
+               //a new session
+               session = NULL;
+            }
+         }
+         else if(session->serverName == NULL && context->serverName == NULL)
+         {
+            //The ServerName extension is not present
+         }
+         else
+         {
+            //The server proceeds with a full handshake to establish a new
+            //session
+            session = NULL;
+         }
+      }
+#endif
+
 #if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
       //Matching session found?
       if(session != NULL)
@@ -1564,8 +1596,12 @@ error_t tlsParseCompressMethods(TlsContext *context,
       //by client preference
       for(i = 0; i < compressMethods->length && error; i++)
       {
-         //Check whether the current compression algorithm is supported
-         error = tlsSelectCompressMethod(context, compressMethods->value[i]);
+         //The CRIME exploit takes advantage of TLS compression, so conservative
+         //implementations do not accept compression at the TLS level
+         if(compressMethods->value[i] == TLS_COMPRESSION_METHOD_NULL)
+         {
+            error = NO_ERROR;
+         }
       }
    }
    else
@@ -1576,7 +1612,10 @@ error_t tlsParseCompressMethods(TlsContext *context,
       {
          //If a ClientHello is received with any other value in this field,
          //the server must abort the handshake with an illegal_parameter alert
-         error = tlsSelectCompressMethod(context, compressMethods->value[0]);
+         if(compressMethods->value[0] == TLS_COMPRESSION_METHOD_NULL)
+         {
+            error = NO_ERROR;
+         }
       }
    }
 
@@ -1660,8 +1699,10 @@ error_t tlsParseClientKeyParams(TlsContext *context,
       context->keyExchMethod == TLS_KEY_EXCH_RSA_PSK)
    {
       size_t n;
+      uint32_t bad;
       uint16_t version;
       RsaPrivateKey privateKey;
+      uint8_t randPremasterSecret[48];
 
       //The RSA-encrypted premaster secret in a ClientKeyExchange is preceded by
       //two length bytes. SSL 3.0 implementations do not include these bytes
@@ -1717,17 +1758,24 @@ error_t tlsParseClientKeyParams(TlsContext *context,
       //The best way to avoid vulnerability to the Bleichenbacher attack is to
       //treat incorrectly formatted messages in a manner indistinguishable from
       //correctly formatted RSA blocks
-      if(error || context->premasterSecretLen != 48 || version != context->clientVersion)
-      {
-         //When it receives an incorrectly formatted RSA block, the server
-         //should generate a random 48-byte value and proceed using it as
-         //the premaster secret
-         error = context->prngAlgo->read(context->prngContext,
-            context->premasterSecret, 48);
+      bad = CRYPTO_TEST_NZ_32(error);
+      bad |= CRYPTO_TEST_NEQ_32(context->premasterSecretLen, 48);
+      bad |= CRYPTO_TEST_NEQ_16(version, context->clientVersion);
 
-         //Fix the length of the premaster secret
-         context->premasterSecretLen = 48;
+      //Generate a random 48-byte value
+      error = context->prngAlgo->read(context->prngContext,
+         randPremasterSecret, 48);
+
+      //When it receives an incorrectly formatted RSA block, the server should
+      //proceed using the random 48-byte value as the premaster secret
+      for(n = 0; n < 48; n++)
+      {
+         context->premasterSecret[n] = CRYPTO_SELECT_8(
+            context->premasterSecret[n], randPremasterSecret[n], bad);
       }
+
+      //Fix the length of the premaster secret
+      context->premasterSecretLen = 48;
    }
    else
 #endif

@@ -4,7 +4,9 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ *
+ * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -23,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.0
+ * @version 1.9.2
  **/
 
 #ifndef _TLS13_MISC_H
@@ -107,10 +109,10 @@
 #endif
 
 //Number of NewSessionTicket message sent by the server
-#ifndef TLS_NEW_SESSION_TICKET_COUNT
-   #define TLS_NEW_SESSION_TICKET_COUNT 2
-#elif (TLS_NEW_SESSION_TICKET_COUNT < 0)
-   #error TLS_NEW_SESSION_TICKET_COUNT parameter is not valid
+#ifndef TLS13_NEW_SESSION_TICKET_COUNT
+   #define TLS13_NEW_SESSION_TICKET_COUNT 2
+#elif (TLS13_NEW_SESSION_TICKET_COUNT < 0)
+   #error TLS13_NEW_SESSION_TICKET_COUNT parameter is not valid
 #endif
 
 //Maximum size for HKDF digests
@@ -132,23 +134,26 @@
 
 typedef enum
 {
-   TLS_SIGN_SCHEME_NONE                   = 0x0000,
-   TLS_SIGN_SCHEME_RSA_PKCS1_SHA256       = 0x0401,
-   TLS_SIGN_SCHEME_RSA_PKCS1_SHA384       = 0x0501,
-   TLS_SIGN_SCHEME_RSA_PKCS1_SHA512       = 0x0601,
-   TLS_SIGN_SCHEME_ECDSA_SECP256R1_SHA256 = 0x0403,
-   TLS_SIGN_SCHEME_ECDSA_SECP384R1_SHA384 = 0x0503,
-   TLS_SIGN_SCHEME_ECDSA_SECP521R1_SHA512 = 0x0603,
-   TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA256    = 0x0804,
-   TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA384    = 0x0805,
-   TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA512    = 0x0806,
-   TLS_SIGN_SCHEME_ED25519                = 0x0807,
-   TLS_SIGN_SCHEME_ED448                  = 0x0808,
-   TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA256     = 0x0809,
-   TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA384     = 0x080A,
-   TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA512     = 0x080B,
-   TLS_SIGN_SCHEME_RSA_PKCS1_SHA1         = 0x0201,
-   TLS_SIGN_SCHEME_ECDSA_SHA1             = 0x0203
+   TLS_SIGN_SCHEME_NONE                         = 0x0000,
+   TLS_SIGN_SCHEME_RSA_PKCS1_SHA1               = 0x0201,
+   TLS_SIGN_SCHEME_RSA_PKCS1_SHA256             = 0x0401,
+   TLS_SIGN_SCHEME_RSA_PKCS1_SHA384             = 0x0501,
+   TLS_SIGN_SCHEME_RSA_PKCS1_SHA512             = 0x0601,
+   TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA256          = 0x0804,
+   TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA384          = 0x0805,
+   TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA512          = 0x0806,
+   TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA256           = 0x0809,
+   TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA384           = 0x080A,
+   TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA512           = 0x080B,
+   TLS_SIGN_SCHEME_ECDSA_SHA1                   = 0x0203,
+   TLS_SIGN_SCHEME_ECDSA_SECP256R1_SHA256       = 0x0403,
+   TLS_SIGN_SCHEME_ECDSA_SECP384R1_SHA384       = 0x0503,
+   TLS_SIGN_SCHEME_ECDSA_SECP521R1_SHA512       = 0x0603,
+   TLS_SIGN_SCHEME_ECDSA_BRAINPOOLP256R1_SHA256 = 0x081A, //RFC draft
+   TLS_SIGN_SCHEME_ECDSA_BRAINPOOLP384R1_SHA384 = 0x081B, //RFC draft
+   TLS_SIGN_SCHEME_ECDSA_BRAINPOOLP512R1_SHA512 = 0x081C, //RFC draft
+   TLS_SIGN_SCHEME_ED25519                      = 0x0807,
+   TLS_SIGN_SCHEME_ED448                        = 0x0808
 } Tls13SignatureScheme;
 
 
@@ -169,8 +174,8 @@ typedef enum
 
 typedef enum
 {
-   TLS_KEY_UPDATE_NOT_REQUESTED  = 0,
-   TLS_KEY_UPDATE_REQUESTED      = 1
+   TLS_KEY_UPDATE_NOT_REQUESTED = 0,
+   TLS_KEY_UPDATE_REQUESTED     = 1
 } Tls13KeyUpdateRequest;
 
 

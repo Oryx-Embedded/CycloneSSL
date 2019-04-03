@@ -4,7 +4,9 @@
  *
  * @section License
  *
- * Copyright (C) 2010-2018 Oryx Embedded SARL. All rights reserved.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ *
+ * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -23,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.0
+ * @version 1.9.2
  **/
 
 //Switch to the appropriate trace level
@@ -151,10 +153,10 @@ error_t tls13ParseHelloRetryRequest(TlsContext *context,
    const Tls13HelloRetryRequest *message, size_t length)
 {
    error_t error;
+   uint16_t cipherSuite;
+   uint8_t compressMethod;
    const uint8_t *p;
    const HashAlgo *hashAlgo;
-   TlsCipherSuite cipherSuite;
-   TlsCompressMethod compressMethod;
    TlsHelloExtensions extensions;
 
    //Debug message
@@ -195,26 +197,26 @@ error_t tls13ParseHelloRetryRequest(TlsContext *context,
    length -= message->sessionIdLen;
 
    //Malformed ServerHello message?
-   if(length < sizeof(TlsCipherSuite))
+   if(length < sizeof(uint16_t))
       return ERROR_DECODING_FAILED;
 
    //Get the negotiated cipher suite
    cipherSuite = LOAD16BE(p);
    //Point to the next field
-   p += sizeof(TlsCipherSuite);
+   p += sizeof(uint16_t);
    //Remaining bytes to process
-   length -= sizeof(TlsCipherSuite);
+   length -= sizeof(uint16_t);
 
    //Malformed ServerHello message?
-   if(length < sizeof(TlsCompressMethod))
+   if(length < sizeof(uint8_t))
       return ERROR_DECODING_FAILED;
 
-   //Get the negotiated compression method
+   //Get the value of the legacy_compression_method field
    compressMethod = *p;
    //Point to the next field
-   p += sizeof(TlsCompressMethod);
+   p += sizeof(uint8_t);
    //Remaining bytes to process
-   length -= sizeof(TlsCompressMethod);
+   length -= sizeof(uint8_t);
 
    //Legacy version
    TRACE_INFO("  legacyVersion = 0x%04" PRIX16 " (%s)\r\n",
@@ -234,21 +236,7 @@ error_t tls13ParseHelloRetryRequest(TlsContext *context,
       cipherSuite, tlsGetCipherSuiteName(cipherSuite));
 
    //Compression method
-   TRACE_INFO("  compressMethod = 0x%02" PRIX8 "\r\n", compressMethod);
-
-   //Parse the list of extensions offered by the server
-   error = tlsParseHelloExtensions(TLS_TYPE_HELLO_RETRY_REQUEST, p, length,
-      &extensions);
-   //Any error to report?
-   if(error)
-      return error;
-
-   //Check the list of extensions offered by the server
-   error = tlsCheckHelloExtensions(TLS_TYPE_HELLO_RETRY_REQUEST,
-      context->version, &extensions);
-   //Any error to report?
-   if(error)
-      return error;
+   TRACE_INFO("  legacyCompressMethod = 0x%02" PRIX8 "\r\n", compressMethod);
 
    //The legacy_version field must be set to 0x0303, which is the version
    //number for TLS 1.2
@@ -264,6 +252,18 @@ error_t tls13ParseHelloRetryRequest(TlsContext *context,
       //The legacy_session_id_echo field is not valid
       return ERROR_ILLEGAL_PARAMETER;
    }
+
+   //Upon receipt of a HelloRetryRequest, the client must check that the
+   //legacy_compression_method is 0
+   if(compressMethod != TLS_COMPRESSION_METHOD_NULL)
+      return ERROR_DECODING_FAILED;
+
+   //Parse the list of extensions offered by the server
+   error = tlsParseHelloExtensions(TLS_TYPE_HELLO_RETRY_REQUEST, p, length,
+      &extensions);
+   //Any error to report?
+   if(error)
+      return error;
 
    //The HelloRetryRequest message must contain a SupportedVersions extension
    if(extensions.selectedVersion == NULL)
@@ -289,15 +289,16 @@ error_t tls13ParseHelloRetryRequest(TlsContext *context,
    if(error)
       return error;
 
-   //Set cipher suite
-   error = tlsSelectCipherSuite(context, cipherSuite);
-   //Specified cipher suite not supported?
+   //Check the list of extensions offered by the server
+   error = tlsCheckHelloExtensions(TLS_TYPE_HELLO_RETRY_REQUEST,
+      context->version, &extensions);
+   //Any error to report?
    if(error)
       return error;
 
-   //Set compression method
-   error = tlsSelectCompressMethod(context, compressMethod);
-   //Specified compression method not supported?
+   //Set cipher suite
+   error = tlsSelectCipherSuite(context, cipherSuite);
+   //Specified cipher suite not supported?
    if(error)
       return error;
 
