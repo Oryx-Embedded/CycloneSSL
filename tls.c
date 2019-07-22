@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.2
+ * @version 1.9.4
  **/
 
 //Switch to the appropriate trace level
@@ -1184,7 +1184,8 @@ error_t tlsAddCertificate(TlsContext *context, const char_t *certChain,
       if(error)
          break;
 
-      //Retrieve the signature algorithm that has been used to sign the certificate
+      //Retrieve the signature algorithm that has been used to sign the
+      //certificate
       error = tlsGetCertificateType(certInfo, &certType, &certSignAlgo,
          &certHashAlgo, &namedCurve);
       //The specified signature algorithm is not supported?
@@ -1220,6 +1221,32 @@ error_t tlsAddCertificate(TlsContext *context, const char_t *certChain,
 
    //Return status code
    return error;
+}
+
+
+/**
+ * @brief Set certificate verification callback
+ * @param[in] context Pointer to the TLS context
+ * @param[in] certVerifyCallback Certificate verification callback
+ * @param[in] param An opaque pointer passed to the callback function
+ * @return Error code
+ **/
+
+error_t tlsSetCertificateVerifyCallback(TlsContext *context,
+   TlsCertVerifyCallback certVerifyCallback, void *param)
+{
+   //Invalid TLS context?
+   if(context == NULL)
+      return ERROR_INVALID_PARAMETER;
+
+   //Save certificate verification callback
+   context->certVerifyCallback = certVerifyCallback;
+
+   //This opaque pointer will be directly passed to the callback function
+   context->certVerifyParam = param;
+
+   //Successful processing
+   return NO_ERROR;
 }
 
 

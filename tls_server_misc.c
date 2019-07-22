@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.2
+ * @version 1.9.4
  **/
 
 //Switch to the appropriate trace level
@@ -355,7 +355,8 @@ error_t tlsGenerateServerKeySignature(TlsContext *context,
          //Compute MD5(ClientHello.random + ServerHello.random +
          //ServerKeyExchange.params)
          md5Init(md5Context);
-         md5Update(md5Context, context->random, 64);
+         md5Update(md5Context, context->clientRandom, TLS_RANDOM_SIZE);
+         md5Update(md5Context, context->serverRandom, TLS_RANDOM_SIZE);
          md5Update(md5Context, params, paramsLen);
          md5Final(md5Context, context->serverVerifyData);
 
@@ -380,7 +381,8 @@ error_t tlsGenerateServerKeySignature(TlsContext *context,
             //Compute SHA(ClientHello.random + ServerHello.random +
             //ServerKeyExchange.params)
             sha1Init(sha1Context);
-            sha1Update(sha1Context, context->random, 64);
+            sha1Update(sha1Context, context->clientRandom, TLS_RANDOM_SIZE);
+            sha1Update(sha1Context, context->serverRandom, TLS_RANDOM_SIZE);
             sha1Update(sha1Context, params, paramsLen);
             sha1Final(sha1Context, context->serverVerifyData + MD5_DIGEST_SIZE);
 
@@ -430,7 +432,8 @@ error_t tlsGenerateServerKeySignature(TlsContext *context,
          //Compute SHA(ClientHello.random + ServerHello.random +
          //ServerKeyExchange.params)
          sha1Init(sha1Context);
-         sha1Update(sha1Context, context->random, 64);
+         sha1Update(sha1Context, context->clientRandom, TLS_RANDOM_SIZE);
+         sha1Update(sha1Context, context->serverRandom, TLS_RANDOM_SIZE);
          sha1Update(sha1Context, params, paramsLen);
          sha1Final(sha1Context, context->serverVerifyData);
 
@@ -468,7 +471,8 @@ error_t tlsGenerateServerKeySignature(TlsContext *context,
          //Compute SHA(ClientHello.random + ServerHello.random +
          //ServerKeyExchange.params)
          sha1Init(sha1Context);
-         sha1Update(sha1Context, context->random, 64);
+         sha1Update(sha1Context, context->clientRandom, TLS_RANDOM_SIZE);
+         sha1Update(sha1Context, context->serverRandom, TLS_RANDOM_SIZE);
          sha1Update(sha1Context, params, paramsLen);
          sha1Final(sha1Context, context->serverVerifyData);
 
@@ -591,7 +595,8 @@ error_t tls12GenerateServerKeySignature(TlsContext *context,
             //Compute hash(ClientHello.random + ServerHello.random +
             //ServerKeyExchange.params)
             hashAlgo->init(hashContext);
-            hashAlgo->update(hashContext, context->random, 64);
+            hashAlgo->update(hashContext, context->clientRandom, TLS_RANDOM_SIZE);
+            hashAlgo->update(hashContext, context->serverRandom, TLS_RANDOM_SIZE);
             hashAlgo->update(hashContext, params, paramsLen);
             hashAlgo->final(hashContext, NULL);
 
@@ -721,14 +726,15 @@ error_t tls12GenerateServerKeySignature(TlsContext *context,
 
       //A temporary buffer is needed to concatenate ClientHello.random +
       //ServerHello.random + ServerKeyExchange.params
-      buffer = tlsAllocMem(paramsLen + 64);
+      buffer = tlsAllocMem(paramsLen + 2 * TLS_RANDOM_SIZE);
 
       //Successful memory allocation?
       if(buffer != NULL)
       {
          //Data to be verified is run through the EdDSA algorithm with no
          //hashing
-         memcpy(buffer, context->random, 64);
+         memcpy(buffer, context->clientRandom, TLS_RANDOM_SIZE);
+         memcpy(buffer + 32, context->serverRandom, TLS_RANDOM_SIZE);
          memcpy(buffer + 64, params, paramsLen);
 
 #if (TLS_ED25519_SUPPORT == ENABLED)

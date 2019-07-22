@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.2
+ * @version 1.9.4
  **/
 
 //Switch to the appropriate trace level
@@ -52,6 +52,7 @@
 
 error_t tlsGenerateSessionKeys(TlsContext *context)
 {
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    error_t error;
    size_t keyBlockLen;
    TlsCipherSuiteInfo *cipherSuite;
@@ -128,6 +129,10 @@ error_t tlsGenerateSessionKeys(TlsContext *context)
 
    //Successful processing
    return NO_ERROR;
+#else
+   //Not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
 }
 
 
@@ -140,6 +145,11 @@ error_t tlsGenerateSessionKeys(TlsContext *context)
 error_t tlsGenerateMasterSecret(TlsContext *context)
 {
    error_t error;
+   uint8_t random[2 * TLS_RANDOM_SIZE];
+
+   //Concatenate client_random and server_random values
+   memcpy(random, context->clientRandom, TLS_RANDOM_SIZE);
+   memcpy(random + 32, context->serverRandom, TLS_RANDOM_SIZE);
 
 #if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= SSL_VERSION_3_0)
    //SSL 3.0 currently selected?
@@ -147,7 +157,7 @@ error_t tlsGenerateMasterSecret(TlsContext *context)
    {
       //SSL 3.0 does not use a PRF, instead makes use abundantly of MD5
       error = sslExpandKey(context->premasterSecret,
-         context->premasterSecretLen, context->random, 64,
+         context->premasterSecretLen, random, sizeof(random),
          context->masterSecret, TLS_MASTER_SECRET_SIZE);
    }
    else
@@ -158,8 +168,8 @@ error_t tlsGenerateMasterSecret(TlsContext *context)
    {
       //TLS 1.0 and 1.1 use a PRF that combines MD5 and SHA-1
       error = tlsPrf(context->premasterSecret, context->premasterSecretLen,
-         "master secret", context->random, 64,
-         context->masterSecret, TLS_MASTER_SECRET_SIZE);
+         "master secret", random, sizeof(random), context->masterSecret,
+         TLS_MASTER_SECRET_SIZE);
    }
    else
 #endif
@@ -171,8 +181,8 @@ error_t tlsGenerateMasterSecret(TlsContext *context)
       //function in its construction
       error = tls12Prf(context->cipherSuite.prfHashAlgo,
          context->premasterSecret, context->premasterSecretLen,
-         "master secret", context->random, 64,
-         context->masterSecret, TLS_MASTER_SECRET_SIZE);
+         "master secret", random, sizeof(random), context->masterSecret,
+         TLS_MASTER_SECRET_SIZE);
    }
    else
 #endif
@@ -395,17 +405,11 @@ error_t tlsGeneratePskPremasterSecret(TlsContext *context)
 error_t tlsGenerateKeyBlock(TlsContext *context, size_t keyBlockLen)
 {
    error_t error;
-   size_t i;
-   uint8_t temp;
+   uint8_t random[2 * TLS_RANDOM_SIZE];
 
-   //Exchange client and server random bytes
-   for(i = 0; i < 32; i++)
-   {
-      //Swap each byte
-      temp = context->random[i];
-      context->random[i] = context->random[i + 32];
-      context->random[i + 32] = temp;
-   }
+   //Concatenate server_random and client_random values
+   memcpy(random, context->serverRandom, TLS_RANDOM_SIZE);
+   memcpy(random + 32, context->clientRandom, TLS_RANDOM_SIZE);
 
 #if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= SSL_VERSION_3_0)
    //SSL 3.0 currently selected?
@@ -413,7 +417,7 @@ error_t tlsGenerateKeyBlock(TlsContext *context, size_t keyBlockLen)
    {
       //SSL 3.0 does not use a PRF, instead makes use abundantly of MD5
       error = sslExpandKey(context->masterSecret, TLS_MASTER_SECRET_SIZE,
-         context->random, 64, context->keyBlock, keyBlockLen);
+         random, sizeof(random), context->keyBlock, keyBlockLen);
    }
    else
 #endif
@@ -423,7 +427,8 @@ error_t tlsGenerateKeyBlock(TlsContext *context, size_t keyBlockLen)
    {
       //TLS 1.0 and 1.1 use a PRF that combines MD5 and SHA-1
       error = tlsPrf(context->masterSecret, TLS_MASTER_SECRET_SIZE,
-         "key expansion", context->random, 64, context->keyBlock, keyBlockLen);
+         "key expansion", random, sizeof(random), context->keyBlock,
+         keyBlockLen);
    }
    else
 #endif
@@ -435,7 +440,7 @@ error_t tlsGenerateKeyBlock(TlsContext *context, size_t keyBlockLen)
       //as the core function in its construction
       error = tls12Prf(context->cipherSuite.prfHashAlgo,
          context->masterSecret, TLS_MASTER_SECRET_SIZE, "key expansion",
-         context->random, 64, context->keyBlock, keyBlockLen);
+         random, sizeof(random), context->keyBlock, keyBlockLen);
    }
    else
 #endif
@@ -443,15 +448,6 @@ error_t tlsGenerateKeyBlock(TlsContext *context, size_t keyBlockLen)
    {
       //Report an error
       error = ERROR_INVALID_VERSION;
-   }
-
-   //Exchange client and server random bytes
-   for(i = 0; i < 32; i++)
-   {
-      //Swap each byte
-      temp = context->random[i];
-      context->random[i] = context->random[i + 32];
-      context->random[i + 32] = temp;
    }
 
    //Return status code
@@ -493,7 +489,7 @@ error_t tlsExportKeyingMaterial(TlsContext *context, const char_t *label,
       return ERROR_INVALID_PARAMETER;
 
    //Calculate the length of the seed
-   n = 64;
+   n = 2 * TLS_RANDOM_SIZE;
 
    //Check whether a context is provided
    if(useContextValue)
@@ -505,8 +501,9 @@ error_t tlsExportKeyingMaterial(TlsContext *context, const char_t *label,
    if(seed == NULL)
       return ERROR_OUT_OF_RESOURCES;
 
-   //Concatenate client_random and server_random fields
-   memcpy(seed, context->random, 64);
+   //Concatenate client_random and server_random values
+   memcpy(seed, context->clientRandom, TLS_RANDOM_SIZE);
+   memcpy(seed + 32, context->serverRandom, TLS_RANDOM_SIZE);
 
    //Check whether a context is provided
    if(useContextValue)
@@ -671,7 +668,9 @@ error_t tlsPrf(const uint8_t *secret, size_t secretLen, const char_t *label,
 
          //Copy the resulting digest
          for(j = 0; i < outputLen && j < MD5_DIGEST_SIZE; i++, j++)
+         {
             output[i] = hmacContext->digest[j];
+         }
 
          //Compute A(i + 1) = HMAC_MD5(S1, A(i))
          hmacInit(hmacContext, MD5_HASH_ALGO, s1, sLen);
@@ -697,7 +696,9 @@ error_t tlsPrf(const uint8_t *secret, size_t secretLen, const char_t *label,
 
          //Copy the resulting digest
          for(j = 0; i < outputLen && j < SHA1_DIGEST_SIZE; i++, j++)
+         {
             output[i] ^= hmacContext->digest[j];
+         }
 
          //Compute A(i + 1) = HMAC_SHA1(S2, A(i))
          hmacInit(hmacContext, SHA1_HASH_ALGO, s2, sLen);
@@ -745,9 +746,9 @@ error_t tlsPrf(const uint8_t *secret, size_t secretLen, const char_t *label,
  * @return Error code
  **/
 
-error_t tls12Prf(const HashAlgo *hash, const uint8_t *secret,
-   size_t secretLen, const char_t *label, const uint8_t *seed,
-   size_t seedLen, uint8_t *output, size_t outputLen)
+error_t tls12Prf(const HashAlgo *hash, const uint8_t *secret, size_t secretLen,
+   const char_t *label, const uint8_t *seed, size_t seedLen, uint8_t *output,
+   size_t outputLen)
 {
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    error_t error;

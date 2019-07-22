@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.2
+ * @version 1.9.4
  **/
 
 #ifndef _TLS_CERTIFICATE_H
@@ -58,9 +58,9 @@ bool_t tlsIsCertificateAcceptable(TlsContext *context, const TlsCertDesc *cert,
    const TlsSignHashAlgos *certSignHashAlgos, const TlsSupportedGroupList *curveList,
    const TlsCertAuthorities *certAuthorities);
 
-bool_t tlsIsCertificateValid(const X509CertificateInfo *certInfo,
-   const char_t *trustedCaList, size_t trustedCaListLen,
-   uint_t pathLength, const char_t *subjectName);
+error_t tlsValidateCertificate(TlsContext *context,
+   const X509CertificateInfo *certInfo, uint_t pathLen,
+   const char_t *subjectName);
 
 error_t tlsGetCertificateType(const X509CertificateInfo *certInfo,
    TlsCertificateType *certType, TlsSignatureAlgo *certSignAlgo,

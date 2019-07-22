@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.2
+ * @version 1.9.4
  **/
 
 //Switch to the appropriate trace level
@@ -286,9 +286,9 @@ error_t tlsParseCertificateList(TlsContext *context, const uint8_t *p,
    size_t length)
 {
    error_t error;
+   error_t certValidResult;
    uint_t i;
    size_t n;
-   bool_t validCertChain;
    const char_t *subjectName;
    X509CertificateInfo *certInfo;
    X509CertificateInfo *issuerCertInfo;
@@ -427,9 +427,17 @@ error_t tlsParseCertificateList(TlsContext *context, const uint8_t *p,
          subjectName = NULL;
       }
 
-      //Test if the end-user certificate matches a trusted CA
-      validCertChain = tlsIsCertificateValid(certInfo, context->trustedCaList,
-         context->trustedCaListLen, 0, subjectName);
+      //Check if the end-user certificate can be matched with a trusted CA
+      certValidResult = tlsValidateCertificate(context, certInfo, 0,
+         subjectName);
+
+      //Check validation result
+      if(certValidResult != NO_ERROR && certValidResult != ERROR_UNKNOWN_CA)
+      {
+         //Report an error
+         error = ERROR_BAD_CERTIFICATE;
+         break;
+      }
 
       //Next certificate
       p += n;
@@ -495,7 +503,7 @@ error_t tlsParseCertificateList(TlsContext *context, const uint8_t *p,
          }
 
          //Certificate chain validation in progress?
-         if(!validCertChain)
+         if(certValidResult == ERROR_UNKNOWN_CA)
          {
             //Validate current certificate
             error = x509ValidateCertificate(certInfo, issuerCertInfo, i);
@@ -519,9 +527,18 @@ error_t tlsParseCertificateList(TlsContext *context, const uint8_t *p,
                break;
             }
 
-            //Test if the intermediate certificate matches a trusted CA
-            validCertChain = tlsIsCertificateValid(issuerCertInfo,
-               context->trustedCaList, context->trustedCaListLen, i, subjectName);
+            //Check if the intermediate certificate can be matched with a
+            //trusted CA
+            certValidResult = tlsValidateCertificate(context, issuerCertInfo,
+               i, subjectName);
+
+            //Check validation result
+            if(certValidResult != NO_ERROR && certValidResult != ERROR_UNKNOWN_CA)
+            {
+               //Report an error
+               error = ERROR_BAD_CERTIFICATE;
+               break;
+            }
          }
 
          //Keep track of the issuer certificate
@@ -549,17 +566,13 @@ error_t tlsParseCertificateList(TlsContext *context, const uint8_t *p,
 #endif
       }
 
-      //Check status code
-      if(!error)
+      //Certificate chain validation failed?
+      if(error == NO_ERROR && certValidResult != NO_ERROR)
       {
-         //Certificate chain validation failed?
-         if(!validCertChain)
-         {
-            //A valid certificate chain or partial chain was received, but the
-            //certificate was not accepted because the CA certificate could not
-            //be matched with a known, trusted CA
-            error = ERROR_UNKNOWN_CA;
-         }
+         //A valid certificate chain or partial chain was received, but the
+         //certificate was not accepted because the CA certificate could not
+         //be matched with a known, trusted CA
+         error = ERROR_UNKNOWN_CA;
       }
 
       //End of exception handling block
@@ -1232,92 +1245,117 @@ bool_t tlsIsCertificateAcceptable(TlsContext *context, const TlsCertDesc *cert,
 
 /**
  * @brief Verify certificate against root CAs
+ * @param[in] context Pointer to the TLS context
  * @param[in] certInfo X.509 certificate to be verified
- * @param[in] trustedCaList List of trusted CA (PEM format)
- * @param[in] trustedCaListLen Total length of the list
- * @param[in] pathLength Certificate path length
+ * @param[in] pathLen Certificate path length
  * @param[in] subjectName Subject name (optional parameter)
- * @return TRUE if the certificate is issued by a trusted CA, else FALSE
+ * @return Error code
  **/
 
-bool_t tlsIsCertificateValid(const X509CertificateInfo *certInfo,
-   const char_t *trustedCaList, size_t trustedCaListLen,
-   uint_t pathLength, const char_t *subjectName)
+error_t tlsValidateCertificate(TlsContext *context,
+   const X509CertificateInfo *certInfo, uint_t pathLen,
+   const char_t *subjectName)
 {
    error_t error;
-   bool_t valid;
+   size_t n;
+   const char_t *p;
    uint8_t *derCert;
    size_t derCertSize;
    size_t derCertLen;
    X509CertificateInfo *caCertInfo;
 
-   //DER encoded certificate
-   derCert = NULL;
-   derCertSize = 0;
-   derCertLen = 0;
+   //Initialize status code
+   error = ERROR_UNKNOWN_CA;
 
-   //Allocate a memory buffer to store the root CA
-   caCertInfo = tlsAllocMem(sizeof(X509CertificateInfo));
-   //Failed to allocate memory?
-   if(caCertInfo == NULL)
-      return FALSE;
-
-   //Check whether certificates should be checked against root CAs
-   if(trustedCaListLen > 0)
+   //Any registered callback?
+   if(context->certVerifyCallback != NULL)
    {
-      //Initialize flag
-      valid = FALSE;
+      //Invoke user callback function
+      error = context->certVerifyCallback(context, certInfo, pathLen,
+         context->certVerifyParam);
+   }
 
-      //Loop through the root CAs
-      while(trustedCaListLen > 0)
+   //Unknown certification authority?
+   if(error == ERROR_UNKNOWN_CA)
+   {
+      //Check whether the certificate should be checked against root CAs
+      if(context->trustedCaList > 0)
       {
-         //Decode PEM certificate
-         error = pemImportCertificate(&trustedCaList, &trustedCaListLen,
-            &derCert, &derCertSize, &derCertLen);
-         //Any error to report?
-         if(error)
-            break;
+         //Point to the list of CA certificates
+         p = context->trustedCaList;
+         n = context->trustedCaListLen;
 
-         //Parse X.509 certificate
-         error = x509ParseCertificate(derCert, derCertLen, caCertInfo);
+         //DER encoded certificate
+         derCert = NULL;
+         derCertSize = 0;
+         derCertLen = 0;
 
-         //Valid CA certificate?
-         if(!error)
+         //Allocate a memory buffer to store the CA certificate
+         caCertInfo = tlsAllocMem(sizeof(X509CertificateInfo));
+         //Failed to allocate memory?
+         if(caCertInfo == NULL)
+            return ERROR_OUT_OF_MEMORY;
+
+         //Loop through the list of CA certificates
+         while(n > 0)
          {
-            //Validate the certificate with the current CA
-            error = x509ValidateCertificate(certInfo, caCertInfo, pathLength);
+            //Decode PEM certificate
+            error = pemImportCertificate(&p, &n, &derCert, &derCertSize,
+               &derCertLen);
 
-            //Certificate validation succeeded?
+            //Valid PEM certificate?
             if(!error)
             {
-               //Check name constraints
-               error = x509CheckNameConstraints(subjectName, caCertInfo);
+               //Parse X.509 certificate
+               error = x509ParseCertificate(derCert, derCertLen, caCertInfo);
+
+               //Check status code
+               if(!error)
+               {
+                  //Validate the certificate with the current CA
+                  error = x509ValidateCertificate(certInfo, caCertInfo, pathLen);
+               }
+
+               //Check status code
+               if(!error)
+               {
+                  //Check name constraints
+                  error = x509CheckNameConstraints(subjectName, caCertInfo);
+               }
+
+               //Check status code
+               if(!error)
+               {
+                  //The certificate is issued by a trusted CA
+                  break;
+               }
+               else
+               {
+                  //The certificate cannot be matched with the current CA
+                  error = ERROR_UNKNOWN_CA;
+               }
             }
-
-            //Acceptable name constraints?
-            if(!error)
+            else
             {
-               //The certificate is issued by a trusted CA
-               valid = TRUE;
-               //We are done
+               //No more CA certificates in the list
+               error = ERROR_UNKNOWN_CA;
                break;
             }
          }
+
+         //Free previously allocated memory
+         tlsFreeMem(derCert);
+         tlsFreeMem(caCertInfo);
+      }
+      else
+      {
+         //Do not check the certificate against root CAs
+         error = NO_ERROR;
       }
    }
-   else
-   {
-      //Do not check certificates against root CAs
-      valid = TRUE;
-   }
 
-   //Free previously allocated memory
-   tlsFreeMem(derCert);
-   tlsFreeMem(caCertInfo);
-
-   //The return value specifies whether the certificate is issued by a
-   //trusted CA
-   return valid;
+   //Return status code
+   return error;
 }
 
 

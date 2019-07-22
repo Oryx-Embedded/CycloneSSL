@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.2
+ * @version 1.9.4
  **/
 
 //Switch to the appropriate trace level
@@ -118,17 +118,14 @@ TlsSessionState *tlsFindCache(TlsCache *cache, const uint8_t *sessionId,
    //Flush expired entries
    for(i = 0; i < cache->size; i++)
    {
-      //Point to the current entry
-      session = &cache->sessions[i];
-
       //Skip unused entries
-      if(session->sessionIdLen != 0)
+      if(cache->sessions[i].sessionIdLen != 0)
       {
          //Outdated entry?
-         if((time - session->timestamp) >= TLS_SESSION_CACHE_LIFETIME)
+         if((time - cache->sessions[i].timestamp) >= TLS_SESSION_CACHE_LIFETIME)
          {
             //This session is no more valid and should be removed from the cache
-            tlsFreeSessionState(session);
+            tlsFreeSessionState(&cache->sessions[i]);
          }
       }
    }

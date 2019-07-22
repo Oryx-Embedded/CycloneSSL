@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.2
+ * @version 1.9.4
  **/
 
 #ifndef _TLS_H
@@ -49,6 +49,7 @@ struct _TlsContext;
 #include "pkc/dh.h"
 #include "ecc/ecdh.h"
 #include "aead/gcm.h"
+#include "certificate/x509_common.h"
 
 
 /*
@@ -78,13 +79,13 @@ struct _TlsContext;
 #endif
 
 //Version string
-#define CYCLONE_SSL_VERSION_STRING "1.9.2"
+#define CYCLONE_SSL_VERSION_STRING "1.9.4"
 //Major version
 #define CYCLONE_SSL_MAJOR_VERSION 1
 //Minor version
 #define CYCLONE_SSL_MINOR_VERSION 9
 //Revision number
-#define CYCLONE_SSL_REV_NUMBER 2
+#define CYCLONE_SSL_REV_NUMBER 4
 
 //TLS version numbers
 #define SSL_VERSION_3_0 0x0300
@@ -829,6 +830,8 @@ struct _TlsContext;
 #define TLS_MAX_RECORD_LENGTH 16384
 //Data overhead caused by record encryption
 #define TLS_MAX_RECORD_OVERHEAD 512
+//Size of client and server random values
+#define TLS_RANDOM_SIZE 32
 //Master secret size
 #define TLS_MASTER_SECRET_SIZE 48
 
@@ -1735,6 +1738,14 @@ typedef error_t (*TlsPskCallback)(TlsContext *context,
 
 
 /**
+ * @brief Certificate verification callback function
+ **/
+
+typedef error_t (*TlsCertVerifyCallback)(TlsContext *context,
+   const X509CertificateInfo *certInfo, uint_t pathLen, void *param);
+
+
+/**
  * @brief Raw public key verification callback function
  **/
 
@@ -1748,7 +1759,7 @@ typedef error_t (*TlsRpkVerifyCallback)(TlsContext *context,
 
 typedef error_t (*TlsTicketEncryptCallback)(TlsContext *context,
    const uint8_t *plaintext, size_t plaintextLen, uint8_t *ciphertext,
-   size_t *ciphertextLen, void *params);
+   size_t *ciphertextLen, void *param);
 
 
 /**
@@ -1757,7 +1768,7 @@ typedef error_t (*TlsTicketEncryptCallback)(TlsContext *context,
 
 typedef error_t (*TlsTicketDecryptCallback)(TlsContext *context,
    const uint8_t *ciphertext, size_t ciphertextLen, uint8_t *plaintext,
-   size_t *plaintextLen, void *params);
+   size_t *plaintextLen, void *param);
 
 
 /**
@@ -1963,24 +1974,24 @@ typedef struct
 
 struct _TlsContext
 {
-   TlsState state;                          ///<TLS handshake finite state machine
-   TlsTransportProtocol transportProtocol;  ///<Transport protocol (stream or datagram)
-   TlsConnectionEnd entity;                 ///<Client or server operation
+   TlsState state;                           ///<TLS handshake finite state machine
+   TlsTransportProtocol transportProtocol;   ///<Transport protocol (stream or datagram)
+   TlsConnectionEnd entity;                  ///<Client or server operation
 
-   TlsSocketHandle socketHandle;            ///<Socket handle
+   TlsSocketHandle socketHandle;             ///<Socket handle
    TlsSocketSendCallback socketSendCallback;       ///<Socket send callback function
    TlsSocketReceiveCallback socketReceiveCallback; ///<Socket receive callback function
 
-   const PrngAlgo *prngAlgo;                ///<Pseudo-random number generator to be used
-   void *prngContext;                       ///<Pseudo-random number generator context
+   const PrngAlgo *prngAlgo;                 ///<Pseudo-random number generator to be used
+   void *prngContext;                        ///<Pseudo-random number generator context
 
-   const uint16_t *cipherSuites;            ///<List of supported cipher suites
-   uint_t numCipherSuites;                  ///<Number of cipher suites in the list
+   const uint16_t *cipherSuites;             ///<List of supported cipher suites
+   uint_t numCipherSuites;                   ///<Number of cipher suites in the list
 
-   const uint16_t *supportedGroups;         ///<List of supported named groups
-   uint_t numSupportedGroups;               ///<Number of named groups in the list
+   const uint16_t *supportedGroups;          ///<List of supported named groups
+   uint_t numSupportedGroups;                ///<Number of named groups in the list
 
-   char_t *serverName;                      ///<Fully qualified DNS hostname of the server
+   char_t *serverName;                       ///<Fully qualified DNS hostname of the server
 
 #if (TLS_ECC_CALLBACK_SUPPORT == ENABLED)
    TlsEcdhCallback ecdhCallback;
@@ -1988,106 +1999,99 @@ struct _TlsContext
    TlsEcdsaVerifyCallback ecdsaVerifyCallback;
 #endif
 
-   TlsCertDesc certs[TLS_MAX_CERTIFICATES]; //End entity certificates
-   uint_t numCerts;                         //Number of certificates available
-   TlsCertDesc *cert;                       //Pointer to the currently selected certificate
+   TlsCertDesc certs[TLS_MAX_CERTIFICATES];  ///<End entity certificates (PEM format)
+   uint_t numCerts;                          ///<Number of certificates available
+   const char_t *trustedCaList;              ///<List of trusted CA (PEM format)
+   size_t trustedCaListLen;                  ///<Number of trusted CA in the list
+   TlsCertVerifyCallback certVerifyCallback; ///<Certificate verification callback function
+   void *certVerifyParam;                    ///<Opaque pointer passed to the certificate verification callback
+   TlsCertDesc *cert;                        ///<Pointer to the currently selected certificate
 
-   const char_t *trustedCaList;             ///<List of trusted CA (PEM format)
-   size_t trustedCaListLen;                 ///<Number of trusted CA in the list
+   TlsCache *cache;                          ///<TLS session cache
 
-   TlsCache *cache;                         ///<TLS session cache
+   uint8_t sessionId[32];                    ///<Session identifier
+   size_t sessionIdLen;                      ///<Length of the session identifier
 
-   uint8_t sessionId[32];                   ///<Session identifier
-   size_t sessionIdLen;                     ///<Length of the session identifier
+   uint16_t clientVersion;                   ///<Latest version supported by the client
+   uint16_t version;                         ///<Negotiated TLS version
+   uint16_t versionMin;                      ///<Minimum version accepted by the implementation
+   uint16_t versionMax;                      ///<Maximum version accepted by the implementation
 
-   uint16_t clientVersion;                  ///<Latest version supported by the client
-   uint16_t version;                        ///<Negotiated TLS version
-   uint16_t versionMin;                     ///<Minimum version accepted by the implementation
-   uint16_t versionMax;                     ///<Maximum version accepted by the implementation
+   uint8_t *cookie;                          ///<Cookie
+   size_t cookieLen;                         ///<Length of the cookie
 
-   uint8_t *cookie;                         ///<Cookie
-   size_t cookieLen;                        ///<Length of the cookie
+   TlsCipherSuiteInfo cipherSuite;           ///<Negotiated cipher suite
+   TlsKeyExchMethod keyExchMethod;           ///<Key exchange method
+   TlsSignatureAlgo signAlgo;                ///<Signature algorithm to be used
+   TlsHashAlgo signHashAlgo;                 ///<Hash algorithm used for signing
+   uint16_t namedGroup;                      ///<ECDHE or FFDHE named group
 
-   TlsCipherSuiteInfo cipherSuite;          ///<Negotiated cipher suite
-   TlsKeyExchMethod keyExchMethod;          ///<Key exchange method
-   TlsSignatureAlgo signAlgo;               ///<Signature algorithm to be used
-   TlsHashAlgo signHashAlgo;                ///<Hash algorithm used for signing
-   uint16_t namedGroup;                     ///<ECDHE or FFDHE named group
+   TlsCertificateType peerCertType;          ///<Peer's certificate type
+   TlsClientAuthMode clientAuthMode;         ///<Client authentication mode
+   bool_t clientCertRequested;               ///<This flag tells whether the client certificate is requested
 
-   TlsCertificateType peerCertType;         ///<Peer's certificate type
-   TlsClientAuthMode clientAuthMode;        ///<Client authentication mode
-   bool_t clientCertRequested;              ///<This flag tells whether the client certificate is requested
+   bool_t resume;                            ///<The connection is established by resuming a session
+   bool_t fatalAlertSent;                    ///<A fatal alert message has been sent
+   bool_t fatalAlertReceived;                ///<A fatal alert message has been received from the peer
+   bool_t closeNotifySent;                   ///<A closure alert has been sent
+   bool_t closeNotifyReceived;               ///<A closure alert has been received from the peer
 
-   bool_t resume;                           ///<The connection is established by resuming a session
-   bool_t fatalAlertSent;                   ///<A fatal alert message has been sent
-   bool_t fatalAlertReceived;               ///<A fatal alert message has been received from the peer
-   bool_t closeNotifySent;                  ///<A closure alert has been sent
-   bool_t closeNotifyReceived;              ///<A closure alert has been received from the peer
+   uint8_t *txBuffer;                        ///<TX buffer
+   size_t txBufferSize;                      ///<TX buffer size
+   size_t txBufferMaxLen;                    ///<Maximum number of plaintext data the TX buffer can hold
+   TlsContentType txBufferType;              ///<Type of data that resides in the TX buffer
+   size_t txBufferLen;                       ///<Number of bytes that are pending to be sent
+   size_t txBufferPos;                       ///<Current position in TX buffer
+   size_t txRecordLen;                       ///<Length of the TLS record
+   size_t txRecordPos;                       ///<Current position in the TLS record
 
-   uint8_t *txBuffer;                       ///<TX buffer
-   size_t txBufferSize;                     ///<TX buffer size
-   size_t txBufferMaxLen;                   ///<Maximum number of plaintext data the TX buffer can hold
-   TlsContentType txBufferType;             ///<Type of data that resides in the TX buffer
-   size_t txBufferLen;                      ///<Number of bytes that are pending to be sent
-   size_t txBufferPos;                      ///<Current position in TX buffer
-   size_t txRecordLen;                      ///<Length of the TLS record
-   size_t txRecordPos;                      ///<Current position in the TLS record
+   uint8_t *rxBuffer;                        ///<RX buffer
+   size_t rxBufferSize;                      ///<RX buffer size
+   size_t rxBufferMaxLen;                    ///<Maximum number of plaintext data the RX buffer can hold
+   TlsContentType rxBufferType;              ///<Type of data that resides in the RX buffer
+   size_t rxBufferLen;                       ///<Number of bytes available for reading
+   size_t rxBufferPos;                       ///<Current position in RX buffer
+   size_t rxRecordLen;                       ///<Length of the TLS record
+   size_t rxRecordPos;                       ///<Current position in the TLS record
 
-   uint8_t *rxBuffer;                       ///<RX buffer
-   size_t rxBufferSize;                     ///<RX buffer size
-   size_t rxBufferMaxLen;                   ///<Maximum number of plaintext data the RX buffer can hold
-   TlsContentType rxBufferType;             ///<Type of data that resides in the RX buffer
-   size_t rxBufferLen;                      ///<Number of bytes available for reading
-   size_t rxBufferPos;                      ///<Current position in RX buffer
-   size_t rxRecordLen;                      ///<Length of the TLS record
-   size_t rxRecordPos;                      ///<Current position in the TLS record
-
-   union
-   {
-      struct
-      {
-         uint8_t clientRandom[32];          ///<Client random value
-         uint8_t serverRandom[32];          ///<Server random value
-      };
-      uint8_t random[64];
-   };
-
+   uint8_t clientRandom[TLS_RANDOM_SIZE];    ///<Client random value
+   uint8_t serverRandom[TLS_RANDOM_SIZE];    ///<Server random value
    uint8_t premasterSecret[TLS_PREMASTER_SECRET_SIZE]; ///<Premaster secret
-   size_t premasterSecretLen;               ///<Length of the premaster secret
-   uint8_t masterSecret[TLS_MASTER_SECRET_SIZE]; ///<Master secret
-   uint8_t keyBlock[192];                   ///<Key material
-   uint8_t clientVerifyData[64];            ///<Client verify data
-   size_t clientVerifyDataLen;              ///<Length of the client verify data
-   uint8_t serverVerifyData[64];            ///<Server verify data
-   size_t serverVerifyDataLen;              ///<Length of the server verify data
+   size_t premasterSecretLen;                ///<Length of the premaster secret
+   uint8_t clientVerifyData[64];             ///<Client verify data
+   size_t clientVerifyDataLen;               ///<Length of the client verify data
+   uint8_t serverVerifyData[64];             ///<Server verify data
+   size_t serverVerifyDataLen;               ///<Length of the server verify data
 
-   TlsEncryptionEngine encryptionEngine;    ///<Encryption engine
-   TlsEncryptionEngine decryptionEngine;    ///<Decryption engine
+   TlsEncryptionEngine encryptionEngine;     ///<Encryption engine
+   TlsEncryptionEngine decryptionEngine;     ///<Decryption engine
 
 #if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_0)
-   size_t txLastRecordLen;                  ///<Length of the previous TLS record
+   size_t txLastRecordLen;                   ///<Length of the previous TLS record
 #endif
 
 #if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
-   Md5Context *transcriptMd5Context;        ///<MD5 context used to compute verify data
+   Md5Context *transcriptMd5Context;         ///<MD5 context used to compute verify data
 #endif
 
 #if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
-   HmacContext hmacContext;                 ///<HMAC context
-   Sha1Context *transcriptSha1Context;      ///<SHA-1 context used to compute verify data
+   uint8_t masterSecret[TLS_MASTER_SECRET_SIZE]; ///<Master secret
+   uint8_t keyBlock[192];                    ///<Key material
+   HmacContext hmacContext;                  ///<HMAC context
+   Sha1Context *transcriptSha1Context;       ///<SHA-1 context used to compute verify data
 #endif
 
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
-   HashContext *transcriptHashContext;      ///<Hash context used to compute verify data (TLS 1.2)
+   HashContext *transcriptHashContext;       ///<Hash context used to compute verify data
 #endif
 
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
-   uint16_t preferredGroup;                 ///<Preferred ECDHE or FFDHE named group
-   systime_t timestamp;                     ///<Time at which the ClientHello message was sent
-   bool_t updatedClientHelloReceived;       ///<An updated ClientHello message has been received
-   uint8_t *certRequestContext;             ///<Certificate request context
-   size_t certRequestContextLen;            ///<Length of the certificate request context
-   int_t selectedIdentity;                  ///<Selected PSK identity
+   uint16_t preferredGroup;                  ///<Preferred ECDHE or FFDHE named group
+   systime_t timestamp;                      ///<Time at which the ClientHello message was sent
+   bool_t updatedClientHelloReceived;        ///<An updated ClientHello message has been received
+   uint8_t *certRequestContext;              ///<Certificate request context
+   size_t certRequestContextLen;             ///<Length of the certificate request context
+   int_t selectedIdentity;                   ///<Selected PSK identity
 
    uint8_t secret[TLS_MAX_HKDF_DIGEST_SIZE];
    uint8_t clientEarlyTrafficSecret[TLS_MAX_HKDF_DIGEST_SIZE];
@@ -2098,144 +2102,144 @@ struct _TlsContext
    uint8_t exporterMasterSecret[TLS_MAX_HKDF_DIGEST_SIZE];
    uint8_t resumptionMasterSecret[TLS_MAX_HKDF_DIGEST_SIZE];
 
-   uint_t newSessionTicketCount;            ///<Number of NewSessionTicket messages that have been sent
+   uint_t newSessionTicketCount;             ///<Number of NewSessionTicket messages that have been sent
 
-   uint8_t *ticket;                         ///<Session ticket
-   size_t ticketLen;                        ///<Length of the session ticket
+   uint8_t *ticket;                          ///<Session ticket
+   size_t ticketLen;                         ///<Length of the session ticket
    uint8_t ticketPsk[TLS_MAX_HKDF_DIGEST_SIZE]; ///<PSK associated with the ticket
-   size_t ticketPskLen;                     ///<Length of the PSK associated with the ticket
-   systime_t ticketTimestamp;               ///<Timestamp to manage ticket lifetime
-   uint32_t ticketLifetime;                 ///<Lifetime of the ticket
-   uint32_t ticketAgeAdd;                   ///<Random value used to obscure the age of the ticket
-   uint32_t ticketNonce;                    ///<A per-ticket value that is unique across all tickets issued
-   uint16_t ticketCipherSuite;              ///<Cipher suite associated with the ticket
-   TlsHashAlgo ticketHashAlgo;              ///<Hash algorithm associated with the ticket
-   char_t *ticketAlpn;                      ///<ALPN protocol associated with the ticket
+   size_t ticketPskLen;                      ///<Length of the PSK associated with the ticket
+   systime_t ticketTimestamp;                ///<Timestamp to manage ticket lifetime
+   uint32_t ticketLifetime;                  ///<Lifetime of the ticket
+   uint32_t ticketAgeAdd;                    ///<Random value used to obscure the age of the ticket
+   uint32_t ticketNonce;                     ///<A per-ticket value that is unique across all tickets issued
+   uint16_t ticketCipherSuite;               ///<Cipher suite associated with the ticket
+   TlsHashAlgo ticketHashAlgo;               ///<Hash algorithm associated with the ticket
+   char_t *ticketAlpn;                       ///<ALPN protocol associated with the ticket
 
-   size_t maxEarlyDataSize;                 ///<Maximum amount of 0-RTT data that the client is allowed to send
-   size_t earlyDataLen;                     ///<Total amount of 0-RTT data that have been sent by the client
-   bool_t earlyDataEnabled;                 ///<EarlyData is enabled
-   bool_t earlyDataRejected;                ///<The 0-RTT data have been rejected by the server
-   bool_t earlyDataExtReceived;             ///<The EarlyData extension has been received
-   TlsSequenceNumber earlyDataSeqNum;       ///<Early data sequence number
+   size_t maxEarlyDataSize;                  ///<Maximum amount of 0-RTT data that the client is allowed to send
+   size_t earlyDataLen;                      ///<Total amount of 0-RTT data that have been sent by the client
+   bool_t earlyDataEnabled;                  ///<EarlyData is enabled
+   bool_t earlyDataRejected;                 ///<The 0-RTT data have been rejected by the server
+   bool_t earlyDataExtReceived;              ///<The EarlyData extension has been received
+   TlsSequenceNumber earlyDataSeqNum;        ///<Early data sequence number
 #endif
 
 #if (TLS_DH_SUPPORT == ENABLED)
-   DhContext dhContext;                     ///<Diffie-Hellman context
+   DhContext dhContext;                      ///<Diffie-Hellman context
 #endif
 
 #if (TLS_ECDH_SUPPORT == ENABLED)
-   EcdhContext ecdhContext;                 ///<ECDH context
-   bool_t ecPointFormatsExtReceived;        ///<The EcPointFormats extension has been received
+   EcdhContext ecdhContext;                  ///<ECDH context
+   bool_t ecPointFormatsExtReceived;         ///<The EcPointFormats extension has been received
 #endif
 
 #if (TLS_RSA_SUPPORT == ENABLED)
-   RsaPublicKey peerRsaPublicKey;           ///<Peer's RSA public key
+   RsaPublicKey peerRsaPublicKey;            ///<Peer's RSA public key
 #endif
 
 #if (TLS_DSA_SIGN_SUPPORT == ENABLED)
-   DsaPublicKey peerDsaPublicKey;           ///<Peer's DSA public key
+   DsaPublicKey peerDsaPublicKey;            ///<Peer's DSA public key
 #endif
 
 #if (TLS_ECDSA_SIGN_SUPPORT == ENABLED || TLS_EDDSA_SIGN_SUPPORT == ENABLED)
-   EcDomainParameters peerEcParams;         ///<Peer's EC domain parameters
-   EcPoint peerEcPublicKey;                 ///<Peer's EC public key
+   EcDomainParameters peerEcParams;          ///<Peer's EC domain parameters
+   EcPoint peerEcPublicKey;                  ///<Peer's EC public key
 #endif
 
 #if (TLS_PSK_SUPPORT == ENABLED)
-   uint8_t *psk;                            ///<Pre-shared key
-   size_t pskLen;                           ///<Length of the pre-shared key, in bytes
-   char_t *pskIdentity;                     ///<PSK identity
-   char_t *pskIdentityHint;                 ///<PSK identity hint
-   TlsPskCallback pskCallback;              ///<PSK callback function
-   uint16_t pskCipherSuite;                 ///<Cipher suite associated with the PSK
-   TlsHashAlgo pskHashAlgo;                 ///<Hash algorithm associated with the PSK
+   uint8_t *psk;                             ///<Pre-shared key
+   size_t pskLen;                            ///<Length of the pre-shared key, in bytes
+   char_t *pskIdentity;                      ///<PSK identity
+   char_t *pskIdentityHint;                  ///<PSK identity hint
+   TlsPskCallback pskCallback;               ///<PSK callback function
+   uint16_t pskCipherSuite;                  ///<Cipher suite associated with the PSK
+   TlsHashAlgo pskHashAlgo;                  ///<Hash algorithm associated with the PSK
 #endif
 
 #if (TLS_MAX_FRAG_LEN_SUPPORT == ENABLED)
-   size_t maxFragLen;                       ///<Maximum plaintext fragment length
-   bool_t maxFragLenExtReceived;            ///<The MaxFragmentLength extension has been received
+   size_t maxFragLen;                        ///<Maximum plaintext fragment length
+   bool_t maxFragLenExtReceived;             ///<The MaxFragmentLength extension has been received
 #endif
 
 #if (TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)
-   size_t recordSizeLimit;                  ///<Maximum record size the peer is willing to receive
-   bool_t recordSizeLimitExtReceived;       ///<The RecordSizeLimit extension has been received
+   size_t recordSizeLimit;                   ///<Maximum record size the peer is willing to receive
+   bool_t recordSizeLimitExtReceived;        ///<The RecordSizeLimit extension has been received
 #endif
 
 #if (TLS_ALPN_SUPPORT == ENABLED)
-   bool_t unknownProtocolsAllowed;          ///<Unknown ALPN protocols allowed
-   char_t *protocolList;                    ///<List of supported ALPN protocols
-   char_t *selectedProtocol;                ///<Selected ALPN protocol
+   bool_t unknownProtocolsAllowed;           ///<Unknown ALPN protocols allowed
+   char_t *protocolList;                     ///<List of supported ALPN protocols
+   char_t *selectedProtocol;                 ///<Selected ALPN protocol
 #endif
 
 #if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
-   bool_t extendedMasterSecretExtReceived;  ///<The ExtendedMasterSecret extension has been received
+   bool_t extendedMasterSecretExtReceived;   ///<The ExtendedMasterSecret extension has been received
 #endif
 
 #if (TLS_RAW_PUBLIC_KEY_SUPPORT == ENABLED)
-   TlsCertificateFormat certFormat;         ///<Certificate format
-   TlsCertificateFormat peerCertFormat;     ///<Peer's certificate format
-   TlsRpkVerifyCallback rpkVerifyCallback;  ///<Raw public key verification callback function
-   bool_t clientCertTypeExtReceived;        ///<The ClientCertType extension has been received
-   bool_t serverCertTypeExtReceived;        ///<The ServerCertType extension has been received
+   TlsCertificateFormat certFormat;          ///<Certificate format
+   TlsCertificateFormat peerCertFormat;      ///<Peer's certificate format
+   TlsRpkVerifyCallback rpkVerifyCallback;   ///<Raw public key verification callback function
+   bool_t clientCertTypeExtReceived;         ///<The ClientCertType extension has been received
+   bool_t serverCertTypeExtReceived;         ///<The ServerCertType extension has been received
 #endif
 
 #if (TLS_TICKET_SUPPORT == ENABLED)
    TlsTicketEncryptCallback ticketEncryptCallback; ///<Ticket encryption callback function
    TlsTicketDecryptCallback ticketDecryptCallback; ///<Ticket decryption callback function
-   void *ticketParam;                       ///<Opaque pointer passed to the ticket callbacks
+   void *ticketParam;                        ///<Opaque pointer passed to the ticket callbacks
 #endif
 
 #if (TLS_SECURE_RENEGOTIATION_SUPPORT == ENABLED)
-   bool_t secureRenegoEnabled;              ///<Secure renegotiation enabled
-   bool_t secureRenegoFlag;                 ///<Secure renegotiation flag
+   bool_t secureRenegoEnabled;               ///<Secure renegotiation enabled
+   bool_t secureRenegoFlag;                  ///<Secure renegotiation flag
 #endif
 
 #if (TLS_FALLBACK_SCSV_SUPPORT == ENABLED)
-   bool_t fallbackScsvEnabled;              ///<Support for FALLBACK_SCSV
+   bool_t fallbackScsvEnabled;               ///<Support for FALLBACK_SCSV
 #endif
 
 #if (TLS_KEY_LOG_SUPPORT == ENABLED)
-   TlsKeyLogCallback keyLogCallback;        ///<Key logging callback (for debugging purpose only)
+   TlsKeyLogCallback keyLogCallback;         ///<Key logging callback (for debugging purpose only)
 #endif
 
 #if (TLS_MAX_WARNING_ALERTS > 0)
-   uint_t alertCount;                       ///<Count of consecutive warning alerts
+   uint_t alertCount;                        ///<Count of consecutive warning alerts
 #endif
 
 #if (TLS_MAX_EMPTY_RECORDS > 0)
-   uint_t emptyRecordCount;                 ///<Count of consecutive empty records
+   uint_t emptyRecordCount;                  ///<Count of consecutive empty records
 #endif
 
 #if (TLS_MAX_CHANGE_CIPHER_SPEC_MESSAGES > 0)
-   uint_t changeCipherSpecCount;            ///<Count of consecutive ChangeCipherSpec messages
+   uint_t changeCipherSpecCount;             ///<Count of consecutive ChangeCipherSpec messages
 #endif
 
 #if (TLS_MAX_KEY_UPDATE_MESSAGES > 0)
-   uint_t keyUpdateCount;                   ///<Count of consecutive KeyUpdate messages
+   uint_t keyUpdateCount;                    ///<Count of consecutive KeyUpdate messages
 #endif
 
 #if (DTLS_SUPPORT == ENABLED)
-   size_t pmtu;                             ///<PMTU value
-   systime_t timeout;                       ///<Timeout for blocking calls
+   size_t pmtu;                              ///<PMTU value
+   systime_t timeout;                        ///<Timeout for blocking calls
    systime_t startTime;
 
    DtlsCookieGenerateCallback cookieGenerateCallback; ///<Cookie generation callback function
    DtlsCookieVerifyCallback cookieVerifyCallback;     ///<Cookie verification callback function
-   void *cookieParam;                       ///<Opaque pointer passed to the cookie callbacks
+   void *cookieParam;                        ///<Opaque pointer passed to the cookie callbacks
 
-   uint_t retransmitCount;                  ///<Retransmission counter
-   systime_t retransmitTimestamp;           ///<Time at which the datagram was sent
-   systime_t retransmitTimeout;             ///<Retransmission timeout
+   uint_t retransmitCount;                   ///<Retransmission counter
+   systime_t retransmitTimestamp;            ///<Time at which the datagram was sent
+   systime_t retransmitTimeout;              ///<Retransmission timeout
 
-   uint16_t txMsgSeq;                       ///<Send sequence number
-   size_t txDatagramLen;                    ///<Length of the outgoing datagram, in bytes
+   uint16_t txMsgSeq;                        ///<Send sequence number
+   size_t txDatagramLen;                     ///<Length of the outgoing datagram, in bytes
 
-   uint16_t rxMsgSeq;                       ///<Next receive sequence number
-   size_t rxFragQueueLen;                   ///<Length of the reassembly queue
-   size_t rxDatagramLen;                    ///<Length of the incoming datagram, in bytes
+   uint16_t rxMsgSeq;                        ///<Next receive sequence number
+   size_t rxFragQueueLen;                    ///<Length of the reassembly queue
+   size_t rxDatagramLen;                     ///<Length of the incoming datagram, in bytes
    size_t rxDatagramPos;
-   uint16_t rxRecordVersion;                ///<Version of the incoming record
+   uint16_t rxRecordVersion;                 ///<Version of the incoming record
 
 #if (DTLS_REPLAY_DETECTION_SUPPORT == ENABLED)
    bool_t replayDetectionEnabled;           ///<Anti-replay mechanism enabled
@@ -2314,6 +2318,9 @@ error_t tlsSetTrustedCaList(TlsContext *context,
 
 error_t tlsAddCertificate(TlsContext *context, const char_t *certChain,
    size_t certChainLen, const char_t *privateKey, size_t privateKeyLen);
+
+error_t tlsSetCertificateVerifyCallback(TlsContext *context,
+   TlsCertVerifyCallback certVerifyCallback, void *param);
 
 error_t tlsEnableSecureRenegotiation(TlsContext *context, bool_t enabled);
 error_t tlsEnableFallbackScsv(TlsContext *context, bool_t enabled);
