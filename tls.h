@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.4
+ * @version 1.9.6
  **/
 
 #ifndef _TLS_H
@@ -49,7 +49,7 @@ struct _TlsContext;
 #include "pkc/dh.h"
 #include "ecc/ecdh.h"
 #include "aead/gcm.h"
-#include "certificate/x509_common.h"
+#include "pkix/x509_common.h"
 
 
 /*
@@ -79,13 +79,13 @@ struct _TlsContext;
 #endif
 
 //Version string
-#define CYCLONE_SSL_VERSION_STRING "1.9.4"
+#define CYCLONE_SSL_VERSION_STRING "1.9.6"
 //Major version
 #define CYCLONE_SSL_MAJOR_VERSION 1
 //Minor version
 #define CYCLONE_SSL_MINOR_VERSION 9
 //Revision number
-#define CYCLONE_SSL_REV_NUMBER 4
+#define CYCLONE_SSL_REV_NUMBER 6
 
 //TLS version numbers
 #define SSL_VERSION_3_0 0x0300
@@ -837,7 +837,7 @@ struct _TlsContext;
 
 //C++ guard
 #ifdef __cplusplus
-   extern "C" {
+extern "C" {
 #endif
 
 
@@ -1001,6 +1001,7 @@ typedef enum
    TLS_ALERT_BAD_CERTIFICATE_STATUS_RESPONSE = 113,
    TLS_ALERT_BAD_CERTIFICATE_HASH_VALUE      = 114,
    TLS_ALERT_UNKNOWN_PSK_IDENTITY            = 115,
+   TLS_ALERT_CERTIFICATE_REQUIRED            = 116,
    TLS_ALERT_NO_APPLICATION_PROTOCOL         = 120
 } TlsAlertDescription;
 
@@ -1107,20 +1108,23 @@ typedef enum
 
 typedef enum
 {
-   TLS_SIGN_ALGO_ANONYMOUS           = 0,
-   TLS_SIGN_ALGO_RSA                 = 1,
-   TLS_SIGN_ALGO_DSA                 = 2,
-   TLS_SIGN_ALGO_ECDSA               = 3,
-   TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA256 = 4,
-   TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA384 = 5,
-   TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA512 = 6,
-   TLS_SIGN_ALGO_ED25519             = 7,
-   TLS_SIGN_ALGO_ED448               = 8,
-   TLS_SIGN_ALGO_RSA_PSS_PSS_SHA256  = 9,
-   TLS_SIGN_ALGO_RSA_PSS_PSS_SHA384  = 10,
-   TLS_SIGN_ALGO_RSA_PSS_PSS_SHA512  = 11,
-   TLS_SIGN_ALGO_GOSTR34102012_256   = 64, //RFC draft
-   TLS_SIGN_ALGO_GOSTR34102012_512   = 65  //RFC draft
+   TLS_SIGN_ALGO_ANONYMOUS                          = 0,
+   TLS_SIGN_ALGO_RSA                                = 1,
+   TLS_SIGN_ALGO_DSA                                = 2,
+   TLS_SIGN_ALGO_ECDSA                              = 3,
+   TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA256                = 4,
+   TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA384                = 5,
+   TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA512                = 6,
+   TLS_SIGN_ALGO_ED25519                            = 7,
+   TLS_SIGN_ALGO_ED448                              = 8,
+   TLS_SIGN_ALGO_RSA_PSS_PSS_SHA256                 = 9,
+   TLS_SIGN_ALGO_RSA_PSS_PSS_SHA384                 = 10,
+   TLS_SIGN_ALGO_RSA_PSS_PSS_SHA512                 = 11,
+   TLS_SIGN_ALGO_ECDSA_BRAINPOOLP256R1_TLS13_SHA256 = 26, //RFC draft
+   TLS_SIGN_ALGO_ECDSA_BRAINPOOLP384R1_TLS13_SHA384 = 27, //RFC draft
+   TLS_SIGN_ALGO_ECDSA_BRAINPOOLP512R1_TLS13_SHA512 = 28, //RFC draft
+   TLS_SIGN_ALGO_GOSTR34102012_256                  = 64, //RFC draft
+   TLS_SIGN_ALGO_GOSTR34102012_512                  = 65  //RFC draft
 } TlsSignatureAlgo;
 
 
@@ -1200,55 +1204,55 @@ typedef enum
 
 typedef enum
 {
-   TLS_GROUP_NONE                 = 0,
-   TLS_GROUP_SECT163K1            = 1,     //RFC 4492
-   TLS_GROUP_SECT163R1            = 2,     //RFC 4492
-   TLS_GROUP_SECT163R2            = 3,     //RFC 4492
-   TLS_GROUP_SECT193R1            = 4,     //RFC 4492
-   TLS_GROUP_SECT193R2            = 5,     //RFC 4492
-   TLS_GROUP_SECT233K1            = 6,     //RFC 4492
-   TLS_GROUP_SECT233R1            = 7,     //RFC 4492
-   TLS_GROUP_SECT239K1            = 8,     //RFC 4492
-   TLS_GROUP_SECT283K1            = 9,     //RFC 4492
-   TLS_GROUP_SECT283R1            = 10,    //RFC 4492
-   TLS_GROUP_SECT409K1            = 11,    //RFC 4492
-   TLS_GROUP_SECT409R1            = 12,    //RFC 4492
-   TLS_GROUP_SECT571K1            = 13,    //RFC 4492
-   TLS_GROUP_SECT571R1            = 14,    //RFC 4492
-   TLS_GROUP_SECP160K1            = 15,    //RFC 4492
-   TLS_GROUP_SECP160R1            = 16,    //RFC 4492
-   TLS_GROUP_SECP160R2            = 17,    //RFC 4492
-   TLS_GROUP_SECP192K1            = 18,    //RFC 4492
-   TLS_GROUP_SECP192R1            = 19,    //RFC 4492
-   TLS_GROUP_SECP224K1            = 20,    //RFC 4492
-   TLS_GROUP_SECP224R1            = 21,    //RFC 4492
-   TLS_GROUP_SECP256K1            = 22,    //RFC 4492
-   TLS_GROUP_SECP256R1            = 23,    //RFC 4492
-   TLS_GROUP_SECP384R1            = 24,    //RFC 4492
-   TLS_GROUP_SECP521R1            = 25,    //RFC 4492
-   TLS_GROUP_BRAINPOOLP256R1      = 26,    //RFC 7027
-   TLS_GROUP_BRAINPOOLP384R1      = 27,    //RFC 7027
-   TLS_GROUP_BRAINPOOLP512R1      = 28,    //RFC 7027
-   TLS_GROUP_ECDH_X25519          = 29,    //RFC 8422
-   TLS_GROUP_ECDH_X448            = 30,    //RFC 8422
-   TLS13_GROUP_BRAINPOOLP256R1    = 31,    //RFC draft
-   TLS13_GROUP_BRAINPOOLP384R1    = 32,    //RFC draft
-   TLS13_GROUP_BRAINPOOLP512R1    = 33,    //RFC draft
-   TLS_GROUP_GC256A               = 34,    //RFC draft
-   TLS_GROUP_GC256B               = 35,    //RFC draft
-   TLS_GROUP_GC256C               = 36,    //RFC draft
-   TLS_GROUP_GC256D               = 37,    //RFC draft
-   TLS_GROUP_GC512A               = 38,    //RFC draft
-   TLS_GROUP_GC512B               = 39,    //RFC draft
-   TLS_GROUP_GC512C               = 40,    //RFC draft
-   TLS_GROUP_FFDHE2048            = 256,   //RFC 7919
-   TLS_GROUP_FFDHE3072            = 257,   //RFC 7919
-   TLS_GROUP_FFDHE4096            = 258,   //RFC 7919
-   TLS_GROUP_FFDHE6144            = 259,   //RFC 7919
-   TLS_GROUP_FFDHE8192            = 260,   //RFC 7919
-   TLS_GROUP_FFDHE_MAX            = 511,   //RFC 7919
-   TLS_GROUP_EXPLICIT_PRIME_CURVE = 65281, //RFC 4492
-   TLS_GROUP_EXPLICIT_CHAR2_CURVE = 65282  //RFC 4492
+   TLS_GROUP_NONE                  = 0,
+   TLS_GROUP_SECT163K1             = 1,     //RFC 4492
+   TLS_GROUP_SECT163R1             = 2,     //RFC 4492
+   TLS_GROUP_SECT163R2             = 3,     //RFC 4492
+   TLS_GROUP_SECT193R1             = 4,     //RFC 4492
+   TLS_GROUP_SECT193R2             = 5,     //RFC 4492
+   TLS_GROUP_SECT233K1             = 6,     //RFC 4492
+   TLS_GROUP_SECT233R1             = 7,     //RFC 4492
+   TLS_GROUP_SECT239K1             = 8,     //RFC 4492
+   TLS_GROUP_SECT283K1             = 9,     //RFC 4492
+   TLS_GROUP_SECT283R1             = 10,    //RFC 4492
+   TLS_GROUP_SECT409K1             = 11,    //RFC 4492
+   TLS_GROUP_SECT409R1             = 12,    //RFC 4492
+   TLS_GROUP_SECT571K1             = 13,    //RFC 4492
+   TLS_GROUP_SECT571R1             = 14,    //RFC 4492
+   TLS_GROUP_SECP160K1             = 15,    //RFC 4492
+   TLS_GROUP_SECP160R1             = 16,    //RFC 4492
+   TLS_GROUP_SECP160R2             = 17,    //RFC 4492
+   TLS_GROUP_SECP192K1             = 18,    //RFC 4492
+   TLS_GROUP_SECP192R1             = 19,    //RFC 4492
+   TLS_GROUP_SECP224K1             = 20,    //RFC 4492
+   TLS_GROUP_SECP224R1             = 21,    //RFC 4492
+   TLS_GROUP_SECP256K1             = 22,    //RFC 4492
+   TLS_GROUP_SECP256R1             = 23,    //RFC 4492
+   TLS_GROUP_SECP384R1             = 24,    //RFC 4492
+   TLS_GROUP_SECP521R1             = 25,    //RFC 4492
+   TLS_GROUP_BRAINPOOLP256R1       = 26,    //RFC 7027
+   TLS_GROUP_BRAINPOOLP384R1       = 27,    //RFC 7027
+   TLS_GROUP_BRAINPOOLP512R1       = 28,    //RFC 7027
+   TLS_GROUP_ECDH_X25519           = 29,    //RFC 8422
+   TLS_GROUP_ECDH_X448             = 30,    //RFC 8422
+   TLS_GROUP_BRAINPOOLP256R1_TLS13 = 31,    //RFC draft
+   TLS_GROUP_BRAINPOOLP384R1_TLS13 = 32,    //RFC draft
+   TLS_GROUP_BRAINPOOLP512R1_TLS13 = 33,    //RFC draft
+   TLS_GROUP_GC256A                = 34,    //RFC draft
+   TLS_GROUP_GC256B                = 35,    //RFC draft
+   TLS_GROUP_GC256C                = 36,    //RFC draft
+   TLS_GROUP_GC256D                = 37,    //RFC draft
+   TLS_GROUP_GC512A                = 38,    //RFC draft
+   TLS_GROUP_GC512B                = 39,    //RFC draft
+   TLS_GROUP_GC512C                = 40,    //RFC draft
+   TLS_GROUP_FFDHE2048             = 256,   //RFC 7919
+   TLS_GROUP_FFDHE3072             = 257,   //RFC 7919
+   TLS_GROUP_FFDHE4096             = 258,   //RFC 7919
+   TLS_GROUP_FFDHE6144             = 259,   //RFC 7919
+   TLS_GROUP_FFDHE8192             = 260,   //RFC 7919
+   TLS_GROUP_FFDHE_MAX             = 511,   //RFC 7919
+   TLS_GROUP_EXPLICIT_PRIME_CURVE  = 65281, //RFC 4492
+   TLS_GROUP_EXPLICIT_CHAR2_CURVE  = 65282  //RFC 4492
 } TlsNamedGroup;
 
 
@@ -2376,7 +2380,7 @@ void tlsFreeCache(TlsCache *cache);
 
 //C++ guard
 #ifdef __cplusplus
-   }
+}
 #endif
 
 #endif

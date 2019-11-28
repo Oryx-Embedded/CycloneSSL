@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.4
+ * @version 1.9.6
  **/
 
 //Switch to the appropriate trace level
@@ -136,6 +136,10 @@ void tlsProcessError(TlsContext *context, error_t errorCode)
       //The ServerHello contains an extension not present in the ClientHello
       case ERROR_UNSUPPORTED_EXTENSION:
          tlsSendAlert(context, TLS_ALERT_LEVEL_FATAL, TLS_ALERT_UNSUPPORTED_EXTENSION);
+         break;
+      //A client certificate is desired but none was provided by the client
+      case ERROR_CERTIFICATE_REQUIRED:
+         tlsSendAlert(context, TLS_ALERT_LEVEL_FATAL, TLS_ALERT_CERTIFICATE_REQUIRED);
          break;
       //No application protocol supported by the server
       case ERROR_NO_APPLICATION_PROTOCOL:
@@ -964,18 +968,21 @@ const EcCurveInfo *tlsGetCurveInfo(TlsContext *context, uint16_t namedCurve)
 #if (TLS_BRAINPOOLP256R1_SUPPORT == ENABLED)
    //brainpoolP256r1 elliptic curve?
    case TLS_GROUP_BRAINPOOLP256R1:
+   case TLS_GROUP_BRAINPOOLP256R1_TLS13:
       curveInfo = ecGetCurveInfo(BRAINPOOLP256R1_OID, sizeof(BRAINPOOLP256R1_OID));
       break;
 #endif
 #if (TLS_BRAINPOOLP384R1_SUPPORT == ENABLED)
    //brainpoolP384r1 elliptic curve?
    case TLS_GROUP_BRAINPOOLP384R1:
+   case TLS_GROUP_BRAINPOOLP384R1_TLS13:
       curveInfo = ecGetCurveInfo(BRAINPOOLP384R1_OID, sizeof(BRAINPOOLP384R1_OID));
       break;
 #endif
 #if (TLS_BRAINPOOLP512R1_SUPPORT == ENABLED)
    //brainpoolP512r1 elliptic curve?
    case TLS_GROUP_BRAINPOOLP512R1:
+   case TLS_GROUP_BRAINPOOLP512R1_TLS13:
       curveInfo = ecGetCurveInfo(BRAINPOOLP512R1_OID, sizeof(BRAINPOOLP512R1_OID));
       break;
 #endif

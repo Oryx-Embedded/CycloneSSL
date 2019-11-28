@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.4
+ * @version 1.9.6
  **/
 
 #ifndef _TLS_HANDSHAKE_H
@@ -36,15 +36,13 @@
 
 //C++ guard
 #ifdef __cplusplus
-   extern "C" {
+extern "C" {
 #endif
 
 //TLS related functions
 error_t tlsInitHandshake(TlsContext *context);
 
 error_t tlsPerformHandshake(TlsContext *context);
-error_t tlsPerformClientHandshake(TlsContext *context);
-error_t tlsPerformServerHandshake(TlsContext *context);
 
 error_t tlsSendHandshakeMessage(TlsContext *context, const void *data,
    size_t length, TlsMessageType type);
@@ -54,15 +52,9 @@ error_t tlsReceiveHandshakeMessage(TlsContext *context);
 error_t tlsParseHandshakeMessage(TlsContext *context, const uint8_t *message,
    size_t length);
 
-error_t tlsParseClientHandshakeMessage(TlsContext *context, uint8_t msgType,
-   const void *message, size_t length);
-
-error_t tlsParseServerHandshakeMessage(TlsContext *context, uint8_t msgType,
-   const void *message, size_t length);
-
 //C++ guard
 #ifdef __cplusplus
-   }
+}
 #endif
 
 #endif

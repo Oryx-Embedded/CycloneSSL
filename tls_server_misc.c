@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.4
+ * @version 1.9.6
  **/
 
 //Switch to the appropriate trace level
@@ -46,7 +46,7 @@
 #include "tls_ffdhe.h"
 #include "tls_record.h"
 #include "tls_misc.h"
-#include "certificate/pem_import.h"
+#include "pkix/pem_import.h"
 #include "debug.h"
 
 //Check TLS library configuration
@@ -1469,7 +1469,7 @@ error_t tlsSelectCertificate(TlsContext *context,
          context->keyExchMethod == TLS_KEY_EXCH_RSA_PSK)
       {
          //RSA, DHE_RSA, ECDHE_RSA and RSA_PSK key exchange methods require
-         //a RSA certificate
+         //an RSA certificate
          certTypes[n++] = TLS_CERT_RSA_SIGN;
       }
       else if(context->keyExchMethod == TLS_KEY_EXCH_DH_RSA)

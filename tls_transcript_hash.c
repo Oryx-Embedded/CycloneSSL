@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.4
+ * @version 1.9.6
  **/
 
 //Switch to the appropriate trace level
@@ -134,7 +134,7 @@ error_t tlsInitTranscriptHash(TlsContext *context)
 #endif
 
 #if (TLS_CLIENT_SUPPORT == ENABLED)
-   //TLS operates as a client?
+   //Client mode?
    if(context->entity == TLS_CONNECTION_END_CLIENT)
    {
 #if (DTLS_SUPPORT == ENABLED)

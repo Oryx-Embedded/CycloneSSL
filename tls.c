@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.4
+ * @version 1.9.6
  **/
 
 //Switch to the appropriate trace level
@@ -49,8 +49,8 @@
 #include "tls_misc.h"
 #include "tls13_client_misc.h"
 #include "dtls_record.h"
-#include "certificate/pem_import.h"
-#include "certificate/x509_cert_parse.h"
+#include "pkix/pem_import.h"
+#include "pkix/x509_cert_parse.h"
 #include "debug.h"
 
 //Check TLS library configuration
@@ -1127,10 +1127,7 @@ error_t tlsAddCertificate(TlsContext *context, const char_t *certChain,
    size_t certChainLen, const char_t *privateKey, size_t privateKeyLen)
 {
    error_t error;
-   const char_t *p;
-   size_t n;
    uint8_t *derCert;
-   size_t derCertSize;
    size_t derCertLen;
    X509CertificateInfo *certInfo;
    TlsCertificateType certType;
@@ -1154,29 +1151,44 @@ error_t tlsAddCertificate(TlsContext *context, const char_t *certChain,
    if(context->numCerts >= TLS_MAX_CERTIFICATES)
       return ERROR_OUT_OF_RESOURCES;
 
-   //Allocate a memory buffer to store X.509 certificate info
-   certInfo = tlsAllocMem(sizeof(X509CertificateInfo));
-   //Failed to allocate memory?
-   if(certInfo == NULL)
-      return ERROR_OUT_OF_MEMORY;
-
-   //Point to the beginning of the certificate chain
-   p = certChain;
-   n = certChainLen;
-
-   //DER encoded certificate
+   //Initialize variables
    derCert = NULL;
-   derCertSize = 0;
-   derCertLen = 0;
+   certInfo = NULL;
 
    //Start of exception handling block
    do
    {
-      //Decode end entity certificate
-      error = pemImportCertificate(&p, &n, &derCert, &derCertSize, &derCertLen);
+      //The first pass calculates the length of the DER-encoded certificate
+      error = pemImportCertificate(certChain, certChainLen, NULL, &derCertLen,
+         NULL);
       //Any error to report?
       if(error)
          break;
+
+      //Allocate a memory buffer to hold the DER-encoded certificate
+      derCert = tlsAllocMem(derCertLen);
+      //Failed to allocate memory?
+      if(derCert == NULL)
+      {
+         error = ERROR_OUT_OF_MEMORY;
+         break;
+      }
+
+      //The second pass decodes the PEM certificate
+      error = pemImportCertificate(certChain, certChainLen, derCert,
+         &derCertLen, NULL);
+      //Any error to report?
+      if(error)
+         break;
+
+      //Allocate a memory buffer to store X.509 certificate info
+      certInfo = tlsAllocMem(sizeof(X509CertificateInfo));
+      //Failed to allocate memory?
+      if(certInfo == NULL)
+      {
+         error = ERROR_OUT_OF_MEMORY;
+         break;
+      }
 
       //Parse X.509 certificate
       error = x509ParseCertificate(derCert, derCertLen, certInfo);
@@ -1195,7 +1207,7 @@ error_t tlsAddCertificate(TlsContext *context, const char_t *certChain,
       //End of exception handling block
    } while(0);
 
-   //Check whether the certificate is acceptable
+   //Valid certificate?
    if(!error)
    {
       //Point to the structure that describes the certificate
@@ -1617,7 +1629,7 @@ TlsEarlyDataStatus tlsGetEarlyDataStatus(TlsContext *context)
    //Make sure the TLS context is valid
    if(context != NULL)
    {
-      //TLS operates as a client?
+      //Client mode?
       if(context->entity == TLS_CONNECTION_END_CLIENT)
       {
          //Any 0-RTT data sent by the client?

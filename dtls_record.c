@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.4
+ * @version 1.9.6
  **/
 
 //Switch to the appropriate trace level
@@ -98,16 +98,18 @@ error_t dtlsWriteProtocolData(TlsContext *context,
             //Transmit the buffered flight of messages
             error = dtlsSendFlight(context);
          }
-         else if(context->state == TLS_STATE_HELLO_VERIFY_REQUEST)
+         else if(context->state == TLS_STATE_HELLO_VERIFY_REQUEST ||
+            context->state == TLS_STATE_HELLO_RETRY_REQUEST)
          {
             //Reset retransmission counter
             context->retransmitCount = 0;
 
-            //Transmit the HelloVerifyRequest message
+            //Transmit the HelloVerifyRequest or HelloRetryRequest message
             error = dtlsSendFlight(context);
 
-            //Timeout and retransmission do not apply to the HelloVerifyRequest,
-            //because this would require creating state on the server
+            //Timeout and retransmission do not apply to HelloVerifyRequest and
+            //HelloRetryRequest messages, because this would require creating
+            //state on the server
             context->txBufferLen = 0;
          }
       }
@@ -423,6 +425,7 @@ error_t dtlsReadRecord(TlsContext *context)
 error_t dtlsProcessRecord(TlsContext *context)
 {
    error_t error;
+   systime_t time;
 
    //Handshake message received?
    if(context->rxBufferType == TLS_TYPE_HANDSHAKE)
@@ -509,11 +512,22 @@ error_t dtlsProcessRecord(TlsContext *context)
                //Check whether a flight of messages is buffered
                if(context->txBufferLen > 0)
                {
-                  //The implementation transitions to the SENDING state, where
-                  //it retransmits the flight, resets the retransmit timer, and
-                  //returns to the WAITING state
-                  if(context->retransmitCount < DTLS_MAX_RETRIES)
-                     dtlsSendFlight(context);
+                  //Get current time
+                  time = osGetSystemTime();
+
+                  //Send only one response in the case multiple retransmitted
+                  //flights are received from the peer
+                  if(timeCompare(time, context->retransmitTimestamp +
+                     DTLS_MIN_TIMEOUT) >= 0)
+                  {
+                     //The implementation transitions to the SENDING state,
+                     //where it retransmits the flight, resets the retransmit
+                     //timer, and returns to the WAITING state
+                     if(context->retransmitCount < DTLS_MAX_RETRIES)
+                     {
+                        dtlsSendFlight(context);
+                     }
+                  }
                }
             }
          }

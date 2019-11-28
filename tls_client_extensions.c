@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.4
+ * @version 1.9.6
  **/
 
 //Switch to the appropriate trace level
@@ -59,6 +59,9 @@ const uint16_t tlsSupportedGroups[] =
    TLS_GROUP_SECP256R1,
    TLS_GROUP_SECP384R1,
    TLS_GROUP_SECP521R1,
+   TLS_GROUP_BRAINPOOLP256R1_TLS13,
+   TLS_GROUP_BRAINPOOLP384R1_TLS13,
+   TLS_GROUP_BRAINPOOLP512R1_TLS13,
    TLS_GROUP_BRAINPOOLP256R1,
    TLS_GROUP_BRAINPOOLP384R1,
    TLS_GROUP_BRAINPOOLP512R1,

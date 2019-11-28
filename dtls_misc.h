@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.4
+ * @version 1.9.6
  **/
 
 #ifndef _DTLS_MISC_H
@@ -91,6 +91,13 @@
    #error DTLS_INIT_TIMEOUT parameter is not valid
 #endif
 
+//Minimum retransmission timeout
+#ifndef DTLS_MIN_TIMEOUT
+   #define DTLS_MIN_TIMEOUT 500
+#elif (DTLS_MIN_TIMEOUT < 100)
+   #error DTLS_MIN_TIMEOUT parameter is not valid
+#endif
+
 //Maximum retransmission timeout
 #ifndef DTLS_MAX_TIMEOUT
    #define DTLS_MAX_TIMEOUT 60000
@@ -100,7 +107,7 @@
 
 //C++ guard
 #ifdef __cplusplus
-   extern "C" {
+extern "C" {
 #endif
 
 
@@ -265,7 +272,7 @@ void dtlsUpdateReplayWindow(TlsContext *context, DtlsSequenceNumber *seqNum);
 
 //C++ guard
 #ifdef __cplusplus
-   }
+}
 #endif
 
 #endif

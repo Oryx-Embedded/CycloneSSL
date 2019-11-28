@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.4
+ * @version 1.9.6
  **/
 
 //Switch to the appropriate trace level
@@ -593,6 +593,9 @@ error_t tls13ParseClientPreSharedKeyExtension(TlsContext *context,
       identity = NULL;
       binder = NULL;
 
+      //Reset the server's chosen identity to its default value
+      context->selectedIdentity = -1;
+
       //Debug message
       TRACE_DEBUG("PSK identity list:\r\n");
       TRACE_DEBUG_ARRAY("  ", identityList, ntohs(identityList->length) + 2);
@@ -714,7 +717,21 @@ error_t tls13ParseClientPreSharedKeyExtension(TlsContext *context,
       if(m != 0)
          return ERROR_ILLEGAL_PARAMETER;
    }
+   else
 #endif
+   {
+      //Initial or updated ClientHello?
+      if(context->state == TLS_STATE_CLIENT_HELLO_2)
+      {
+         //When responding to a HelloRetryRequest, the client must send the
+         //same ClientHello without modification
+         if(context->selectedIdentity >= 0)
+            return ERROR_ILLEGAL_PARAMETER;
+      }
+
+      //The ClientHello message does not contain any PreSharedKey extension
+      context->selectedIdentity = -1;
+   }
 
    //Successful processing
    return NO_ERROR;
@@ -737,13 +754,17 @@ error_t tls13ParseClientEarlyDataExtension(TlsContext *context,
       //Early data is not permitted after a HelloRetryRequest (refer to
       //RFC 8446, section 4.1.2)
       if(context->state == TLS_STATE_CLIENT_HELLO_2)
+      {
          context->earlyDataRejected = TRUE;
+      }
 
       //In order to accept early data, the server must have accepted a PSK
       //cipher suite and selected the first key offered in the client's
       //PreSharedKey extension (refer to RFC 8446, section 4.2.10)
       if(context->selectedIdentity != 0)
+      {
          context->earlyDataRejected = TRUE;
+      }
 
       //A valid EarlyData extension has been received
       context->earlyDataExtReceived = TRUE;

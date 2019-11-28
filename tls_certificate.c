@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.4
+ * @version 1.9.6
  **/
 
 //Switch to the appropriate trace level
@@ -39,9 +39,10 @@
 #include "tls_misc.h"
 #include "encoding/asn1.h"
 #include "encoding/oid.h"
-#include "certificate/pem_import.h"
-#include "certificate/x509_cert_parse.h"
-#include "certificate/x509_cert_validate.h"
+#include "pkix/pem_import.h"
+#include "pkix/x509_cert_parse.h"
+#include "pkix/x509_cert_validate.h"
+#include "pkix/x509_key_parse.h"
 #include "debug.h"
 
 //Check TLS library configuration
@@ -60,11 +61,10 @@ error_t tlsFormatCertificateList(TlsContext *context, uint8_t *p,
    size_t *written)
 {
    error_t error;
-   const char_t *pemCert;
-   size_t pemCertLen;
-   uint8_t *derCert;
-   size_t derCertSize;
-   size_t derCertLen;
+   size_t m;
+   size_t n;
+   size_t certChainLen;
+   const char_t *certChain;
 
    //Initialize status code
    error = NO_ERROR;
@@ -76,40 +76,34 @@ error_t tlsFormatCertificateList(TlsContext *context, uint8_t *p,
    if(context->cert != NULL)
    {
       //Point to the certificate chain
-      pemCert = context->cert->certChain;
+      certChain = context->cert->certChain;
       //Get the total length, in bytes, of the certificate chain
-      pemCertLen = context->cert->certChainLen;
+      certChainLen = context->cert->certChainLen;
    }
    else
    {
-      //If no suitable certificate is available, the message contains
-      //an empty certificate list
-      pemCert = NULL;
-      pemCertLen = 0;
+      //If no suitable certificate is available, the message contains an
+      //empty certificate list
+      certChain = NULL;
+      certChainLen = 0;
    }
 
-   //DER encoded certificate
-   derCert = NULL;
-   derCertSize = 0;
-   derCertLen = 0;
-
    //Parse the certificate chain
-   while(pemCertLen > 0)
+   while(certChainLen > 0)
    {
-      //Decode PEM certificate
-      error = pemImportCertificate(&pemCert, &pemCertLen,
-         &derCert, &derCertSize, &derCertLen);
+      //The first pass calculates the length of the DER-encoded certificate
+      error = pemImportCertificate(certChain, certChainLen, NULL, &n, NULL);
 
-      //Any error to report?
+      //End of file detected?
       if(error)
       {
-         //End of file detected
+         //Exit immediately
          error = NO_ERROR;
          break;
       }
 
-      //Prevent the buffer from overflowing
-      if((sizeof(TlsCertificateList) + derCertLen + 3) > context->txBufferMaxLen)
+      //Buffer overflow?
+      if((*written + n + 3) > context->txBufferMaxLen)
       {
          //Report an error
          error = ERROR_MESSAGE_TOO_LONG;
@@ -117,37 +111,38 @@ error_t tlsFormatCertificateList(TlsContext *context, uint8_t *p,
       }
 
       //Each certificate is preceded by a 3-byte length field
-      STORE24BE(derCertLen, p);
-      //Copy the current certificate
-      memcpy(p + 3, derCert, derCertLen);
+      STORE24BE(n, p);
 
-      //Advance data pointer
-      p += derCertLen + 3;
-      //Adjust the length of the certificate list
-      *written += derCertLen + 3;
+      //The second pass decodes the PEM certificate
+      error = pemImportCertificate(certChain, certChainLen, p + 3, &n, &m);
+      //Any error to report?
+      if(error)
+         break;
+
+      //Advance read pointer
+      certChain += m;
+      certChainLen -= m;
+
+      //Advance write pointer
+      p += n + 3;
+      *written += n + 3;
 
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
       //TLS 1.3 currently selected?
       if(context->version == TLS_VERSION_1_3)
       {
-         size_t n;
-
          //Format the list of extensions for the current CertificateEntry
          error = tls13FormatCertExtensions(p, &n);
          //Any error to report?
          if(error)
             break;
 
-         //Advance data pointer
+         //Advance write pointer
          p += n;
-         //Adjust the length of the certificate list
          *written += n;
       }
 #endif
    }
-
-   //Free previously allocated memory
-   tlsFreeMem(derCert);
 
    //Return status code
    return error;
@@ -178,26 +173,40 @@ error_t tlsFormatRawPublicKey(TlsContext *context, uint8_t *p,
    if(context->cert != NULL)
    {
       size_t n;
-      const char_t *pemCert;
-      size_t pemCertLen;
       uint8_t *derCert;
-      size_t derCertSize;
       size_t derCertLen;
       X509CertificateInfo *certInfo;
 
-      //Point to the certificate chain
-      pemCert = context->cert->certChain;
-      //Get the total length, in bytes, of the certificate chain
-      pemCertLen = context->cert->certChainLen;
-
-      //DER encoded certificate
+      //Initialize variables
       derCert = NULL;
-      derCertSize = 0;
-      derCertLen = 0;
+      certInfo = NULL;
 
       //Start of exception handling block
       do
       {
+         //The first pass calculates the length of the DER-encoded certificate
+         error = pemImportCertificate(context->cert->certChain,
+            context->cert->certChainLen, NULL, &derCertLen, NULL);
+         //Any error to report?
+         if(error)
+            break;
+
+         //Allocate a memory buffer to hold the DER-encoded certificate
+         derCert = tlsAllocMem(derCertLen);
+         //Failed to allocate memory?
+         if(derCert == NULL)
+         {
+            error = ERROR_OUT_OF_MEMORY;
+            break;
+         }
+
+         //The second pass decodes the PEM certificate
+         error = pemImportCertificate(context->cert->certChain,
+            context->cert->certChainLen, derCert, &derCertLen, NULL);
+         //Any error to report?
+         if(error)
+            break;
+
          //Allocate a memory buffer to store X.509 certificate info
          certInfo = tlsAllocMem(sizeof(X509CertificateInfo));
          //Failed to allocate memory?
@@ -207,13 +216,6 @@ error_t tlsFormatRawPublicKey(TlsContext *context, uint8_t *p,
             break;
          }
 
-         //Decode end entity certificate
-         error = pemImportCertificate(&pemCert, &pemCertLen,
-            &derCert, &derCertSize, &derCertLen);
-         //Any error to report?
-         if(error)
-            break;
-
          //Parse X.509 certificate
          error = x509ParseCertificate(derCert, derCertLen, certInfo);
          //Failed to parse the X.509 certificate?
@@ -221,7 +223,7 @@ error_t tlsFormatRawPublicKey(TlsContext *context, uint8_t *p,
             break;
 
          //Retrieve the length of the raw public key
-         n = certInfo->subjectPublicKeyInfo.rawDataLen;
+         n = certInfo->tbsCert.subjectPublicKeyInfo.rawDataLen;
 
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
          //TLS 1.3 currently selected?
@@ -230,7 +232,7 @@ error_t tlsFormatRawPublicKey(TlsContext *context, uint8_t *p,
             //The raw public key is preceded by a 3-byte length field
             STORE24BE(n, p);
             //Copy the raw public key
-            memcpy(p + 3, certInfo->subjectPublicKeyInfo.rawData, n);
+            memcpy(p + 3, certInfo->tbsCert.subjectPublicKeyInfo.rawData, n);
 
             //Advance data pointer
             p += n + 3;
@@ -252,7 +254,7 @@ error_t tlsFormatRawPublicKey(TlsContext *context, uint8_t *p,
 #endif
          {
             //Copy the raw public key
-            memcpy(p, certInfo->subjectPublicKeyInfo.rawData, n);
+            memcpy(p, certInfo->tbsCert.subjectPublicKeyInfo.rawData, n);
 
             //Advance data pointer
             p += n;
@@ -330,7 +332,7 @@ error_t tlsParseCertificateList(TlsContext *context, const uint8_t *p,
 
       //Get the size occupied by the certificate
       n = LOAD24BE(p);
-      //Jump to the beginning of the DER encoded certificate
+      //Jump to the beginning of the DER-encoded certificate
       p += 3;
       length -= 3;
 
@@ -366,13 +368,14 @@ error_t tlsParseCertificateList(TlsContext *context, const uint8_t *p,
          break;
 
       //Extract the public key from the end-user certificate
-      error = tlsReadSubjectPublicKey(context, &certInfo->subjectPublicKeyInfo);
+      error = tlsReadSubjectPublicKey(context,
+         &certInfo->tbsCert.subjectPublicKeyInfo);
       //Any error to report?
       if(error)
          break;
 
 #if (TLS_CLIENT_SUPPORT == ENABLED)
-      //TLS operates as a client?
+      //Client mode?
       if(context->entity == TLS_CONNECTION_END_CLIENT)
       {
          TlsCertificateType certType;
@@ -421,7 +424,7 @@ error_t tlsParseCertificateList(TlsContext *context, const uint8_t *p,
       }
       else
 #endif
-      //TLS operates as a server?
+      //Server mode?
       {
          //Do not check name constraints
          subjectName = NULL;
@@ -473,7 +476,7 @@ error_t tlsParseCertificateList(TlsContext *context, const uint8_t *p,
 
          //Get the size occupied by the certificate
          n = LOAD24BE(p);
-         //Jump to the beginning of the DER encoded certificate
+         //Jump to the beginning of the DER-encoded certificate
          p += 3;
          //Remaining bytes to process
          length -= 3;
@@ -518,7 +521,7 @@ error_t tlsParseCertificateList(TlsContext *context, const uint8_t *p,
                return ERROR_BAD_CERTIFICATE;
 
             //Check the version of the certificate
-            if(issuerCertInfo->version < X509_VERSION_3)
+            if(issuerCertInfo->tbsCert.version < X509_VERSION_3)
             {
                //Conforming implementations may choose to reject all version 1
                //and version 2 intermediate certificates (refer to RFC 5280,
@@ -1147,11 +1150,10 @@ bool_t tlsIsCertificateAcceptable(TlsContext *context, const TlsCertDesc *cert,
       if(length > 0)
       {
          error_t error;
-         const uint8_t *p;
-         const char_t *pemCert;
          size_t pemCertLen;
+         const char_t *certChain;
+         size_t certChainLen;
          uint8_t *derCert;
-         size_t derCertSize;
          size_t derCertLen;
          X509CertificateInfo *certInfo;
 
@@ -1159,82 +1161,93 @@ bool_t tlsIsCertificateAcceptable(TlsContext *context, const TlsCertDesc *cert,
          //known roots CA
          acceptable = FALSE;
 
-         //Point to the first distinguished name
-         p = certAuthorities->value;
-
          //Point to the end entity certificate
-         pemCert = cert->certChain;
+         certChain = cert->certChain;
          //Get the total length, in bytes, of the certificate chain
-         pemCertLen = cert->certChainLen;
+         certChainLen = cert->certChainLen;
 
-         //DER encoded certificate
-         derCert = NULL;
-         derCertSize = 0;
-         derCertLen = 0;
+         //Allocate a memory buffer to store X.509 certificate info
+         certInfo = tlsAllocMem(sizeof(X509CertificateInfo));
 
-         //Start of exception handling block
-         do
+         //Successful memory allocation?
+         if(certInfo != NULL)
          {
-            //Allocate a memory buffer to store X.509 certificate info
-            certInfo = tlsAllocMem(sizeof(X509CertificateInfo));
-            //Failed to allocate memory?
-            if(certInfo == NULL)
-               break;
-
-            //Point to the last certificate of the chain
-            do
+            //Parse the certificate chain
+            while(certChainLen > 0 && !acceptable)
             {
-               //Read PEM certificates, one by one
-               error = pemImportCertificate(&pemCert, &pemCertLen,
-                  &derCert, &derCertSize, &derCertLen);
+               //The first pass calculates the length of the DER-encoded
+               //certificate
+               error = pemImportCertificate(certChain, certChainLen, NULL,
+                  &derCertLen, &pemCertLen);
 
-               //Loop as long as necessary
-            } while(!error);
-
-            //Any error to report?
-            if(error != ERROR_END_OF_FILE)
-               break;
-
-            //Parse the last certificate of the chain
-            error = x509ParseCertificate(derCert, derCertLen, certInfo);
-            //Failed to parse the X.509 certificate?
-            if(error)
-               break;
-
-            //Parse each distinguished name of the list
-            while(length > 0)
-            {
-               //Sanity check
-               if(length < 2)
-                  break;
-
-               //Each distinguished name is preceded by a 2-byte length field
-               n = LOAD16BE(p);
-
-               //Make sure the length field is valid
-               if(length < (n + 2))
-                  break;
-
-               //Check if the distinguished name matches the root CA
-               if(x509CompareName(p + 2, n, certInfo->issuer.rawData,
-                  certInfo->issuer.rawDataLen))
+               //Check status code
+               if(!error)
                {
-                  acceptable = TRUE;
+                  //Allocate a memory buffer to hold the DER-encoded certificate
+                  derCert = tlsAllocMem(derCertLen);
+
+                  //Successful memory allocation?
+                  if(derCert != NULL)
+                  {
+                     //The second pass decodes the PEM certificate
+                     error = pemImportCertificate(certChain, certChainLen,
+                        derCert, &derCertLen, NULL);
+
+                     //Check status code
+                     if(!error)
+                     {
+                        //Parse X.509 certificate
+                        error = x509ParseCertificate(derCert, derCertLen,
+                           certInfo);
+                     }
+
+                     //Check status code
+                     if(!error)
+                     {
+                        //Parse each distinguished name of the list
+                        for(i = 0; i < length; i += n + 2)
+                        {
+                           //Sanity check
+                           if((i + 2) > length)
+                              break;
+
+                           //Each distinguished name is preceded by a 2-byte
+                           //length field
+                           n = LOAD16BE(certAuthorities->value + i);
+
+                           //Make sure the length field is valid
+                           if((i + n + 2) > length)
+                              break;
+
+                           //Check if the distinguished name matches the root CA
+                           if(x509CompareName(certAuthorities->value + i + 2, n,
+                              certInfo->tbsCert.issuer.rawData,
+                              certInfo->tbsCert.issuer.rawDataLen))
+                           {
+                              acceptable = TRUE;
+                              break;
+                           }
+                        }
+                     }
+
+                     //Free previously allocated memory
+                     tlsFreeMem(derCert);
+                  }
+
+                  //Advance read pointer
+                  certChain += pemCertLen;
+                  certChainLen -= pemCertLen;
+               }
+               else
+               {
+                  //No more CA certificates in the list
                   break;
                }
-
-               //Advance data pointer
-               p += n + 2;
-               //Number of bytes left in the list
-               length -= n + 2;
             }
 
-            //End of exception handling block
-         } while(0);
-
-         //Release previously allocated memory
-         tlsFreeMem(derCert);
-         tlsFreeMem(certInfo);
+            //Free previously allocated memory
+            tlsFreeMem(certInfo);
+         }
       }
    }
 
@@ -1257,10 +1270,10 @@ error_t tlsValidateCertificate(TlsContext *context,
    const char_t *subjectName)
 {
    error_t error;
-   size_t n;
-   const char_t *p;
+   size_t pemCertLen;
+   const char_t *trustedCaList;
+   size_t trustedCaListLen;
    uint8_t *derCert;
-   size_t derCertSize;
    size_t derCertLen;
    X509CertificateInfo *caCertInfo;
 
@@ -1279,79 +1292,110 @@ error_t tlsValidateCertificate(TlsContext *context,
    if(error == ERROR_UNKNOWN_CA)
    {
       //Check whether the certificate should be checked against root CAs
-      if(context->trustedCaList > 0)
+      if(context->trustedCaListLen > 0)
       {
-         //Point to the list of CA certificates
-         p = context->trustedCaList;
-         n = context->trustedCaListLen;
+         //Point to the first trusted CA certificate
+         trustedCaList = context->trustedCaList;
+         //Get the total length, in bytes, of the trusted CA list
+         trustedCaListLen = context->trustedCaListLen;
 
-         //DER encoded certificate
-         derCert = NULL;
-         derCertSize = 0;
-         derCertLen = 0;
-
-         //Allocate a memory buffer to store the CA certificate
+         //Allocate a memory buffer to store X.509 certificate info
          caCertInfo = tlsAllocMem(sizeof(X509CertificateInfo));
-         //Failed to allocate memory?
-         if(caCertInfo == NULL)
-            return ERROR_OUT_OF_MEMORY;
 
-         //Loop through the list of CA certificates
-         while(n > 0)
+         //Successful memory allocation?
+         if(caCertInfo != NULL)
          {
-            //Decode PEM certificate
-            error = pemImportCertificate(&p, &n, &derCert, &derCertSize,
-               &derCertLen);
-
-            //Valid PEM certificate?
-            if(!error)
+            //Loop through the list of trusted CA certificates
+            while(trustedCaListLen > 0 && error == ERROR_UNKNOWN_CA)
             {
-               //Parse X.509 certificate
-               error = x509ParseCertificate(derCert, derCertLen, caCertInfo);
+               //The first pass calculates the length of the DER-encoded
+               //certificate
+               error = pemImportCertificate(trustedCaList, trustedCaListLen,
+                  NULL, &derCertLen, &pemCertLen);
 
                //Check status code
                if(!error)
                {
-                  //Validate the certificate with the current CA
-                  error = x509ValidateCertificate(certInfo, caCertInfo, pathLen);
-               }
+                  //Allocate a memory buffer to hold the DER-encoded certificate
+                  derCert = tlsAllocMem(derCertLen);
 
-               //Check status code
-               if(!error)
-               {
-                  //Check name constraints
-                  error = x509CheckNameConstraints(subjectName, caCertInfo);
-               }
+                  //Successful memory allocation?
+                  if(derCert != NULL)
+                  {
+                     //The second pass decodes the PEM certificate
+                     error = pemImportCertificate(trustedCaList,
+                        trustedCaListLen, derCert, &derCertLen, NULL);
 
-               //Check status code
-               if(!error)
-               {
-                  //The certificate is issued by a trusted CA
-                  break;
+                     //Check status code
+                     if(!error)
+                     {
+                        //Parse X.509 certificate
+                        error = x509ParseCertificate(derCert, derCertLen,
+                           caCertInfo);
+                     }
+
+                     //Check status code
+                     if(!error)
+                     {
+                        //Validate the certificate with the current CA
+                        error = x509ValidateCertificate(certInfo, caCertInfo,
+                           pathLen);
+                     }
+
+                     //Check status code
+                     if(!error)
+                     {
+                        //Check name constraints
+                        error = x509CheckNameConstraints(subjectName, caCertInfo);
+                     }
+
+                     //Check status code
+                     if(!error)
+                     {
+                        //The certificate is issued by a trusted CA
+                        error = NO_ERROR;
+                     }
+                     else
+                     {
+                        //The certificate cannot be matched with the current CA
+                        error = ERROR_UNKNOWN_CA;
+                     }
+
+                     //Free previously allocated memory
+                     tlsFreeMem(derCert);
+                  }
+                  else
+                  {
+                     //Failed to allocate memory
+                     error = ERROR_OUT_OF_MEMORY;
+                  }
+
+                  //Advance read pointer
+                  trustedCaList += pemCertLen;
+                  trustedCaListLen -= pemCertLen;
                }
                else
                {
-                  //The certificate cannot be matched with the current CA
+                  //No more CA certificates in the list
+                  trustedCaListLen = 0;
                   error = ERROR_UNKNOWN_CA;
                }
             }
-            else
-            {
-               //No more CA certificates in the list
-               error = ERROR_UNKNOWN_CA;
-               break;
-            }
-         }
 
-         //Free previously allocated memory
-         tlsFreeMem(derCert);
-         tlsFreeMem(caCertInfo);
+            //Free previously allocated memory
+            tlsFreeMem(caCertInfo);
+         }
+         else
+         {
+            //Failed to allocate memory
+            error = ERROR_OUT_OF_MEMORY;
+         }
       }
       else
       {
          //Do not check the certificate against root CAs
          error = NO_ERROR;
-      }
+      }  
    }
 
    //Return status code
@@ -1385,8 +1429,8 @@ error_t tlsGetCertificateType(const X509CertificateInfo *certInfo,
    }
 
    //Point to the public key identifier
-   oid = certInfo->subjectPublicKeyInfo.oid;
-   oidLen = certInfo->subjectPublicKeyInfo.oidLen;
+   oid = certInfo->tbsCert.subjectPublicKeyInfo.oid;
+   oidLen = certInfo->tbsCert.subjectPublicKeyInfo.oidLen;
 
 #if (TLS_RSA_SIGN_SUPPORT == ENABLED || TLS_RSA_PSS_SIGN_SUPPORT == ENABLED)
    //RSA public key?
@@ -1428,7 +1472,7 @@ error_t tlsGetCertificateType(const X509CertificateInfo *certInfo,
       const X509EcParameters *params;
 
       //Point to the EC parameters
-      params = &certInfo->subjectPublicKeyInfo.ecParams;
+      params = &certInfo->tbsCert.subjectPublicKeyInfo.ecParams;
 
       //Save certificate type
       *certType = TLS_CERT_ECDSA_SIGN;
@@ -1668,8 +1712,8 @@ error_t tlsReadSubjectPublicKey(TlsContext *context,
    {
       uint_t k;
 
-      //Retrieve the RSA public key
-      error = x509ReadRsaPublicKey(subjectPublicKeyInfo,
+      //Import the RSA public key
+      error = x509ImportRsaPublicKey(subjectPublicKeyInfo,
          &context->peerRsaPublicKey);
 
       //Check status code
@@ -1716,8 +1760,8 @@ error_t tlsReadSubjectPublicKey(TlsContext *context,
    {
       uint_t k;
 
-      //Retrieve the DSA public key
-      error = x509ReadDsaPublicKey(subjectPublicKeyInfo,
+      //Import the DSA public key
+      error = x509ImportDsaPublicKey(subjectPublicKeyInfo,
          &context->peerDsaPublicKey);
 
       //Check status code
@@ -1845,7 +1889,7 @@ error_t tlsReadSubjectPublicKey(TlsContext *context,
    //Check status code
    if(!error)
    {
-      //TLS operates as a client?
+      //Client mode?
       if(context->entity == TLS_CONNECTION_END_CLIENT)
       {
          //Check key exchange method
@@ -1920,14 +1964,19 @@ error_t tlsReadSubjectPublicKey(TlsContext *context,
 error_t tlsCheckKeyUsage(const X509CertificateInfo *certInfo,
    TlsConnectionEnd entity, TlsKeyExchMethod keyExchMethod)
 {
+#if (TLS_CERT_KEY_USAGE_SUPPORT == ENABLED)
    error_t error;
+   const X509KeyUsage *keyUsage;
+   const X509ExtendedKeyUsage *extKeyUsage;
 
    //Initialize status code
    error = NO_ERROR;
 
-#if (TLS_CERT_KEY_USAGE_SUPPORT == ENABLED)
+   //Point to the KeyUsage extension
+   keyUsage = &certInfo->tbsCert.extensions.keyUsage;
+
    //Check if the KeyUsage extension is present
-   if(certInfo->extensions.keyUsage != 0)
+   if(keyUsage->bitmap != 0)
    {
       //Check whether TLS operates as a client or a server
       if(entity == TLS_CONNECTION_END_CLIENT)
@@ -1938,7 +1987,7 @@ error_t tlsCheckKeyUsage(const X509CertificateInfo *certInfo,
          {
             //The keyEncipherment bit must be asserted when the subject public
             //key is used for enciphering private or secret keys
-            if(!(certInfo->extensions.keyUsage & X509_KEY_USAGE_KEY_ENCIPHERMENT))
+            if((keyUsage->bitmap & X509_KEY_USAGE_KEY_ENCIPHERMENT) == 0)
                error = ERROR_BAD_CERTIFICATE;
          }
          else if(keyExchMethod == TLS_KEY_EXCH_DHE_RSA ||
@@ -1951,7 +2000,7 @@ error_t tlsCheckKeyUsage(const X509CertificateInfo *certInfo,
             //The digitalSignature bit must be asserted when the subject public
             //key is used for verifying digital signatures, other than signatures
             //on certificates and CRLs
-            if(!(certInfo->extensions.keyUsage & X509_KEY_USAGE_DIGITAL_SIGNATURE))
+            if((keyUsage->bitmap & X509_KEY_USAGE_DIGITAL_SIGNATURE) == 0)
                error = ERROR_BAD_CERTIFICATE;
          }
          else
@@ -1964,32 +2013,38 @@ error_t tlsCheckKeyUsage(const X509CertificateInfo *certInfo,
          //The digitalSignature bit must be asserted when the subject public
          //key is used for verifying digital signatures, other than signatures
          //on certificates and CRLs
-         if(!(certInfo->extensions.keyUsage & X509_KEY_USAGE_DIGITAL_SIGNATURE))
+         if((keyUsage->bitmap & X509_KEY_USAGE_DIGITAL_SIGNATURE) == 0)
             error = ERROR_BAD_CERTIFICATE;
       }
    }
 
+   //Point to the ExtendedKeyUsage extension
+   extKeyUsage = &certInfo->tbsCert.extensions.extKeyUsage;
+
    //Check if the ExtendedKeyUsage extension is present
-   if(certInfo->extensions.extKeyUsage != 0)
+   if(extKeyUsage->bitmap != 0)
    {
       //Check whether TLS operates as a client or a server
       if(entity == TLS_CONNECTION_END_CLIENT)
       {
          //Make sure the certificate can be used for server authentication
-         if(!(certInfo->extensions.extKeyUsage & X509_EXT_KEY_USAGE_SERVER_AUTH))
+         if((extKeyUsage->bitmap & X509_EXT_KEY_USAGE_SERVER_AUTH) == 0)
             error = ERROR_BAD_CERTIFICATE;
       }
       else
       {
          //Make sure the certificate can be used for client authentication
-         if(!(certInfo->extensions.extKeyUsage & X509_EXT_KEY_USAGE_CLIENT_AUTH))
+         if((extKeyUsage->bitmap & X509_EXT_KEY_USAGE_CLIENT_AUTH) == 0)
             error = ERROR_BAD_CERTIFICATE;
       }
    }
-#endif
 
    //Return status code
    return error;
+#else
+   //Do not check key usage
+   return NO_ERROR;
+#endif
 }
 
 #endif

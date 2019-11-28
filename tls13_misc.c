@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.4
+ * @version 1.9.6
  **/
 
 //Switch to the appropriate trace level
@@ -42,7 +42,7 @@
 #include "tls_misc.h"
 #include "tls13_misc.h"
 #include "tls13_key_material.h"
-#include "certificate/pem_import.h"
+#include "pkix/pem_import.h"
 #include "kdf/hkdf.h"
 #include "debug.h"
 
@@ -1086,12 +1086,14 @@ bool_t tls13IsEcdheGroupSupported(TlsContext *context, uint16_t namedGroup)
 
 #if (TLS13_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
    //Elliptic curve group?
-   if(namedGroup == TLS_GROUP_SECP224R1 ||
-      namedGroup == TLS_GROUP_SECP256R1 ||
+   if(namedGroup == TLS_GROUP_SECP256R1 ||
       namedGroup == TLS_GROUP_SECP384R1 ||
       namedGroup == TLS_GROUP_SECP521R1 ||
       namedGroup == TLS_GROUP_ECDH_X25519 ||
-      namedGroup == TLS_GROUP_ECDH_X448)
+      namedGroup == TLS_GROUP_ECDH_X448 ||
+      namedGroup == TLS_GROUP_BRAINPOOLP256R1_TLS13 ||
+      namedGroup == TLS_GROUP_BRAINPOOLP384R1_TLS13 ||
+      namedGroup == TLS_GROUP_BRAINPOOLP512R1_TLS13)
    {
       //Check whether the ECDHE group is supported
       if(tlsGetCurveInfo(context, namedGroup) != NULL)

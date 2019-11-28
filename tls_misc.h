@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.4
+ * @version 1.9.6
  **/
 
 #ifndef _TLS_MISC_H
@@ -36,7 +36,7 @@
 
 //C++ guard
 #ifdef __cplusplus
-   extern "C" {
+extern "C" {
 #endif
 
 //TLS related functions
@@ -74,7 +74,7 @@ bool_t tlsCheckDnsHostname(const char_t *name, size_t length);
 
 //C++ guard
 #ifdef __cplusplus
-   }
+}
 #endif
 
 #endif

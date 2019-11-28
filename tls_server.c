@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.4
+ * @version 1.9.6
  **/
 
 //Switch to the appropriate trace level
@@ -59,8 +59,8 @@
 #include "tls13_server_misc.h"
 #include "dtls_record.h"
 #include "dtls_misc.h"
-#include "certificate/pem_import.h"
-#include "certificate/x509_cert_parse.h"
+#include "pkix/pem_import.h"
+#include "pkix/x509_cert_parse.h"
 #include "date_time.h"
 #include "debug.h"
 
@@ -816,10 +816,10 @@ error_t tlsFormatCertificateRequest(TlsContext *context,
    //Version of TLS prior to TLS 1.3?
    if(context->version <= TLS_VERSION_1_2)
    {
-      const char_t *pemCert;
       size_t pemCertLen;
+      const char_t *trustedCaList;
+      size_t trustedCaListLen;
       uint8_t *derCert;
-      size_t derCertSize;
       size_t derCertLen;
       X509CertificateInfo *certInfo;
       TlsCertAuthorities *certAuthorities;
@@ -828,7 +828,7 @@ error_t tlsFormatCertificateRequest(TlsContext *context,
       n = 0;
 
 #if (TLS_RSA_SIGN_SUPPORT == ENABLED || TLS_RSA_PSS_SIGN_SUPPORT == ENABLED)
-      //Accept certificates that contain a RSA public key
+      //Accept certificates that contain an RSA public key
       message->certificateTypes[n++] = TLS_CERT_RSA_SIGN;
 #endif
 #if (TLS_DSA_SIGN_SUPPORT == ENABLED)
@@ -961,14 +961,9 @@ error_t tlsFormatCertificateRequest(TlsContext *context,
       n = 0;
 
       //Point to the first trusted CA certificate
-      pemCert = context->trustedCaList;
+      trustedCaList = context->trustedCaList;
       //Get the total length, in bytes, of the trusted CA list
-      pemCertLen = context->trustedCaListLen;
-
-      //DER encoded certificate
-      derCert = NULL;
-      derCertSize = 0;
-      derCertLen = 0;
+      trustedCaListLen = context->trustedCaListLen;
 
       //Allocate a memory buffer to store X.509 certificate info
       certInfo = tlsAllocMem(sizeof(X509CertificateInfo));
@@ -977,64 +972,94 @@ error_t tlsFormatCertificateRequest(TlsContext *context,
       if(certInfo != NULL)
       {
          //Loop through the list of trusted CA certificates
-         while(pemCertLen > 0)
+         while(trustedCaListLen > 0 && error == NO_ERROR)
          {
-            //Decode PEM certificate
-            error = pemImportCertificate(&pemCert, &pemCertLen,
-               &derCert, &derCertSize, &derCertLen);
+            //The first pass calculates the length of the DER-encoded certificate
+            error = pemImportCertificate(trustedCaList, trustedCaListLen, NULL,
+               &derCertLen, &pemCertLen);
 
-            //Any error to report?
-            if(error)
-            {
-               //End of file detected
-               error = NO_ERROR;
-               break;
-            }
-
-            //Parse X.509 certificate
-            error = x509ParseCertificate(derCert, derCertLen, certInfo);
-
-            //Valid CA certificate?
+            //Check status code
             if(!error)
             {
-               //Adjust the length of the message
-               *length += certInfo->subject.rawDataLen + 2;
+               //Allocate a memory buffer to hold the DER-encoded certificate
+               derCert = tlsAllocMem(derCertLen);
 
-               //Prevent the buffer from overflowing
-               if(*length > context->txBufferMaxLen)
+               //Successful memory allocation?
+               if(derCert != NULL)
                {
-                  //Report an error
-                  error = ERROR_MESSAGE_TOO_LONG;
-                  break;
+                  //The second pass decodes the PEM certificate
+                  error = pemImportCertificate(trustedCaList, trustedCaListLen,
+                     derCert, &derCertLen, NULL);
+
+                  //Check status code
+                  if(!error)
+                  {
+                     //Parse X.509 certificate
+                     error = x509ParseCertificate(derCert, derCertLen, certInfo);
+                  }
+
+                  //Valid CA certificate?
+                  if(!error)
+                  {
+                     //Adjust the length of the message
+                     *length += certInfo->tbsCert.subject.rawDataLen + 2;
+
+                     //Sanity check
+                     if(*length <= context->txBufferMaxLen)
+                     {
+                        //Each distinguished name is preceded by a 2-byte length field
+                        STORE16BE(certInfo->tbsCert.subject.rawDataLen, p);
+
+                        //The distinguished name shall be DER-encoded
+                        memcpy(p + 2, certInfo->tbsCert.subject.rawData,
+                           certInfo->tbsCert.subject.rawDataLen);
+
+                        //Advance write pointer
+                        p += certInfo->tbsCert.subject.rawDataLen + 2;
+                        n += certInfo->tbsCert.subject.rawDataLen + 2;
+                     }
+                     else
+                     {
+                        //Report an error
+                        error = ERROR_MESSAGE_TOO_LONG;
+                     } 
+                  }
+                  else
+                  {
+                     //Discard current CA certificate
+                     error = NO_ERROR;
+                  }
+
+                  //Free previously allocated memory
+                  tlsFreeMem(derCert);
+               }
+               else
+               {
+                  //Failed to allocate memory
+                  error = ERROR_OUT_OF_MEMORY;
                }
 
-               //Each distinguished name is preceded by a 2-byte length field
-               STORE16BE(certInfo->subject.rawDataLen, p);
-               //The distinguished name shall be DER encoded
-               memcpy(p + 2, certInfo->subject.rawData, certInfo->subject.rawDataLen);
-
-               //Advance data pointer
-               p += certInfo->subject.rawDataLen + 2;
-               //Adjust the length of the list
-               n += certInfo->subject.rawDataLen + 2;
+               //Advance read pointer
+               trustedCaList += pemCertLen;
+               trustedCaListLen -= pemCertLen;
             }
             else
             {
-               //Discard current CA certificate
+               //End of file detected
+               trustedCaListLen = 0;
                error = NO_ERROR;
             }
          }
 
-         //Free previously allocated memory
-         tlsFreeMem(derCert);
-         tlsFreeMem(certInfo);
-
          //Fix the length of the list
          certAuthorities->length = htons(n);
+
+         //Free previously allocated memory
+         tlsFreeMem(certInfo);
       }
       else
       {
-         //Report an error
+         //Failed to allocate memory
          error = ERROR_OUT_OF_MEMORY;
       }
    }
@@ -1424,7 +1449,7 @@ error_t tlsParseClientHello(TlsContext *context,
             &extensions);
          //If no acceptable choices are presented, terminate the handshake
          if(error)
-            return error;
+            return ERROR_HANDSHAKE_FAILED;
 
          //Parse the list of compression methods supported by the client
          error = tlsParseCompressMethods(context, compressMethods);

@@ -1,6 +1,6 @@
 /**
- * @file tls_ffdhe.h
- * @brief FFDHE key exchange
+ * @file tls_client_fsm.h
+ * @brief TLS state machine (TLS client)
  *
  * @section License
  *
@@ -28,8 +28,8 @@
  * @version 1.9.6
  **/
 
-#ifndef _TLS_FFDHE_H
-#define _TLS_FFDHE_H
+#ifndef _TLS_CLIENT_FSM_H
+#define _TLS_CLIENT_FSM_H
 
 //Dependencies
 #include "tls.h"
@@ -39,29 +39,11 @@
 extern "C" {
 #endif
 
-
-/**
- * @brief FFDHE parameters
- **/
-
-typedef struct
-{
-   const char_t *name;   ///<Group name
-   const uint8_t p[512]; ///<Prime modulus
-   size_t pLen;          ///<Length of the prime modulus, in bytes
-   uint8_t g;            ///<Generator
-} TlsFfdheGroup;
-
-
 //TLS related functions
-error_t tlsSelectFfdheGroup(TlsContext *context,
-   const TlsSupportedGroupList *groupList);
+error_t tlsPerformClientHandshake(TlsContext *context);
 
-const TlsFfdheGroup *tlsGetFfdheGroup(TlsContext *context,
-   uint16_t namedGroup);
-
-error_t tlsLoadFfdheParameters(DhParameters *params,
-   const TlsFfdheGroup *ffdheGroup);
+error_t tlsParseServerHandshakeMessage(TlsContext *context, uint8_t msgType,
+   const void *message, size_t length);
 
 //C++ guard
 #ifdef __cplusplus

@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.4
+ * @version 1.9.6
  **/
 
 //Switch to the appropriate trace level
@@ -37,7 +37,7 @@
 #include "tls_signature.h"
 #include "tls_transcript_hash.h"
 #include "tls_misc.h"
-#include "certificate/pem_import.h"
+#include "pkix/pem_import.h"
 #include "pkc/rsa.h"
 #include "pkc/dsa.h"
 #include "ecc/ecdsa.h"
@@ -401,7 +401,7 @@ error_t tlsGenerateSignature(TlsContext *context, uint8_t *p,
       //Check status code
       if(!error)
       {
-         //Generate a RSA signature using the client's private key
+         //Generate an RSA signature using the client's private key
          error = tlsGenerateRsaSignature(&privateKey,
             context->clientVerifyData, signature->value, &n);
       }
@@ -1260,6 +1260,11 @@ error_t tlsVerifyDsaSignature(TlsContext *context, const uint8_t *digest,
       error = dsaVerifySignature(&context->peerDsaPublicKey,
          digest, digestLen, &dsaSignature);
    }
+   else
+   {
+      //Malformed DSA signature
+      error = ERROR_INVALID_SIGNATURE;
+   }
 
    //Free previously allocated resources
    dsaFreeSignature(&dsaSignature);
@@ -1328,9 +1333,8 @@ error_t tlsGenerateEcdsaSignature(TlsContext *context, const uint8_t *digest,
       if(!error)
       {
          //Generate ECDSA signature
-         error = ecdsaGenerateSignature(&params, context->prngAlgo,
-            context->prngContext, &privateKey, digest, digestLen,
-            &ecdsaSignature);
+         error = ecdsaGenerateSignature(context->prngAlgo, context->prngContext,
+            &params, &privateKey, digest, digestLen, &ecdsaSignature);
       }
 
       //Release previously allocated resources
@@ -1406,6 +1410,11 @@ error_t tlsVerifyEcdsaSignature(TlsContext *context, const uint8_t *digest,
          error = ecdsaVerifySignature(&context->peerEcParams,
             &context->peerEcPublicKey, digest, digestLen, &ecdsaSignature);
       }
+   }
+   else
+   {
+      //Malformed ECDSA signature
+      error = ERROR_INVALID_SIGNATURE;
    }
 
    //Free previously allocated resources

@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.4
+ * @version 1.9.6
  **/
 
 //Switch to the appropriate trace level
@@ -46,7 +46,7 @@
 #include "tls_record.h"
 #include "tls_misc.h"
 #include "dtls_record.h"
-#include "certificate/x509_common.h"
+#include "pkix/x509_common.h"
 #include "debug.h"
 
 //Check TLS library configuration
@@ -72,7 +72,7 @@ error_t tlsSendCertificate(TlsContext *context)
    message = (TlsCertificate *) (context->txBuffer + context->txBufferLen);
 
 #if (TLS_CLIENT_SUPPORT == ENABLED)
-   //TLS operates as a client?
+   //Client mode?
    if(context->entity == TLS_CONNECTION_END_CLIENT)
    {
       //The client must send a Certificate message if the server requests it
@@ -109,7 +109,7 @@ error_t tlsSendCertificate(TlsContext *context)
    else
 #endif
 #if (TLS_SERVER_SUPPORT == ENABLED)
-   //TLS operates as a server?
+   //Server mode?
    if(context->entity == TLS_CONNECTION_END_SERVER)
    {
       //The server must send a Certificate message whenever the agreed-upon
@@ -1304,29 +1304,12 @@ error_t tlsParseCertificate(TlsContext *context,
    //Remaining bytes to process
    length -= sizeof(TlsCertificateList);
 
-   //Ensure that the chain of certificates is valid
+   //Malformed Certificate message?
    if(n != length)
       return ERROR_DECODING_FAILED;
 
-   //Empty certificate list received by the server?
-   if(context->entity == TLS_CONNECTION_END_SERVER && length == 0)
-   {
-      //Check whether mutual authentication is required
-      if(context->clientAuthMode == TLS_CLIENT_AUTH_REQUIRED)
-      {
-         //If client authentication is required by the server for the handshake
-         //to continue, it may respond with a fatal handshake failure alert
-         error = ERROR_HANDSHAKE_FAILED;
-      }
-      else
-      {
-         //Client authentication is optional
-         context->peerCertType = TLS_CERT_NONE;
-         //Exit immediately
-         error = NO_ERROR;
-      }
-   }
-   else
+   //Non-empty certificate list?
+   if(n > 0)
    {
 #if (TLS_RAW_PUBLIC_KEY_SUPPORT == ENABLED)
       //Check certificate type
@@ -1340,6 +1323,48 @@ error_t tlsParseCertificate(TlsContext *context,
       {
          //Parse the certificate chain
          error = tlsParseCertificateList(context, certificateList->value, n);
+      }
+   }
+   else
+   {
+#if (TLS_SERVER_SUPPORT == ENABLED)
+      //Server mode?
+      if(context->entity == TLS_CONNECTION_END_SERVER)
+      {
+         //Check whether client authentication is required
+         if(context->clientAuthMode == TLS_CLIENT_AUTH_REQUIRED)
+         {
+            //Version of TLS prior to TLS 1.3?
+            if(context->version <= TLS_VERSION_1_2)
+            {
+               //If the client does not send any certificates, the server
+               //responds with a fatal handshake_failure alert (refer to
+               //RFC 5246, section 7.4.6)
+               error = ERROR_HANDSHAKE_FAILED;
+            }
+            else
+            {
+               //If the client does not send any certificates, the server
+               //aborts the handshake with a certificate_required alert (refer
+               //to RFC 8446, section 4.4.2.4)
+               error = ERROR_CERTIFICATE_REQUIRED;
+            }
+         }
+         else
+         {
+            //The client did not send any certificates
+            context->peerCertType = TLS_CERT_NONE;
+            //The server may continue the handshake without client authentication
+            error = NO_ERROR;
+         }
+      }
+      else
+#endif
+      //Client mode?
+      {
+         //The server's certificate list must always be non-empty (refer to
+         //RFC 8446, section 4.4.2)
+         error = ERROR_DECODING_FAILED;
       }
    }
 

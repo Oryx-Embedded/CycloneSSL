@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.4
+ * @version 1.9.6
  **/
 
 //Switch to the appropriate trace level
@@ -67,7 +67,6 @@ error_t tls13NegotiateCipherSuite(TlsContext *context, const void *clientHello,
    //In TLS 1.3, the cipher suite concept has been changed. The key exchange
    //mechanism is negotiated separately from the cipher suite
    context->keyExchMethod = TLS_KEY_EXCH_NONE;
-   context->selectedIdentity = -1;
 
    //The PreSharedKey extension is used to negotiate the identity of the
    //pre-shared key to be used with a given handshake in association with
@@ -106,7 +105,7 @@ error_t tls13NegotiateCipherSuite(TlsContext *context, const void *clientHello,
       error = tlsNegotiateCipherSuite(context, NULL, cipherSuites, extensions);
       //If no acceptable choices are presented, terminate the handshake
       if(error)
-         return error;
+         return ERROR_HANDSHAKE_FAILED;
    }
 
    //If the handshake includes a HelloRetryRequest, the initial ClientHello
