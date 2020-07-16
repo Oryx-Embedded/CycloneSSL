@@ -1,2 +1,2 @@
 # CycloneSSL
-SSL/TLS Library
+TLS/DTLS Library
