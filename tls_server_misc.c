@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -76,9 +76,9 @@ error_t tlsFormatPskIdentityHint(TlsContext *context,
    if(context->pskIdentityHint != NULL)
    {
       //Determine the length of the PSK identity hint
-      n = strlen(context->pskIdentityHint);
+      n = osStrlen(context->pskIdentityHint);
       //Copy PSK identity hint
-      memcpy(pskIdentityHint->value, context->pskIdentityHint, n);
+      osMemcpy(pskIdentityHint->value, context->pskIdentityHint, n);
    }
    else
 #endif
@@ -733,9 +733,9 @@ error_t tls12GenerateServerKeySignature(TlsContext *context,
       {
          //Data to be verified is run through the EdDSA algorithm with no
          //hashing
-         memcpy(buffer, context->clientRandom, TLS_RANDOM_SIZE);
-         memcpy(buffer + 32, context->serverRandom, TLS_RANDOM_SIZE);
-         memcpy(buffer + 64, params, paramsLen);
+         osMemcpy(buffer, context->clientRandom, TLS_RANDOM_SIZE);
+         osMemcpy(buffer + 32, context->serverRandom, TLS_RANDOM_SIZE);
+         osMemcpy(buffer + 64, params, paramsLen);
 
 #if (TLS_ED25519_SUPPORT == ENABLED)
          //Ed25519 signature scheme?
@@ -936,8 +936,8 @@ error_t tlsResumeServerSession(TlsContext *context, const uint8_t *sessionId,
       uint_t n;
       TlsSessionState *session;
 
-      //If the session ID was non-empty, the server will look in its
-      //session cache for a match
+      //If the session ID was non-empty, the server will look in its session
+      //cache for a match
       session = tlsFindCache(context->cache, sessionId, sessionIdLen);
 
       //Matching session found?
@@ -980,7 +980,7 @@ error_t tlsResumeServerSession(TlsContext *context, const uint8_t *sessionId,
             //A server that implements this extension must not accept the
             //request to resume the session if the ServerName extension contains
             //a different name (refer to RFC 6066, section 3)
-            if(strcmp(session->serverName, context->serverName))
+            if(osStrcmp(session->serverName, context->serverName))
             {
                //Instead, the server proceeds with a full handshake to establish
                //a new session
@@ -1021,11 +1021,16 @@ error_t tlsResumeServerSession(TlsContext *context, const uint8_t *sessionId,
       {
          //Perform abbreviated handshake
          context->resume = TRUE;
-         //Restore cached session parameters
-         tlsRestoreSessionState(context, session);
 
-         //Select the relevant cipher suite
-         error = tlsSelectCipherSuite(context, session->cipherSuite);
+         //Restore cached session parameters
+         error = tlsRestoreSessionId(context, session);
+
+         //Check status code
+         if(!error)
+         {
+            //Select the relevant cipher suite
+            error = tlsSelectCipherSuite(context, session->cipherSuite);
+         }
       }
       else
       {
@@ -1833,7 +1838,7 @@ error_t tlsParseClientKeyParams(TlsContext *context,
          if(n > 0)
          {
             //Strip leading zero bytes from the negotiated key
-            memmove(context->premasterSecret, context->premasterSecret + n,
+            osMemmove(context->premasterSecret, context->premasterSecret + n,
                context->premasterSecretLen - n);
 
             //Adjust the length of the premaster secret

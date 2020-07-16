@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -36,6 +36,7 @@
 #include "tls.h"
 #include "tls_misc.h"
 #include "tls13_client_extensions.h"
+#include "tls13_ticket.h"
 #include "debug.h"
 
 //Check TLS library configuration
@@ -75,7 +76,7 @@ error_t tls13FormatCookieExtension(TlsContext *context, uint8_t *p,
 
       //When sending the new ClientHello, the client must copy the contents
       //of the Cookie extension received in the HelloRetryRequest
-      memcpy(cookie->value, context->cookie, context->cookieLen);
+      osMemcpy(cookie->value, context->cookie, context->cookieLen);
 
       //Set the length of the cookie
       cookie->length = ntohs(context->cookieLen);
@@ -310,9 +311,9 @@ error_t tls13FormatClientPreSharedKeyExtension(TlsContext *context,
       if(tls13IsPskValid(context))
       {
          //Retrieve the length of the PSK identity
-         n = strlen(context->pskIdentity);
+         n = osStrlen(context->pskIdentity);
          //Copy PSK identity
-         memcpy(pskIdentity->value, context->pskIdentity, n);
+         osMemcpy(pskIdentity->value, context->pskIdentity, n);
 
          //For externally established PSKs, the hash algorithm must be set when
          //the PSK is established or default to SHA-256 if no such algorithm is
@@ -331,7 +332,7 @@ error_t tls13FormatClientPreSharedKeyExtension(TlsContext *context,
          //Retrieve the length of the session ticket
          n = context->ticketLen;
          //Copy session ticket
-         memcpy(pskIdentity->value, context->ticket, n);
+         osMemcpy(pskIdentity->value, context->ticket, n);
 
          //Each PSK is associated with a single hash algorithm. For PSKs
          //established via the ticket mechanism, this is the KDF hash algorithm
@@ -343,7 +344,7 @@ error_t tls13FormatClientPreSharedKeyExtension(TlsContext *context,
 
          //The client's view of the age of a ticket is the time since the
          //receipt of the NewSessionTicket message
-         ticketAge = context->timestamp - context->ticketTimestamp;
+         ticketAge = context->clientHelloTimestamp - context->ticketTimestamp;
 
          //The obfuscated_ticket_age field contains an obfuscated version of
          //the ticket age formed by taking the age in milliseconds and adding
@@ -398,7 +399,7 @@ error_t tls13FormatClientPreSharedKeyExtension(TlsContext *context,
       //The PSK binder consists of Hash.length bytes
       m = hashAlgo->digestSize;
       //The value of the PSK binder will be calculated in a second step
-      memset(pskBinder->value, 0, m);
+      osMemset(pskBinder->value, 0, m);
 
       //Fix the length of the PSK binder
       pskBinder->length = (uint8_t) m;
@@ -480,13 +481,13 @@ error_t tls13FormatClientEarlyDataExtension(TlsContext *context,
  **/
 
 error_t tls13ParseServerSupportedVersionsExtension(TlsContext *context,
-   const uint8_t *selectedVersion)
+   const TlsExtension *selectedVersion)
 {
    error_t error;
    uint16_t version;
 
    //The extension contains the selected version value
-   version = LOAD16BE(selectedVersion);
+   version = LOAD16BE(selectedVersion->value);
 
    //If the SupportedVersions extension contains a version prior to TLS 1.3,
    //the client must abort the handshake with an illegal_parameter alert
@@ -551,7 +552,7 @@ error_t tls13ParseCookieExtension(TlsContext *context,
          return ERROR_OUT_OF_MEMORY;
 
       //Save cookie
-      memcpy(context->cookie, cookie->value, n);
+      osMemcpy(context->cookie, cookie->value, n);
       context->cookieLen = n;
    }
 
@@ -568,7 +569,7 @@ error_t tls13ParseCookieExtension(TlsContext *context,
  **/
 
 error_t tls13ParseSelectedGroupExtension(TlsContext *context,
-   const uint8_t *selectedGroup)
+   const TlsExtension *selectedGroup)
 {
    error_t error;
 
@@ -584,7 +585,7 @@ error_t tls13ParseSelectedGroupExtension(TlsContext *context,
 
       //The KeyShare extension contains the mutually supported group the server
       //intends to negotiate
-      namedGroup = LOAD16BE(selectedGroup);
+      namedGroup = LOAD16BE(selectedGroup->value);
 
       //Check whether the server has selected a different ECDHE or FFDHE group
       if(namedGroup != context->namedGroup)
@@ -698,7 +699,7 @@ error_t tls13ParseServerKeyShareExtension(TlsContext *context,
  **/
 
 error_t tls13ParseServerPreSharedKeyExtension(TlsContext *context,
-   const uint8_t *selectedIdentity)
+   const TlsExtension *selectedIdentity)
 {
    //Reset the server's selected_identity to its default value
    context->selectedIdentity = -1;
@@ -718,7 +719,7 @@ error_t tls13ParseServerPreSharedKeyExtension(TlsContext *context,
 
       //In order to accept PSK key establishment, the server sends a
       //PreSharedKey extension indicating the selected identity
-      context->selectedIdentity = LOAD16BE(selectedIdentity);
+      context->selectedIdentity = LOAD16BE(selectedIdentity->value);
 
       //Clients must verify that the server's selected_identity is within the
       //range supplied by the client (refer to RFC 8446, section 4.2.11)
@@ -791,7 +792,7 @@ error_t tls13ParseServerPreSharedKeyExtension(TlsContext *context,
  **/
 
 error_t tls13ParseServerEarlyDataExtension(TlsContext *context,
-   TlsMessageType msgType, const uint8_t *earlyDataIndication)
+   TlsMessageType msgType, const TlsExtension *earlyDataIndication)
 {
 #if (TLS13_EARLY_DATA_SUPPORT == ENABLED)
    //The extension may appear in EncryptedExtensions and NewSessionTicket
@@ -829,7 +830,7 @@ error_t tls13ParseServerEarlyDataExtension(TlsContext *context,
       //The extension contains the maximum amount of 0-RTT data that the client
       //is allowed to send
       if(earlyDataIndication != NULL)
-         context->maxEarlyDataSize = LOAD32BE(earlyDataIndication);
+         context->maxEarlyDataSize = LOAD32BE(earlyDataIndication->value);
       else
          context->maxEarlyDataSize = 0;
    }

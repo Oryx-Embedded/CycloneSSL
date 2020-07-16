@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 #ifndef _TLS_MISC_H
@@ -46,6 +46,18 @@ error_t tlsGenerateRandomValue(TlsContext *context, uint8_t *random);
 
 error_t tlsSelectVersion(TlsContext *context, uint16_t version);
 error_t tlsSelectCipherSuite(TlsContext *context, uint16_t identifier);
+
+error_t tlsSaveSessionId(const TlsContext *context,
+   TlsSessionState *session);
+
+error_t tlsSaveSessionTicket(const TlsContext *context,
+   TlsSessionState *session);
+
+error_t tlsRestoreSessionId(TlsContext *context,
+   const TlsSessionState *session);
+
+error_t tlsRestoreSessionTicket(TlsContext *context,
+   const TlsSessionState *session);
 
 error_t tlsInitEncryptionEngine(TlsContext *context,
    TlsEncryptionEngine *encryptionEngine, TlsConnectionEnd entity,

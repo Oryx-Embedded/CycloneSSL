@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -40,7 +40,6 @@
 #include "tls_misc.h"
 #include "tls13_server_extensions.h"
 #include "tls13_server_misc.h"
-#include "tls13_key_material.h"
 #include "debug.h"
 
 //Check TLS library configuration
@@ -394,7 +393,7 @@ error_t tls13VerifyPskBinder(TlsContext *context, const void *clientHello,
 
    //Prior to accepting PSK key establishment, the server must validate the
    //corresponding binder value
-   if(memcmp(calculatedBinder, binder->value, binder->length))
+   if(osMemcmp(calculatedBinder, binder->value, binder->length))
    {
       //If this value does not validate, the server must abort the handshake
       return ERROR_DECRYPTION_FAILED;
@@ -446,226 +445,6 @@ error_t tls13ProcessEarlyData(TlsContext *context, const uint8_t *data,
 
    //The server may opt to reject early data
    return NO_ERROR;
-}
-
-
-/**
- * @brief Session ticket generation
- * @param[in] context Pointer to the TLS context
- * @param[in] message Pointer to the NewSessionTicket message
- * @param[in] ticket Output stream where to write the session ticket
- * @param[out] length Length of the session ticket, in bytes
- * @return Error code
- **/
-
-error_t tls13GenerateTicket(TlsContext *context,
-   const Tls13NewSessionTicket *message, uint8_t *ticket, size_t *length)
-{
-#if (TLS_TICKET_SUPPORT == ENABLED)
-   error_t error;
-   size_t n;
-   Tls13SessionState *state;
-   const HashAlgo *hashAlgo;
-
-   //Point to the session state information
-   state = (Tls13SessionState *) ticket;
-
-   //Save session state
-   state->version = context->version;
-   state->cipherSuite = context->cipherSuite.identifier;
-   state->ticketTimestamp = osGetSystemTime();
-   state->ticketLifetime = ntohl(message->ticketLifetime);
-   state->ticketAgeAdd = ntohl(message->ticketAgeAdd);
-   memcpy(state->ticketNonce, message->ticketNonce, message->ticketNonceLen);
-   memset(state->ticketPsk, 0, TLS_MAX_HKDF_DIGEST_SIZE);
-
-   //The hash function used by HKDF is the cipher suite hash algorithm
-   hashAlgo = context->cipherSuite.prfHashAlgo;
-   //Make sure the hash algorithm is valid
-   if(hashAlgo == NULL)
-      return ERROR_FAILURE;
-
-   //Compute the PSK associated with the ticket
-   error = tls13HkdfExpandLabel(hashAlgo, context->resumptionMasterSecret,
-      hashAlgo->digestSize, "resumption", message->ticketNonce,
-      message->ticketNonceLen, state->ticketPsk, hashAlgo->digestSize);
-   //Any error?
-   if(error)
-      return error;
-
-   //Save the length of the ticket PSK
-   state->ticketPskLen = hashAlgo->digestSize;
-
-   //Compute the length of the session state
-   n = sizeof(Tls13SessionState);
-
-   //Make sure a valid callback has been registered
-   if(context->ticketEncryptCallback == NULL)
-      return ERROR_FAILURE;
-
-   //Encrypt the state information
-   error = context->ticketEncryptCallback(context, (uint8_t *) state, n,
-      ticket, length, context->ticketParam);
-   //Any error to report?
-   if(error)
-      return error;
-
-   //Successful processing
-   return NO_ERROR;
-#else
-   //Session ticket mechanism is not implemented
-   return ERROR_NOT_IMPLEMENTED;
-#endif
-}
-
-
-/**
- * @brief Session ticket verification
- * @param[in] context Pointer to the TLS context
- * @param[in] ticket Pointer to the encrypted ticket
- * @param[in] length Length of the encrypted ticket, in bytes
- * @param[in] obfuscatedTicketAge Obfuscated version of the ticket age
- * @return Error code
- **/
-
-error_t tls13VerifyTicket(TlsContext *context, const uint8_t *ticket,
-   size_t length, uint32_t obfuscatedTicketAge)
-{
-#if (TLS_TICKET_SUPPORT == ENABLED)
-   error_t error;
-   systime_t serverTicketAge;
-   Tls13SessionState *state;
-   const HashAlgo *hashAlgo;
-#if (TLS13_EARLY_DATA_SUPPORT == ENABLED)
-   systime_t delta;
-   systime_t clientTicketAge;
-#endif
-
-   //Make sure a valid callback has been registered
-   if(context->ticketDecryptCallback == NULL)
-      return ERROR_DECRYPTION_FAILED;
-
-   //Check the length of the ticket
-   if(length == 0)
-      return ERROR_DECRYPTION_FAILED;
-
-   //Allocate a buffer to store the decrypted state information
-   state = tlsAllocMem(length);
-   //Failed to allocate memory?
-   if(state == NULL)
-      return ERROR_OUT_OF_MEMORY;
-
-   //Start of exception handling block
-   do
-   {
-      //Decrypt the received ticket
-      error = context->ticketDecryptCallback(context, ticket, length,
-         (uint8_t *) state, &length, context->ticketParam);
-      //Any error to report?
-      if(error)
-         break;
-
-      //Check the length of the decrypted ticket
-      if(length != sizeof(Tls13SessionState))
-      {
-         //The ticket is malformed
-         error = ERROR_INVALID_TICKET;
-         break;
-      }
-
-      //Check TLS version
-      if(state->version != TLS_VERSION_1_3)
-      {
-         //The ticket is not valid
-         error = ERROR_INVALID_TICKET;
-         break;
-      }
-
-      //Compute the time since the ticket was issued
-      serverTicketAge = osGetSystemTime() - state->ticketTimestamp;
-
-      //Verify ticket's validity
-      if(serverTicketAge >= (state->ticketLifetime * 1000))
-      {
-         //The ticket is not valid
-         error = ERROR_INVALID_TICKET;
-         break;
-      }
-
-#if (TLS13_EARLY_DATA_SUPPORT == ENABLED)
-      //Compute the ticket age for the selected PSK identity by subtracting
-      //ticket_age_add from obfuscated_ticket_age modulo 2^32
-      clientTicketAge = obfuscatedTicketAge - state->ticketAgeAdd;
-
-      //Calculate the difference between the client's view and the server's
-      //view of the age of the ticket
-      if(clientTicketAge < serverTicketAge)
-         delta = serverTicketAge - clientTicketAge;
-      else
-         delta = clientTicketAge - serverTicketAge;
-
-      //For PSKs provisioned via NewSessionTicket, the server must validate
-      //that the ticket age for the selected PSK identity is within a small
-      //tolerance of the time since the ticket was issued
-      if(delta >= TLS13_TICKET_AGE_TOLERANCE)
-      {
-         //If it is not, the server should proceed with the handshake but
-         //reject 0-RTT, and should not take any other action that assumes
-         //that this ClientHello is fresh (refer to RFC 8446, 4.2.10)
-         context->earlyDataRejected = TRUE;
-      }
-#endif
-
-      //Any ticket must only be resumed with a cipher suite that has the same
-      //KDF hash algorithm as that used to establish the original connection
-      error = tlsSelectCipherSuite(context, state->cipherSuite);
-      //Any error to report?
-      if(error)
-         break;
-
-      //Point to the cipher suite hash algorithm
-      hashAlgo = context->cipherSuite.prfHashAlgo;
-      //Make sure the hash algorithm is valid
-      if(hashAlgo == NULL)
-      {
-         //The ticket is malformed
-         error = ERROR_INVALID_TICKET;
-         break;
-      }
-
-      //The server must ensure that it selects a compatible PSK and cipher suite
-      if(state->ticketPskLen != hashAlgo->digestSize)
-      {
-         //The ticket is malformed
-         error = ERROR_INVALID_TICKET;
-         break;
-      }
-
-      //Restore ticket PSK
-      memcpy(context->ticketPsk, state->ticketPsk, state->ticketPskLen);
-      context->ticketPskLen = state->ticketPskLen;
-
-      //Retrieve the hash algorithm associated with the ticket
-      if(hashAlgo == tlsGetHashAlgo(TLS_HASH_ALGO_SHA256))
-         context->ticketHashAlgo = TLS_HASH_ALGO_SHA256;
-      else if(hashAlgo == tlsGetHashAlgo(TLS_HASH_ALGO_SHA384))
-         context->ticketHashAlgo = TLS_HASH_ALGO_SHA384;
-      else
-         context->ticketHashAlgo = TLS_HASH_ALGO_NONE;
-
-      //End of exception handling block
-   } while(0);
-
-   //Release state information
-   memset(state, 0, length);
-   tlsFreeMem(state);
-
-   //Return status code
-   return error;
-#else
-   //Session ticket mechanism is not implemented
-   return ERROR_DECRYPTION_FAILED;
-#endif
 }
 
 #endif

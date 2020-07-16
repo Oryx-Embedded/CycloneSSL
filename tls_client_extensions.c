@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -36,6 +36,7 @@
 #include "tls.h"
 #include "tls_cipher_suites.h"
 #include "tls_client_extensions.h"
+#include "tls_client_misc.h"
 #include "tls_extensions.h"
 #include "tls_ffdhe.h"
 #include "tls_misc.h"
@@ -186,7 +187,7 @@ error_t tlsFormatClientSniExtension(TlsContext *context,
    if(context->serverName != NULL)
    {
       //Determine the length of the server name
-      n = strlen(context->serverName);
+      n = osStrlen(context->serverName);
 
       //The server name must be a valid DNS hostname
       if(tlsCheckDnsHostname(context->serverName, n))
@@ -209,7 +210,7 @@ error_t tlsFormatClientSniExtension(TlsContext *context,
          serverName->type = TLS_NAME_TYPE_HOSTNAME;
          serverName->length = htons(n);
          //Copy server name
-         memcpy(serverName->hostname, context->serverName, n);
+         osMemcpy(serverName->hostname, context->serverName, n);
 
          //Compute the length, in byte, of the structure
          n += sizeof(TlsServerName);
@@ -581,7 +582,7 @@ error_t tlsFormatClientAlpnExtension(TlsContext *context,
                //Fill in the length field
                protocolName->length = i - j;
                //Copy protocol name
-               memcpy(protocolName->value, context->protocolList + j, i - j);
+               osMemcpy(protocolName->value, context->protocolList + j, i - j);
 
                //Adjust the length of the list
                n += sizeof(TlsProtocolName) + i - j;
@@ -777,6 +778,74 @@ error_t tlsFormatClientEmsExtension(TlsContext *context,
 
 
 /**
+ * @brief Format SessionTicket extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] p Output stream where to write the SessionTicket extension
+ * @param[out] written Total number of bytes that have been written
+ * @return Error code
+ **/
+
+error_t tlsFormatClientSessionTicketExtension(TlsContext *context,
+   uint8_t *p, size_t *written)
+{
+   size_t n = 0;
+
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //In versions of TLS prior to TLS 1.3, the SessionTicket extension is used
+   //to resume a TLS session without requiring session-specific state at the
+   //TLS server
+   if(context->versionMin <= TLS_VERSION_1_2)
+   {
+#if (TLS_TICKET_SUPPORT == ENABLED)
+      //Check whether session ticket mechanism is enabled
+      if(context->sessionTicketEnabled)
+      {
+         TlsExtension *extension;
+
+         //Add the SessionTicket extension
+         extension = (TlsExtension *) p;
+         //Type of the extension
+         extension->type = HTONS(TLS_EXT_SESSION_TICKET);
+
+         //Valid ticket?
+         if(tlsIsTicketValid(context))
+         {
+            //If the client possesses a ticket that it wants to use to resume
+            //a session, then it includes the ticket in the SessionTicket
+            //extension in the ClientHello
+            osMemcpy(extension->value, context->ticket, context->ticketLen);
+
+            //The extension_data field of SessionTicket extension contains the
+            //ticket
+            n = context->ticketLen;
+         }
+         else
+         {
+            //If the client does not have a ticket and is prepared to receive
+            //one in the NewSessionTicket handshake message, then it must
+            //include a zero-length ticket in the SessionTicket extension
+            n = 0;
+         }
+
+         //Set the length of the extension
+         extension->length = htons(n);
+
+         //Compute the length, in bytes, of the SessionTicket extension
+         n += sizeof(TlsExtension);
+      }
+#endif
+   }
+#endif
+
+   //Total number of bytes that have been written
+   *written = n;
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
  * @brief Format RenegotiationInfo extension
  * @param[in] context Pointer to the TLS context
  * @param[in] p Output stream where to write the RenegotiationInfo extension
@@ -819,7 +888,7 @@ error_t tlsFormatClientRenegoInfoExtension(TlsContext *context,
 
             //Copy the verify data from the Finished message sent by the client
             //on the immediately previous handshake
-            memcpy(renegoInfo->value, context->clientVerifyData, n);
+            osMemcpy(renegoInfo->value, context->clientVerifyData, n);
 
             //Consider the length field that precedes the renegotiated_connection
             //field
@@ -880,12 +949,16 @@ error_t tlsFormatClientHelloPaddingExtension(TlsContext *context,
 
          //Calculate the length of the padding
          if((clientHelloLen + sizeof(TlsExtension)) < 512)
+         {
             n = 512 - sizeof(TlsExtension) - clientHelloLen;
+         }
          else
+         {
             n = 0;
+         }
 
          //The padding string consists of an arbitrary number of zero bytes
-         memset(extension->value, 0, n);
+         osMemset(extension->value, 0, n);
          //Set the length of the extension
          extension->length = htons(n);
 
@@ -938,7 +1011,7 @@ error_t tlsParseServerSniExtension(TlsContext *context,
  **/
 
 error_t tlsParseServerMaxFragLenExtension(TlsContext *context,
-   const uint8_t *maxFragLen)
+   const TlsExtension *maxFragLen)
 {
 #if (TLS_MAX_FRAG_LEN_SUPPORT == ENABLED)
    //MaxFragmentLength extension found?
@@ -947,7 +1020,7 @@ error_t tlsParseServerMaxFragLenExtension(TlsContext *context,
       size_t n;
 
       //Retrieve the value advertised by the server
-      switch(*maxFragLen)
+      switch(maxFragLen->value[0])
       {
       case TLS_MAX_FRAGMENT_LENGTH_512:
          n = 512;
@@ -987,7 +1060,7 @@ error_t tlsParseServerMaxFragLenExtension(TlsContext *context,
  **/
 
 error_t tlsParseServerRecordSizeLimitExtension(TlsContext *context,
-   const uint8_t *recordSizeLimit)
+   const TlsExtension *recordSizeLimit)
 {
 #if (TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)
    //RecordSizeLimit extension found?
@@ -997,7 +1070,7 @@ error_t tlsParseServerRecordSizeLimitExtension(TlsContext *context,
 
       //The value of RecordSizeLimit is the maximum size of record in octets
       //that the peer is willing to receive
-      n = LOAD16BE(recordSizeLimit);
+      n = LOAD16BE(recordSizeLimit->value);
 
       //Endpoints must not send a RecordSizeLimit extension with a value
       //smaller than 64
@@ -1156,7 +1229,7 @@ error_t tlsParseServerAlpnExtension(TlsContext *context,
          return ERROR_OUT_OF_MEMORY;
 
       //Save protocol name
-      memcpy(context->selectedProtocol, protocolName->value, length);
+      osMemcpy(context->selectedProtocol, protocolName->value, length);
       //Properly terminate the string with a NULL character
       context->selectedProtocol[length] = '\0';
    }
@@ -1175,7 +1248,7 @@ error_t tlsParseServerAlpnExtension(TlsContext *context,
  **/
 
 error_t tlsParseClientCertTypeExtension(TlsContext *context,
-   const uint8_t *clientCertType)
+   const TlsExtension *clientCertType)
 {
 #if (TLS_RAW_PUBLIC_KEY_SUPPORT == ENABLED)
    //ClientCertType extension found?
@@ -1183,8 +1256,8 @@ error_t tlsParseClientCertTypeExtension(TlsContext *context,
    {
       //The value conveyed in the extension must be selected from one of the
       //values provided in the ClientCertType extension sent in the ClientHello
-      if(*clientCertType != TLS_CERT_FORMAT_X509 &&
-         *clientCertType != TLS_CERT_FORMAT_RAW_PUBLIC_KEY)
+      if(clientCertType->value[0] != TLS_CERT_FORMAT_X509 &&
+         clientCertType->value[0] != TLS_CERT_FORMAT_RAW_PUBLIC_KEY)
       {
          return ERROR_ILLEGAL_PARAMETER;
       }
@@ -1192,7 +1265,7 @@ error_t tlsParseClientCertTypeExtension(TlsContext *context,
       //The ClientCertType extension in the ServerHello indicates the type
       //of certificates the client is requested to provide in a subsequent
       //certificate payload
-      context->certFormat = (TlsCertificateFormat) *clientCertType;
+      context->certFormat = (TlsCertificateFormat) clientCertType->value[0];
    }
 #endif
 
@@ -1209,7 +1282,7 @@ error_t tlsParseClientCertTypeExtension(TlsContext *context,
  **/
 
 error_t tlsParseServerCertTypeExtension(TlsContext *context,
-   const uint8_t *serverCertType)
+   const TlsExtension *serverCertType)
 {
 #if (TLS_RAW_PUBLIC_KEY_SUPPORT == ENABLED)
    //ServerCertType extension found?
@@ -1219,22 +1292,22 @@ error_t tlsParseServerCertTypeExtension(TlsContext *context,
       //not request in the associated ClientHello, it must abort the handshake
       //with an unsupported_extension fatal alert
       if(context->rpkVerifyCallback == NULL &&
-         *serverCertType != TLS_CERT_FORMAT_X509)
+         serverCertType->value[0] != TLS_CERT_FORMAT_X509)
       {
          return ERROR_UNSUPPORTED_EXTENSION;
       }
 
       //The value conveyed in the extension must be selected from one of the
       //values provided in the ServerCertType extension sent in the ClientHello
-      if(*serverCertType != TLS_CERT_FORMAT_X509 &&
-         *serverCertType != TLS_CERT_FORMAT_RAW_PUBLIC_KEY)
+      if(serverCertType->value[0] != TLS_CERT_FORMAT_X509 &&
+         serverCertType->value[0] != TLS_CERT_FORMAT_RAW_PUBLIC_KEY)
       {
          return ERROR_ILLEGAL_PARAMETER;
       }
 
       //With the ServerCertType extension in the ServerHello, the TLS server
       //indicates the certificate type carried in the certificate payload
-      context->peerCertFormat = (TlsCertificateFormat) *serverCertType;
+      context->peerCertFormat = (TlsCertificateFormat) serverCertType->value[0];
    }
 #endif
 
@@ -1251,7 +1324,7 @@ error_t tlsParseServerCertTypeExtension(TlsContext *context,
  **/
 
 error_t tlsParseServerEmsExtension(TlsContext *context,
-   const uint8_t *extendedMasterSecret)
+   const TlsExtension *extendedMasterSecret)
 {
 #if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
    //ExtendedMasterSecret extension found?
@@ -1288,6 +1361,43 @@ error_t tlsParseServerEmsExtension(TlsContext *context,
 
       //The ServerHello does not contain any ExtendedMasterSecret extension
       context->extendedMasterSecretExtReceived = FALSE;
+   }
+#endif
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
+ * @brief Parse SessionTicket extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] sessionTicket Pointer to the SessionTicket extension
+ * @return Error code
+ **/
+
+error_t tlsParseServerSessionTicketExtension(TlsContext *context,
+   const TlsExtension *sessionTicket)
+{
+#if (TLS_TICKET_SUPPORT == ENABLED)
+   //SessionTicket extension found?
+   if(sessionTicket != NULL)
+   {
+      //If a client receives an extension type in the ServerHello that it did
+      //not request in the associated ClientHello, it must abort the handshake
+      //with an unsupported_extension fatal alert
+      if(!context->sessionTicketEnabled)
+         return ERROR_UNSUPPORTED_EXTENSION;
+
+      //The server uses the SessionTicket extension to indicate to the client
+      //that it will send a new session ticket using the NewSessionTicket
+      //handshake message
+      context->sessionTicketExtReceived = TRUE;
+   }
+   else
+   {
+      //The ServerHello does not contain any SessionTicket extension
+      context->sessionTicketExtReceived = FALSE;
    }
 #endif
 
@@ -1347,7 +1457,7 @@ error_t tlsParseServerRenegoInfoExtension(TlsContext *context,
 
          //The client must verify that the first half of the field is equal to
          //the saved client_verify_data value
-         if(memcmp(extensions->renegoInfo->value, context->clientVerifyData,
+         if(osMemcmp(extensions->renegoInfo->value, context->clientVerifyData,
             context->clientVerifyDataLen))
          {
             //If it is not, the client must abort the handshake
@@ -1356,7 +1466,7 @@ error_t tlsParseServerRenegoInfoExtension(TlsContext *context,
 
          //The client must verify that the second half of the field is equal to
          //the saved server_verify_data value
-         if(memcmp(extensions->renegoInfo->value + context->clientVerifyDataLen,
+         if(osMemcmp(extensions->renegoInfo->value + context->clientVerifyDataLen,
             context->serverVerifyData, context->serverVerifyDataLen))
          {
             //If it is not, the client must abort the handshake

@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -232,7 +232,7 @@ error_t tlsFormatRawPublicKey(TlsContext *context, uint8_t *p,
             //The raw public key is preceded by a 3-byte length field
             STORE24BE(n, p);
             //Copy the raw public key
-            memcpy(p + 3, certInfo->tbsCert.subjectPublicKeyInfo.rawData, n);
+            osMemcpy(p + 3, certInfo->tbsCert.subjectPublicKeyInfo.rawData, n);
 
             //Advance data pointer
             p += n + 3;
@@ -254,7 +254,7 @@ error_t tlsFormatRawPublicKey(TlsContext *context, uint8_t *p,
 #endif
          {
             //Copy the raw public key
-            memcpy(p, certInfo->tbsCert.subjectPublicKeyInfo.rawData, n);
+            osMemcpy(p, certInfo->tbsCert.subjectPublicKeyInfo.rawData, n);
 
             //Advance data pointer
             p += n;
@@ -437,8 +437,8 @@ error_t tlsParseCertificateList(TlsContext *context, const uint8_t *p,
       //Check validation result
       if(certValidResult != NO_ERROR && certValidResult != ERROR_UNKNOWN_CA)
       {
-         //Report an error
-         error = ERROR_BAD_CERTIFICATE;
+         //The certificate is not valid
+         error = certValidResult;
          break;
       }
 
@@ -538,8 +538,8 @@ error_t tlsParseCertificateList(TlsContext *context, const uint8_t *p,
             //Check validation result
             if(certValidResult != NO_ERROR && certValidResult != ERROR_UNKNOWN_CA)
             {
-               //Report an error
-               error = ERROR_BAD_CERTIFICATE;
+               //The certificate is not valid
+               error = certValidResult;
                break;
             }
          }
@@ -1288,8 +1288,12 @@ error_t tlsValidateCertificate(TlsContext *context,
          context->certVerifyParam);
    }
 
-   //Unknown certification authority?
-   if(error == ERROR_UNKNOWN_CA)
+   //Check status code
+   if(error == NO_ERROR)
+   {
+      //The certificate is valid
+   }
+   else if(error == ERROR_UNKNOWN_CA)
    {
       //Check whether the certificate should be checked against root CAs
       if(context->trustedCaListLen > 0)
@@ -1395,7 +1399,21 @@ error_t tlsValidateCertificate(TlsContext *context,
       {
          //Do not check the certificate against root CAs
          error = NO_ERROR;
-      }  
+      }
+   }
+   else if(error == ERROR_BAD_CERTIFICATE ||
+      error == ERROR_UNSUPPORTED_CERTIFICATE ||
+      error == ERROR_UNKNOWN_CERTIFICATE ||
+      error == ERROR_CERTIFICATE_REVOKED ||
+      error == ERROR_CERTIFICATE_EXPIRED ||
+      error == ERROR_HANDSHAKE_FAILED)
+   {
+      //The certificate is not valid
+   }
+   else
+   {
+      //Report an error
+      error = ERROR_BAD_CERTIFICATE;
    }
 
    //Return status code

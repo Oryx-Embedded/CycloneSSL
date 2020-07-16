@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -37,6 +37,7 @@
 #include "tls_misc.h"
 #include "tls13_server_extensions.h"
 #include "tls13_server_misc.h"
+#include "tls13_ticket.h"
 #include "debug.h"
 
 //Check TLS library configuration
@@ -746,7 +747,7 @@ error_t tls13ParseClientPreSharedKeyExtension(TlsContext *context,
  **/
 
 error_t tls13ParseClientEarlyDataExtension(TlsContext *context,
-   const uint8_t *earlyDataIndication)
+   const TlsExtension *earlyDataIndication)
 {
    //EarlyData extension found?
    if(earlyDataIndication != NULL)

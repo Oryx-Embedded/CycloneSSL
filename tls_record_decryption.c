@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -166,15 +166,14 @@ error_t tlsDecryptAeadRecord(TlsContext *context,
    }
    else
    {
-      //The length must not exceed 2^14 octets + 1 octet for ContentType +
-      //the maximum AEAD expansion. An endpoint that receives a record
-      //that exceeds this length must terminate the connection with a
-      //record_overflow alert
+      //The length must not exceed 2^14 octets + 1 octet for ContentType + the
+      //maximum AEAD expansion. An endpoint that receives a record that exceeds
+      //this length must terminate the connection with a record_overflow alert
       if(length > (TLS_MAX_RECORD_LENGTH + 1))
          return ERROR_RECORD_OVERFLOW;
 
-      //In TLS 1.3, the outer opaque_type field of a TLS record is always
-      //set to the value 23 (application data)
+      //In TLS 1.3, the outer opaque_type field of a TLS record is always set
+      //to the value 23 (application data)
       if(tlsGetRecordType(context, record) != TLS_TYPE_APPLICATION_DATA)
          return ERROR_UNEXPECTED_MESSAGE;
    }
@@ -237,7 +236,7 @@ error_t tlsDecryptAeadRecord(TlsContext *context,
    //Discard the explicit part of the nonce
    if(decryptionEngine->recordIvLen != 0)
    {
-      memmove(data, data + decryptionEngine->recordIvLen, length);
+      osMemmove(data, data + decryptionEngine->recordIvLen, length);
    }
 
    //TLS 1.3 currently selected?
@@ -251,9 +250,9 @@ error_t tlsDecryptAeadRecord(TlsContext *context,
          length--;
       }
 
-      //If a receiving implementation does not find a non-zero octet
-      //in the cleartext, it must terminate the connection with an
-      //unexpected_message alert
+      //If a receiving implementation does not find a non-zero octet in the
+      //cleartext, it must terminate the connection with an unexpected_message
+      //alert
       if(length == 0)
          return ERROR_UNEXPECTED_MESSAGE;
 
@@ -347,7 +346,7 @@ error_t tlsDecryptCbcRecord(TlsContext *context,
       //Adjust the length of the message
       length -= decryptionEngine->recordIvLen;
       //Discard the first cipher block (corresponding to the explicit IV)
-      memmove(data, data + decryptionEngine->recordIvLen, length);
+      osMemmove(data, data + decryptionEngine->recordIvLen, length);
    }
 
    //Debug message
@@ -507,13 +506,14 @@ error_t tlsVerifyMessageAuthCode(TlsContext *context,
 
    //Adjust the length of the message
    length -= hashAlgo->digestSize;
-   //Fix the length field of the TLS record
-   tlsSetRecordLength(context, record, length);
 
 #if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= SSL_VERSION_3_0)
    //SSL 3.0 currently selected?
    if(decryptionEngine->version == SSL_VERSION_3_0)
    {
+      //Fix the length field of the record
+      tlsSetRecordLength(context, record, length);
+
       //SSL 3.0 uses an older obsolete version of the HMAC construction
       error = sslComputeMac(decryptionEngine, record, data, length, digest);
    }
@@ -521,10 +521,35 @@ error_t tlsVerifyMessageAuthCode(TlsContext *context,
 #endif
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
-   if(decryptionEngine->version >= TLS_VERSION_1_0)
+   if(decryptionEngine->version >= TLS_VERSION_1_0 &&
+      decryptionEngine->version <= TLS_VERSION_1_2)
    {
+      //Fix the length field of the record
+      tlsSetRecordLength(context, record, length);
+
       //TLS uses a HMAC construction
       error = tlsComputeMac(context, decryptionEngine, record, data, length,
+         digest);
+   }
+   else
+#endif
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+   //TLS 1.3 currently selected?
+   if(decryptionEngine->version == TLS_VERSION_1_3)
+   {
+      //The length must not exceed 2^14 octets + 1 octet for ContentType + the
+      //maximum AEAD expansion. An endpoint that receives a record that exceeds
+      //this length must terminate the connection with a record_overflow alert
+      if(length > (TLS_MAX_RECORD_LENGTH + 1))
+         return ERROR_RECORD_OVERFLOW;
+
+      //In TLS 1.3, the outer opaque_type field of a TLS record is always set
+      //to the value 23 (application data)
+      if(tlsGetRecordType(context, record) != TLS_TYPE_APPLICATION_DATA)
+         return ERROR_UNEXPECTED_MESSAGE;
+
+      //The record is protected using HMAC SHA-256 or SHA-384
+      error = tls13ComputeMac(context, decryptionEngine, record, data, length,
          digest);
    }
    else
@@ -552,14 +577,43 @@ error_t tlsVerifyMessageAuthCode(TlsContext *context,
       mask |= data[length + i] ^ digest[i];
    }
 
-   //Increment sequence number
-   tlsIncSequenceNumber(&decryptionEngine->seqNum);
-
    //Invalid message authentication code?
    if(mask != 0)
       return ERROR_BAD_RECORD_MAC;
-   else
-      return NO_ERROR;
+
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+   //TLS 1.3 currently selected?
+   if(decryptionEngine->version == TLS_VERSION_1_3)
+   {
+      //Upon successful decryption of an encrypted record, the receiving
+      //implementation scans the field from the end toward the beginning
+      //until it finds a non-zero octet
+      while(length > 0 && data[length - 1] == 0)
+      {
+         length--;
+      }
+
+      //If a receiving implementation does not find a non-zero octet in the
+      //cleartext, it must terminate the connection with an unexpected_message
+      //alert
+      if(length == 0)
+         return ERROR_UNEXPECTED_MESSAGE;
+
+      //Retrieve the length of the plaintext
+      length--;
+
+      //The actual content type of the record is found in the type field
+      tlsSetRecordType(context, record, data[length]);
+      //Fix the length field of the TLS record
+      tlsSetRecordLength(context, record, length);
+   }
+#endif
+
+   //Increment sequence number
+   tlsIncSequenceNumber(&decryptionEngine->seqNum);
+
+   //Successful processing
+   return NO_ERROR;
 }
 
 
@@ -842,7 +896,7 @@ uint32_t tlsExtractMac(TlsEncryptionEngine *decryptionEngine,
    dataLen = CRYPTO_SELECT_32(dataLen - macSize, 0, bad);
 
    //Clear MAC value
-   memset(mac, 0, macSize);
+   osMemset(mac, 0, macSize);
    offset = 0;
 
    //Read every location where the MAC might be found
@@ -884,7 +938,7 @@ uint32_t tlsExtractMac(TlsEncryptionEngine *decryptionEngine,
       }
 
       //Copy the value of the rotated MAC
-      memcpy(mac, temp, macSize);
+      osMemcpy(mac, temp, macSize);
    }
 
    //Debug message

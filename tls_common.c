@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -314,8 +314,10 @@ error_t tlsSendChangeCipherSpec(TlsContext *context)
 
          //Save current encryption engine for later use
          context->prevEncryptionEngine = context->encryptionEngine;
-         //Clear current encryption engine
-         memset(&context->encryptionEngine, 0, sizeof(TlsEncryptionEngine));
+
+         //Reset encryption engine
+         osMemset(&context->encryptionEngine, 0, sizeof(TlsEncryptionEngine));
+         context->encryptionEngine.epoch = context->prevEncryptionEngine.epoch;
 #else
          //Release encryption engine first
          tlsFreeEncryptionEngine(&context->encryptionEngine);
@@ -435,17 +437,42 @@ error_t tlsSendFinished(TlsContext *context)
          {
             //Abbreviated or full handshake?
             if(context->resume)
+            {
+               //The client and server can now exchange application-layer data
                context->state = TLS_STATE_APPLICATION_DATA;
+            }
             else
-               context->state = TLS_STATE_SERVER_CHANGE_CIPHER_SPEC;
+            {
+#if (TLS_TICKET_SUPPORT == ENABLED)
+               //The server uses the SessionTicket extension to indicate to
+               //the client that it will send a new session ticket using the
+               //NewSessionTicket handshake message
+               if(context->sessionTicketExtReceived)
+               {
+                  //Wait for a NewSessionTicket message from the server
+                  context->state = TLS_STATE_NEW_SESSION_TICKET;
+               }
+               else
+#endif
+               {
+                  //Wait for a ChangeCipherSpec message from the server
+                  context->state = TLS_STATE_SERVER_CHANGE_CIPHER_SPEC;
+               }
+            }
          }
          else
          {
             //Abbreviated or full handshake?
             if(context->resume)
+            {
+               //Wait for a ChangeCipherSpec message from the client
                context->state = TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC;
+            }
             else
+            {
+               //The client and server can now exchange application-layer data
                context->state = TLS_STATE_APPLICATION_DATA;
+            }
          }
       }
       else
@@ -543,7 +570,7 @@ error_t tlsSendAlert(TlsContext *context, uint8_t level, uint8_t description)
 #endif
 
       //Servers and clients must forget any session identifiers
-      memset(context->sessionId, 0, 32);
+      osMemset(context->sessionId, 0, 32);
       context->sessionIdLen = 0;
 
       //Update FSM state
@@ -593,7 +620,7 @@ error_t tlsFormatCertificate(TlsContext *context,
          if(context->certRequestContextLen > 0)
          {
             //Copy certificate request context
-            memcpy(certRequestContext->value, context->certRequestContext,
+            osMemcpy(certRequestContext->value, context->certRequestContext,
                context->certRequestContextLen);
          }
 
@@ -740,14 +767,14 @@ error_t tlsFormatFinished(TlsContext *context,
    if(context->entity == TLS_CONNECTION_END_CLIENT)
    {
       //Copy the client's verify data
-      memcpy(message, context->clientVerifyData, context->clientVerifyDataLen);
+      osMemcpy(message, context->clientVerifyData, context->clientVerifyDataLen);
       //Length of the handshake message
       *length = context->clientVerifyDataLen;
    }
    else
    {
       //Copy the server's verify data
-      memcpy(message, context->serverVerifyData, context->serverVerifyDataLen);
+      osMemcpy(message, context->serverVerifyData, context->serverVerifyDataLen);
       //Length of the handshake message
       *length = context->serverVerifyDataLen;
    }
@@ -1688,7 +1715,7 @@ error_t tlsParseFinished(TlsContext *context,
       }
 
       //Check the resulting verify data
-      if(memcmp(message, context->serverVerifyData, context->serverVerifyDataLen))
+      if(osMemcmp(message, context->serverVerifyData, context->serverVerifyDataLen))
          return ERROR_INVALID_SIGNATURE;
    }
    else
@@ -1716,13 +1743,18 @@ error_t tlsParseFinished(TlsContext *context,
       }
 
       //Check the resulting verify data
-      if(memcmp(message, context->clientVerifyData, context->clientVerifyDataLen))
+      if(osMemcmp(message, context->clientVerifyData, context->clientVerifyDataLen))
          return ERROR_INVALID_SIGNATURE;
    }
 
    //Version of TLS prior to TLS 1.3?
    if(context->version <= TLS_VERSION_1_2)
    {
+      //Another handshake message cannot be packed in the same record as the
+      //Finished
+      if(context->rxBufferLen != 0)
+         return ERROR_UNEXPECTED_MESSAGE;
+
       //Check whether TLS operates as a client or a server
       if(context->entity == TLS_CONNECTION_END_CLIENT)
       {
@@ -1835,7 +1867,7 @@ error_t tlsParseAlert(TlsContext *context,
 #endif
 
       //Servers and clients must forget any session identifiers
-      memset(context->sessionId, 0, 32);
+      osMemset(context->sessionId, 0, 32);
       context->sessionIdLen = 0;
 
       //Alert messages with a level of fatal result in the immediate

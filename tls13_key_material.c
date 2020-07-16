@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -38,6 +38,7 @@
 #include "tls_key_material.h"
 #include "tls_transcript_hash.h"
 #include "tls13_key_material.h"
+#include "tls13_ticket.h"
 #include "kdf/hkdf.h"
 #include "debug.h"
 
@@ -74,7 +75,7 @@ error_t tls13HkdfExpandLabel(const HashAlgo *hash, const uint8_t *secret,
       return ERROR_INVALID_PARAMETER;
 
    //Retrieve the length of the label
-   labelLen = strlen(label);
+   labelLen = osStrlen(label);
 
    //Check parameters
    if(labelLen > (255 - 6) || contextLen > 255)
@@ -92,10 +93,10 @@ error_t tls13HkdfExpandLabel(const HashAlgo *hash, const uint8_t *secret,
       hkdfLabel[0] = MSB(outputLen);
       hkdfLabel[1] = LSB(outputLen);
       hkdfLabel[2] = (uint8_t) (labelLen + 6);
-      memcpy(hkdfLabel + 3, "tls13 ", 6);
-      memcpy(hkdfLabel + 9, label, labelLen);
+      osMemcpy(hkdfLabel + 3, "tls13 ", 6);
+      osMemcpy(hkdfLabel + 9, label, labelLen);
       hkdfLabel[labelLen + 9] = (uint8_t) contextLen;
-      memcpy(hkdfLabel + labelLen + 10, context, contextLen);
+      osMemcpy(hkdfLabel + labelLen + 10, context, contextLen);
 
       //Debug message
       TRACE_DEBUG("HkdfLabel (%" PRIuSIZE " bytes):\r\n", n);
@@ -263,7 +264,7 @@ error_t tls13GenerateEarlyTrafficKeys(TlsContext *context)
       else
       {
          //The receive buffer is not empty
-         error = ERROR_HANDSHAKE_FAILED;
+         error = ERROR_UNEXPECTED_MESSAGE;
       }
    }
 
@@ -326,7 +327,7 @@ error_t tls13GenerateHandshakeTrafficKeys(TlsContext *context)
       context->keyExchMethod == TLS13_KEY_EXCH_ECDHE)
    {
       //If PSK is not in use, IKM is a string of Hash-lengths bytes set to 0
-      memset(context->secret, 0, hash->digestSize);
+      osMemset(context->secret, 0, hash->digestSize);
 
       //Point to the IKM argument
       ikm = context->secret;
@@ -396,7 +397,7 @@ error_t tls13GenerateHandshakeTrafficKeys(TlsContext *context)
    {
       //If the (EC)DHE shared secret is not available, then the 0-value
       //consisting of a string of Hash.length bytes set to zeros is used
-      memset(context->premasterSecret, 0, hash->digestSize);
+      osMemset(context->premasterSecret, 0, hash->digestSize);
       context->premasterSecretLen = hash->digestSize;
    }
 
@@ -530,7 +531,7 @@ error_t tls13GenerateServerAppTrafficKeys(TlsContext *context)
    TRACE_DEBUG_ARRAY("  ", context->secret, hash->digestSize);
 
    //IKM is a string of Hash-lengths bytes set to 0
-   memset(ikm, 0, hash->digestSize);
+   osMemset(ikm, 0, hash->digestSize);
 
    //Calculate master secret
    error = hkdfExtract(hash, ikm, hash->digestSize, context->secret,
@@ -586,7 +587,7 @@ error_t tls13GenerateServerAppTrafficKeys(TlsContext *context)
       else
       {
          //The receive buffer is not empty
-         error = ERROR_HANDSHAKE_FAILED;
+         error = ERROR_UNEXPECTED_MESSAGE;
       }
    }
    else
@@ -728,7 +729,7 @@ error_t tls13GenerateClientAppTrafficKeys(TlsContext *context)
       else
       {
          //The receive buffer is not empty
-         error = ERROR_HANDSHAKE_FAILED;
+         error = ERROR_UNEXPECTED_MESSAGE;
       }
    }
 
@@ -749,10 +750,10 @@ error_t tls13GenerateClientAppTrafficKeys(TlsContext *context)
 
    //Once all the values which are to be derived from a given secret have been
    //computed, that secret should be erased
-   memset(context->secret, 0, TLS13_MAX_HKDF_DIGEST_SIZE);
-   memset(context->clientEarlyTrafficSecret, 0, TLS13_MAX_HKDF_DIGEST_SIZE);
-   memset(context->clientHsTrafficSecret, 0, TLS13_MAX_HKDF_DIGEST_SIZE);
-   memset(context->serverHsTrafficSecret, 0, TLS13_MAX_HKDF_DIGEST_SIZE);
+   osMemset(context->secret, 0, TLS13_MAX_HKDF_DIGEST_SIZE);
+   osMemset(context->clientEarlyTrafficSecret, 0, TLS13_MAX_HKDF_DIGEST_SIZE);
+   osMemset(context->clientHsTrafficSecret, 0, TLS13_MAX_HKDF_DIGEST_SIZE);
+   osMemset(context->serverHsTrafficSecret, 0, TLS13_MAX_HKDF_DIGEST_SIZE);
 
 #if (TLS_TICKET_SUPPORT == ENABLED)
    //Check whether session ticket mechanism is enabled

@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -111,7 +111,7 @@ error_t tlsFormatSessionId(TlsContext *context, uint8_t *p,
    {
       //A client which has a cached session ID set by a pre-TLS 1.3 server
       //should set this field to that value
-      memcpy(p, context->sessionId, context->sessionIdLen);
+      osMemcpy(p, context->sessionId, context->sessionIdLen);
       n = context->sessionIdLen;
    }
    else
@@ -119,7 +119,7 @@ error_t tlsFormatSessionId(TlsContext *context, uint8_t *p,
 #if (TLS_SESSION_RESUME_SUPPORT == ENABLED)
       //The session ID value identifies a session the client wishes to reuse
       //for this connection
-      memcpy(p, context->sessionId, context->sessionIdLen);
+      osMemcpy(p, context->sessionId, context->sessionIdLen);
       n = context->sessionIdLen;
 #else
       //Session resumption is not supported
@@ -333,9 +333,9 @@ error_t tlsFormatPskIdentity(TlsContext *context, uint8_t *p,
    if(context->pskIdentity != NULL)
    {
       //Determine the length of the PSK identity
-      n = strlen(context->pskIdentity);
+      n = osStrlen(context->pskIdentity);
       //Copy PSK identity
-      memcpy(pskIdentity->value, context->pskIdentity, n);
+      osMemcpy(pskIdentity->value, context->pskIdentity, n);
    }
    else
 #endif
@@ -469,7 +469,7 @@ error_t tlsFormatClientKeyParams(TlsContext *context, uint8_t *p,
       if(n > 0)
       {
          //Strip leading zero bytes from the negotiated key
-         memmove(context->premasterSecret, context->premasterSecret + n,
+         osMemmove(context->premasterSecret, context->premasterSecret + n,
             context->premasterSecretLen - n);
 
          //Adjust the length of the premaster secret
@@ -1229,9 +1229,9 @@ error_t tls12VerifyServerKeySignature(TlsContext *context,
       {
          //Data to be verified is run through the EdDSA algorithm with no
          //hashing
-         memcpy(buffer, context->clientRandom, TLS_RANDOM_SIZE);
-         memcpy(buffer + 32, context->serverRandom, TLS_RANDOM_SIZE);
-         memcpy(buffer + 64, params, paramsLen);
+         osMemcpy(buffer, context->clientRandom, TLS_RANDOM_SIZE);
+         osMemcpy(buffer + 32, context->serverRandom, TLS_RANDOM_SIZE);
+         osMemcpy(buffer + 64, params, paramsLen);
 
 #if (TLS_ED25519_SUPPORT == ENABLED)
          //Ed25519 signature scheme?
@@ -1330,7 +1330,7 @@ error_t tlsSelectClientVersion(TlsContext *context,
       //If this extension is present, clients must ignore the legacy_version
       //value and must use only the SupportedVersions extension to determine
       //the selected version
-      selectedVersion = LOAD16BE(extensions->selectedVersion);
+      selectedVersion = LOAD16BE(extensions->selectedVersion->value);
 
 #if (DTLS_SUPPORT == ENABLED)
       //DTLS protocol?
@@ -1432,7 +1432,7 @@ error_t tlsSelectClientVersion(TlsContext *context,
    {
       //If a match is found, the client must abort the handshake with an
       //illegal_parameter alert
-      if(!memcmp(message->random + 24, tls11DowngradeRandom, 8))
+      if(!osMemcmp(message->random + 24, tls11DowngradeRandom, 8))
          return ERROR_ILLEGAL_PARAMETER;
    }
 
@@ -1443,7 +1443,7 @@ error_t tlsSelectClientVersion(TlsContext *context,
    {
       //If a match is found, the client must abort the handshake with an
       //illegal_parameter alert
-      if(!memcmp(message->random + 24, tls12DowngradeRandom, 8))
+      if(!osMemcmp(message->random + 24, tls12DowngradeRandom, 8))
          return ERROR_ILLEGAL_PARAMETER;
    }
 #endif
@@ -1474,7 +1474,7 @@ error_t tlsResumeClientSession(TlsContext *context, const uint8_t *sessionId,
    //Check whether the session ID matches the value that was supplied by the
    //client
    if(sessionIdLen != 0 && sessionIdLen == context->sessionIdLen &&
-      !memcmp(sessionId, context->sessionId, sessionIdLen))
+      !osMemcmp(sessionId, context->sessionId, sessionIdLen))
    {
       //For resumed sessions, the selected cipher suite shall be the same as
       //the session being resumed
@@ -1502,6 +1502,31 @@ error_t tlsResumeClientSession(TlsContext *context, const uint8_t *sessionId,
 
    //Return status code
    return error;
+}
+
+
+/**
+ * @brief Check whether a session ticket is valid
+ * @param[in] context Pointer to the TLS context
+ * @return TRUE is the session ticket is valid, else FALSE
+ **/
+
+bool_t tlsIsTicketValid(TlsContext *context)
+{
+   bool_t valid = FALSE;
+
+   //TLS 1.3 tickets cannot be used to resume a TLS 1.2 session
+   if(context->version <= TLS_VERSION_1_2)
+   {
+      //Valid ticket?
+      if(context->ticket != NULL && context->ticketLen > 0)
+      {
+         valid = TRUE;
+      }
+   }
+
+   //Return TRUE is the ticket is valid, else FALSE
+   return valid;
 }
 
 #endif

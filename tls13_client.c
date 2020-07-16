@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -44,6 +44,7 @@
 #include "tls13_client.h"
 #include "tls13_client_extensions.h"
 #include "tls13_key_material.h"
+#include "tls13_ticket.h"
 #include "tls13_misc.h"
 #include "kdf/hkdf.h"
 #include "debug.h"
@@ -247,7 +248,7 @@ error_t tls13ParseHelloRetryRequest(TlsContext *context,
    //match what it sent in the ClientHello must abort the handshake with an
    //illegal_parameter alert (RFC 8446, section 4.1.4)
    if(message->sessionIdLen != context->sessionIdLen ||
-      memcmp(message->sessionId, context->sessionId, message->sessionIdLen))
+      osMemcmp(message->sessionId, context->sessionId, message->sessionIdLen))
    {
       //The legacy_session_id_echo field is not valid
       return ERROR_ILLEGAL_PARAMETER;
@@ -375,6 +376,11 @@ error_t tls13ParseHelloRetryRequest(TlsContext *context,
       //Report an error
       return ERROR_ILLEGAL_PARAMETER;
    }
+
+   //Another handshake message cannot be packed in the same record as the
+   //HelloRetryRequest
+   if(context->rxBufferLen != 0)
+      return ERROR_UNEXPECTED_MESSAGE;
 
 #if (TLS13_MIDDLEBOX_COMPAT_SUPPORT == ENABLED)
    //The middlebox compatibility mode improves the chance of successfully
@@ -526,7 +532,7 @@ error_t tls13ParseEncryptedExtensions(TlsContext *context,
             if(context->selectedProtocol != NULL && context->ticketAlpn != NULL)
             {
                //Compare the selected ALPN protocol against the expected value
-               if(strcmp(context->selectedProtocol, context->ticketAlpn))
+               if(osStrcmp(context->selectedProtocol, context->ticketAlpn))
                {
                   //The selected ALPN protocol is not acceptable
                   return ERROR_HANDSHAKE_FAILED;
@@ -675,7 +681,7 @@ error_t tls13ParseNewSessionTicket(TlsContext *context,
          if(context->ticket != NULL)
          {
             //Release memory
-            memset(context->ticket, 0, context->ticketLen);
+            osMemset(context->ticket, 0, context->ticketLen);
             tlsFreeMem(context->ticket);
             context->ticket = NULL;
             context->ticketLen = 0;
@@ -688,7 +694,7 @@ error_t tls13ParseNewSessionTicket(TlsContext *context,
             return ERROR_OUT_OF_MEMORY;
 
          //Copy session ticket
-         memcpy(context->ticket, ticket->data, n);
+         osMemcpy(context->ticket, ticket->data, n);
          context->ticketLen = n;
 
          //The client's view of the age of a ticket is the time since the

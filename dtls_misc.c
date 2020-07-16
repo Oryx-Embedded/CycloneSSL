@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -149,7 +149,7 @@ error_t dtlsFormatCookie(TlsContext *context, uint8_t *p, size_t *written)
    if(context->cookieLen > 0)
    {
       //Copy cookie
-      memcpy(cookie->value, context->cookie, context->cookieLen);
+      osMemcpy(cookie->value, context->cookie, context->cookieLen);
    }
 
    //Set the length of the cookie
@@ -294,7 +294,7 @@ error_t dtlsFormatHelloVerifyRequest(TlsContext *context,
    if(context->cookieLen > 0)
    {
       //Copy cookie
-      memcpy(message->cookie, context->cookie, context->cookieLen);
+      osMemcpy(message->cookie, context->cookie, context->cookieLen);
    }
 
    //Set the length of the cookie
@@ -365,7 +365,7 @@ error_t dtlsParseHelloVerifyRequest(TlsContext *context,
             return ERROR_OUT_OF_MEMORY;
 
          //Save cookie
-         memcpy(context->cookie, message->cookie, message->cookieLength);
+         osMemcpy(context->cookie, message->cookie, message->cookieLength);
       }
 
       //Save the length of the cookie

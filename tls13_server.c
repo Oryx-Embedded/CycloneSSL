@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -44,6 +44,7 @@
 #include "tls13_server.h"
 #include "tls13_server_extensions.h"
 #include "tls13_server_misc.h"
+#include "tls13_ticket.h"
 #include "tls13_misc.h"
 #include "debug.h"
 
@@ -249,14 +250,18 @@ error_t tls13FormatHelloRetryRequest(TlsContext *context,
    //SupportedVersions extension and the legacy_version field must be set
    //to 0x0303, which is the version number for TLS 1.2
    if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_DATAGRAM)
+   {
       message->serverVersion = HTONS(DTLS_VERSION_1_2);
+   }
    else
+   {
       message->serverVersion = HTONS(TLS_VERSION_1_2);
+   }
 
    //For backward compatibility with middleboxes the HelloRetryRequest message
    //uses the same structure as the ServerHello, but with Random field set to
    //a special value
-   memcpy(message->random, tls13HelloRetryRequestRandom, 32);
+   osMemcpy(message->random, tls13HelloRetryRequestRandom, 32);
 
    //Point to the session ID
    p = message->sessionId;
@@ -265,7 +270,7 @@ error_t tls13FormatHelloRetryRequest(TlsContext *context,
 
    //The legacy_session_id_echo echoes the contents of the client's
    //legacy_session_id field
-   memcpy(message->sessionId, context->sessionId, context->sessionIdLen);
+   osMemcpy(message->sessionId, context->sessionId, context->sessionIdLen);
    message->sessionIdLen = (uint8_t) context->sessionIdLen;
 
    //Debug message

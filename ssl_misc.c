@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -106,7 +106,7 @@ error_t sslExpandKey(const uint8_t *secret, size_t secretLen,
    for(i = 0; outputLen > 0; i++)
    {
       //Generate pad
-      memset(pad, 'A' + i, i + 1);
+      osMemset(pad, 'A' + i, i + 1);
 
       //Compute SHA(pad + secret + random)
       sha1Init(sha1Context);
@@ -124,7 +124,7 @@ error_t sslExpandKey(const uint8_t *secret, size_t secretLen,
       //Calculate the number of bytes to copy
       n = MIN(outputLen, MD5_DIGEST_SIZE);
       //Copy the resulting hash value
-      memcpy(output, md5Context->digest, n);
+      osMemcpy(output, md5Context->digest, n);
 
       //Advance data pointer
       output += n;

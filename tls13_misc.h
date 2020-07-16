@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 #ifndef _TLS13_MISC_H
@@ -376,7 +376,7 @@ typedef __start_packed struct
    uint8_t ticketNonce[4];                        ///<A per-ticket value that is unique across all tickets issued
    size_t ticketPskLen;                           ///<Length of the PSK associated with the ticket
    uint8_t ticketPsk[TLS13_MAX_HKDF_DIGEST_SIZE]; ///<PSK associated with the ticket
-} __end_packed Tls13SessionState;
+} __end_packed Tls13PlaintextSessionState;
 
 
 //CodeWarrior or Win32 compiler?
@@ -406,10 +406,12 @@ error_t tls13GenerateSignature(TlsContext *context, uint8_t *p,
 error_t tls13VerifySignature(TlsContext *context, const uint8_t *p,
    size_t length);
 
+error_t tls13ComputeMac(TlsContext *context, TlsEncryptionEngine *encryptionEngine,
+   void *record, const uint8_t *data, size_t dataLen, uint8_t *mac);
+
 error_t tls13DigestClientHello1(TlsContext *context);
 
 bool_t tls13IsPskValid(TlsContext *context);
-bool_t tls13IsTicketValid(TlsContext *context);
 
 bool_t tls13IsGroupSupported(TlsContext *context, uint16_t namedGroup);
 bool_t tls13IsEcdheGroupSupported(TlsContext *context, uint16_t namedGroup);

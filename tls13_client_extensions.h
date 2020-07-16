@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 #ifndef _TLS13_CLIENT_EXTENSIONS_H
@@ -57,22 +57,22 @@ error_t tls13FormatClientEarlyDataExtension(TlsContext *context,
    uint8_t *p, size_t *written);
 
 error_t tls13ParseServerSupportedVersionsExtension(TlsContext *context,
-   const uint8_t *selectedVersion);
+   const TlsExtension *selectedVersion);
 
 error_t tls13ParseCookieExtension(TlsContext *context,
    const Tls13Cookie *cookie);
 
 error_t tls13ParseSelectedGroupExtension(TlsContext *context,
-   const uint8_t *selectedGroup);
+   const TlsExtension *selectedGroup);
 
 error_t tls13ParseServerKeyShareExtension(TlsContext *context,
    const Tls13KeyShareEntry *serverShare);
 
 error_t tls13ParseServerPreSharedKeyExtension(TlsContext *context,
-   const uint8_t *selectedIdentity);
+   const TlsExtension *selectedIdentity);
 
 error_t tls13ParseServerEarlyDataExtension(TlsContext *context,
-   TlsMessageType msgType, const uint8_t *earlyDataIndication);
+   TlsMessageType msgType, const TlsExtension *earlyDataIndication);
 
 //C++ guard
 #ifdef __cplusplus

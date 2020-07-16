@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -196,6 +196,7 @@ error_t tlsPerformClientHandshake(TlsContext *context)
       case TLS_STATE_SERVER_CERTIFICATE_VERIFY:
       case TLS_STATE_CERTIFICATE_REQUEST:
       case TLS_STATE_SERVER_HELLO_DONE:
+      case TLS_STATE_NEW_SESSION_TICKET:
       case TLS_STATE_SERVER_CHANGE_CIPHER_SPEC:
       case TLS_STATE_SERVER_FINISHED:
          //Receive server's message
@@ -280,6 +281,7 @@ error_t tlsParseServerHandshakeMessage(TlsContext *context, uint8_t msgType,
          //message when it was able to find an acceptable set of algorithms
          error = tlsParseServerHello(context, message, length);
       }
+
       break;
 
    //Certificate message received?
@@ -296,6 +298,26 @@ error_t tlsParseServerHandshakeMessage(TlsContext *context, uint8_t msgType,
       //client, if appropriate for the selected cipher suite. This message,
       //if sent, will immediately follow the ServerKeyExchange message
       error = tlsParseCertificateRequest(context, message, length);
+      break;
+
+   //NewSessionTicket message received?
+   case TLS_TYPE_NEW_SESSION_TICKET:
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+      //TLS 1.3 currently selected?
+      if(context->version == TLS_VERSION_1_3)
+      {
+         //At any time after the server has received the client Finished
+         //message, it may send a NewSessionTicket message
+         error = tls13ParseNewSessionTicket(context, message, length);
+      }
+      else
+#endif
+      {
+         //The NewSessionTicket message is sent by the server during the TLS
+         //handshake before the ChangeCipherSpec message
+         error = tlsParseNewSessionTicket(context, message, length);
+      }
+
       break;
 
    //Finished message received?
@@ -347,13 +369,6 @@ error_t tlsParseServerHandshakeMessage(TlsContext *context, uint8_t msgType,
       //When sent, this message must appear immediately after the Certificate
       //message
       error = tlsParseCertificateVerify(context, message, length);
-      break;
-
-   //NewSessionTicket message received?
-   case TLS_TYPE_NEW_SESSION_TICKET:
-      //At any time after the server has received the client Finished message,
-      //it may send a NewSessionTicket message
-      error = tls13ParseNewSessionTicket(context, message, length);
       break;
 
    //KeyUpdate message received?

@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -66,7 +66,7 @@ error_t tlsInitHandshake(TlsContext *context)
          return ERROR_OUT_OF_MEMORY;
 
       //Clear TX buffer
-      memset(context->txBuffer, 0, context->txBufferSize);
+      osMemset(context->txBuffer, 0, context->txBufferSize);
    }
 
    //Allocate receive buffer if necessary
@@ -80,7 +80,7 @@ error_t tlsInitHandshake(TlsContext *context)
          return ERROR_OUT_OF_MEMORY;
 
       //Clear RX buffer
-      memset(context->rxBuffer, 0, context->rxBufferSize);
+      osMemset(context->rxBuffer, 0, context->rxBufferSize);
    }
 
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
@@ -168,7 +168,7 @@ error_t tlsSendHandshakeMessage(TlsContext *context, const void *data,
       message = (DtlsHandshake *) data;
 
       //Make room for the handshake message header
-      memmove(message->data, data, length);
+      osMemmove(message->data, data, length);
 
       //Handshake message type
       message->msgType = type;
@@ -198,7 +198,7 @@ error_t tlsSendHandshakeMessage(TlsContext *context, const void *data,
       message = (TlsHandshake *) data;
 
       //Make room for the handshake message header
-      memmove(message->data, data, length);
+      osMemmove(message->data, data, length);
 
       //Handshake message type
       message->msgType = type;

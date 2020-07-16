@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 #ifndef _TLS13_SERVER_MISC_H
@@ -53,12 +53,6 @@ error_t tls13VerifyPskBinder(TlsContext *context, const void *clientHello,
 
 error_t tls13ProcessEarlyData(TlsContext *context, const uint8_t *data,
    size_t length);
-
-error_t tls13GenerateTicket(TlsContext *context,
-   const Tls13NewSessionTicket *message, uint8_t *ticket, size_t *length);
-
-error_t tls13VerifyTicket(TlsContext *context, const uint8_t *ticket,
-   size_t length, uint32_t obfuscatedTicketAge);
 
 //C++ guard
 #ifdef __cplusplus

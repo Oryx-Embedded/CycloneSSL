@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -54,7 +54,7 @@ error_t tlsInitTicketContext(TlsTicketContext *ticketContext)
       return ERROR_INVALID_PARAMETER;
 
    //Erase ticket encryption context
-   memset(ticketContext, 0, sizeof(TlsTicketContext));
+   osMemset(ticketContext, 0, sizeof(TlsTicketContext));
 
    //Create a mutex to prevent simultaneous access to the context
    if(!osCreateMutex(&ticketContext->mutex))
@@ -151,9 +151,9 @@ error_t tlsEncryptTicket(TlsContext *context, const uint8_t *plaintext,
       tag = data + plaintextLen;
 
       //Copy plaintext state
-      memmove(data, plaintext, plaintextLen);
+      osMemmove(data, plaintext, plaintextLen);
       //Copy key name
-      memcpy(ciphertext, state->keyName, TLS_TICKET_KEY_NAME_SIZE);
+      osMemcpy(ciphertext, state->keyName, TLS_TICKET_KEY_NAME_SIZE);
 
       //Generate a random IV
       error = context->prngAlgo->read(context->prngContext, iv,
@@ -377,7 +377,7 @@ void tlsCheckTicketKeyLifetime(TlsTicketEncryptionState *state)
       if((time - state->timestamp) >= (2 * TLS_TICKET_LIFETIME))
       {
          //Clear ticket keys
-         memset(state, 0, sizeof(TlsTicketEncryptionState));
+         osMemset(state, 0, sizeof(TlsTicketEncryptionState));
       }
    }
 }
@@ -406,7 +406,7 @@ bool_t tlsCompareTicketKeyName(const uint8_t *ticket, size_t ticketLen,
       if(ticketLen >= TLS_TICKET_KEY_NAME_SIZE)
       {
          //Compare key names
-         if(memcmp(ticket, state->keyName, TLS_TICKET_KEY_NAME_SIZE) == 0)
+         if(osMemcmp(ticket, state->keyName, TLS_TICKET_KEY_NAME_SIZE) == 0)
          {
             //The key name is valid
             res = TRUE;
@@ -433,7 +433,7 @@ void tlsFreeTicketContext(TlsTicketContext *ticketContext)
       osDeleteMutex(&ticketContext->mutex);
 
       //Erase ticket encryption context
-      memset(ticketContext, 0, sizeof(TlsTicketContext));
+      osMemset(ticketContext, 0, sizeof(TlsTicketContext));
    }
 }
 

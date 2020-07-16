@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -64,7 +64,7 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
    const TlsExtensionList *extensionList;
 
    //Initialize TLS extensions
-   memset(extensions, 0, sizeof(TlsHelloExtensions));
+   osMemset(extensions, 0, sizeof(TlsHelloExtensions));
 
    //Check message type
    if(msgType == TLS_TYPE_CLIENT_HELLO || msgType == TLS_TYPE_SERVER_HELLO)
@@ -158,7 +158,7 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
                return ERROR_DECODING_FAILED;
 
             //The SupportedVersions extension is valid
-            extensions->selectedVersion = extension->value;
+            extensions->selectedVersion = extension;
          }
          else
          {
@@ -291,7 +291,7 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
             return ERROR_DECODING_FAILED;
 
          //The MaxFragmentLength extension is valid
-         extensions->maxFragLen = extension->value;
+         extensions->maxFragLen = extension;
       }
 #endif
 #if (TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)
@@ -302,7 +302,7 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
             return ERROR_DECODING_FAILED;
 
          //The RecordSizeLimit extension is valid
-         extensions->recordSizeLimit = extension->value;
+         extensions->recordSizeLimit = extension;
       }
 #endif
 #if (TLS_ALPN_SUPPORT == ENABLED)
@@ -351,7 +351,7 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
                return ERROR_DECODING_FAILED;
 
             //The ClientCertType extension is valid
-            extensions->clientCertType = extension->value;
+            extensions->clientCertType = extension;
          }
       }
       else if(type == TLS_EXT_SERVER_CERT_TYPE)
@@ -381,7 +381,7 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
                return ERROR_DECODING_FAILED;
 
             //The ServerCertType extension is valid
-            extensions->serverCertType = extension->value;
+            extensions->serverCertType = extension;
          }
       }
 #endif
@@ -393,7 +393,23 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
             return ERROR_DECODING_FAILED;
 
          //The ExtendedMasterSecret extension is valid
-         extensions->extendedMasterSecret = extension->value;
+         extensions->extendedMasterSecret = extension;
+      }
+#endif
+#if (TLS_TICKET_SUPPORT == ENABLED)
+      else if(type == TLS_EXT_SESSION_TICKET)
+      {
+         //Check message type
+         if(msgType == TLS_TYPE_SERVER_HELLO)
+         {
+            //The server uses a zero-length SessionTicket extension to indicate
+            //to the client that it will send a new session ticket
+            if(n != 0)
+               return ERROR_DECODING_FAILED;
+         }
+
+         //The SessionTicket extension is valid
+         extensions->sessionTicket = extension;
       }
 #endif
 #if (TLS_SECURE_RENEGOTIATION_SUPPORT == ENABLED)
@@ -502,7 +518,7 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
                return ERROR_DECODING_FAILED;
 
             //The KeyShare extension is valid
-            extensions->selectedGroup = extension->value;
+            extensions->selectedGroup = extension;
          }
          else if(msgType == TLS_TYPE_SERVER_HELLO)
          {
@@ -598,7 +614,7 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
                return ERROR_DECODING_FAILED;
 
             //The PreSharedKey extension is valid
-            extensions->selectedIdentity = extension->value;
+            extensions->selectedIdentity = extension;
          }
          else
          {
@@ -629,7 +645,7 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
          }
 
          //The EarlyData extension is valid
-         extensions->earlyDataIndication = extension->value;
+         extensions->earlyDataIndication = extension;
       }
 #endif
       else
@@ -824,6 +840,18 @@ error_t tlsCheckHelloExtensions(TlsMessageType msgType, uint16_t version,
 #if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
       //ExtendedMasterSecret extension found?
       if(extensions->extendedMasterSecret != NULL)
+      {
+         //The extension can only appear in CH
+         if(msgType != TLS_TYPE_CLIENT_HELLO)
+         {
+            error = ERROR_ILLEGAL_PARAMETER;
+         }
+      }
+#endif
+
+#if (TLS_TICKET_SUPPORT == ENABLED)
+      //SessionTicket extension found?
+      if(extensions->sessionTicket != NULL)
       {
          //The extension can only appear in CH
          if(msgType != TLS_TYPE_CLIENT_HELLO)
@@ -1043,7 +1071,7 @@ bool_t tlsIsAlpnProtocolSupported(TlsContext *context,
             if(length == (i - j))
             {
                //Compare protocol names
-               if(!memcmp(protocol, context->protocolList + j, i - j))
+               if(!osMemcmp(protocol, context->protocolList + j, i - j))
                {
                   //The specified protocol is supported
                   supported = TRUE;

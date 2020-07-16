@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 #ifndef _TLS_CIPHER_SUITES_H
@@ -399,10 +399,10 @@ typedef enum
    TLS_SRP_SHA_DSS_WITH_AES_128_CBC_SHA          = 0xC01F, //RFC 5054
    TLS_SRP_SHA_DSS_WITH_AES_256_CBC_SHA          = 0xC022, //RFC 5054
 
-   TLS_ECCPWD_WITH_AES_128_GCM_SHA256            = 0xC0B0, //RFC draft
-   TLS_ECCPWD_WITH_AES_256_GCM_SHA384            = 0xC0B1, //RFC draft
-   TLS_ECCPWD_WITH_AES_128_CCM_SHA256            = 0xC0B2, //RFC draft
-   TLS_ECCPWD_WITH_AES_256_CCM_SHA384            = 0xC0B3, //RFC draft
+   TLS_ECCPWD_WITH_AES_128_GCM_SHA256            = 0xC0B0, //RFC 8492
+   TLS_ECCPWD_WITH_AES_256_GCM_SHA384            = 0xC0B1, //RFC 8492
+   TLS_ECCPWD_WITH_AES_128_CCM_SHA256            = 0xC0B2, //RFC 8492
+   TLS_ECCPWD_WITH_AES_256_CCM_SHA384            = 0xC0B3, //RFC 8492
 
    TLS_GOSTR341112_256_WITH_KUZNYECHIK_CTR_OMAC  = 0xC100, //RFC draft
    TLS_GOSTR341112_256_WITH_MAGMA_CTR_OMAC       = 0xC101, //RFC draft

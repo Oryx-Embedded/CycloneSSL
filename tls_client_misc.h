@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 #ifndef _TLS_CLIENT_MISC_H
@@ -76,6 +76,8 @@ error_t tlsSelectClientVersion(TlsContext *context,
 
 error_t tlsResumeClientSession(TlsContext *context, const uint8_t *sessionId,
    size_t sessionIdLen, uint16_t cipherSuite);
+
+bool_t tlsIsTicketValid(TlsContext *context);
 
 //C++ guard
 #ifdef __cplusplus

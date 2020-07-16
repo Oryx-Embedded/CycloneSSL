@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -103,6 +103,10 @@ void tlsProcessError(TlsContext *context, error_t errorCode)
       //A certificate has expired or is not currently valid
       case ERROR_CERTIFICATE_EXPIRED:
          tlsSendAlert(context, TLS_ALERT_LEVEL_FATAL, TLS_ALERT_CERTIFICATE_EXPIRED);
+         break;
+      //Some other issue arose in processing the certificate, rendering it unacceptable
+      case ERROR_UNKNOWN_CERTIFICATE:
+         tlsSendAlert(context, TLS_ALERT_LEVEL_FATAL, TLS_ALERT_CERTIFICATE_UNKNOWN);
          break;
       //A field in the handshake was out of range or inconsistent with other fields
       case ERROR_ILLEGAL_PARAMETER:
@@ -193,14 +197,14 @@ error_t tlsGenerateRandomValue(TlsContext *context, uint8_t *random)
             //If negotiating TLS 1.1 or below, TLS 1.3 servers must, and TLS 1.2
             //servers should, set the last eight bytes of their random value to
             //the bytes 44 4F 57 4E 47 52 44 00
-            memcpy(random + 24, tls11DowngradeRandom, 8);
+            osMemcpy(random + 24, tls11DowngradeRandom, 8);
          }
          else if(context->version == TLS_VERSION_1_2 &&
             context->versionMax >= TLS_VERSION_1_3)
          {
             //If negotiating TLS 1.2, TLS 1.3 servers must set the last eight
             //bytes of their random value to the bytes 44 4F 57 4E 47 52 44 01
-            memcpy(random + 24, tls12DowngradeRandom, 8);
+            osMemcpy(random + 24, tls12DowngradeRandom, 8);
          }
          else
          {
@@ -342,6 +346,245 @@ error_t tlsSelectCipherSuite(TlsContext *context, uint16_t identifier)
 
 
 /**
+ * @brief Save session ID
+ * @param[in] context Pointer to the TLS context
+ * @param[out] session Pointer to the session state
+ * @return Error code
+ **/
+
+error_t tlsSaveSessionId(const TlsContext *context,
+   TlsSessionState *session)
+{
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //Check TLS version
+   if(context->version < SSL_VERSION_3_0 || context->version > TLS_VERSION_1_2)
+      return ERROR_INVALID_VERSION;
+
+   //Invalid session identifier?
+   if(context->sessionIdLen == 0)
+      return ERROR_INVALID_TICKET;
+
+   //Invalid session parameters?
+   if(context->cipherSuite.identifier == 0)
+      return ERROR_INVALID_SESSION;
+
+   //Save current time
+   session->timestamp = osGetSystemTime();
+
+   //Save session parameters
+   session->version = context->version;
+   session->cipherSuite = context->cipherSuite.identifier;
+
+   //Copy session identifier
+   osMemcpy(session->sessionId, context->sessionId, context->sessionIdLen);
+   session->sessionIdLen = context->sessionIdLen;
+
+   //Save master secret
+   osMemcpy(session->secret, context->masterSecret, TLS_MASTER_SECRET_SIZE);
+
+#if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
+   //Extended master secret computation
+   session->extendedMasterSecret = context->extendedMasterSecretExtReceived;
+#endif
+
+#if (TLS_SNI_SUPPORT == ENABLED)
+   //Any ServerName extension received by the server?
+   if(context->entity == TLS_CONNECTION_END_SERVER &&
+      context->serverName != NULL)
+   {
+      size_t n;
+
+      //Retrieve the length of the server name
+      n = osStrlen(context->serverName);
+
+      //Allocate a memory block to hold the server name
+      session->serverName = tlsAllocMem(n + 1);
+      //Failed to allocate memory?
+      if(session->serverName == NULL)
+         return ERROR_OUT_OF_MEMORY;
+
+      //Copy the server name
+      osStrcpy(session->serverName, context->serverName);
+   }
+#endif
+
+   //Successful processing
+   return NO_ERROR;
+#else
+   //Not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
+}
+
+
+/**
+ * @brief Save session ticket
+ * @param[in] context Pointer to the TLS context
+ * @param[out] session Pointer to the session state
+ * @return Error code
+ **/
+
+error_t tlsSaveSessionTicket(const TlsContext *context,
+   TlsSessionState *session)
+{
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //Check TLS version
+   if(context->version < SSL_VERSION_3_0 || context->version > TLS_VERSION_1_2)
+      return ERROR_INVALID_VERSION;
+
+   //Invalid session ticket?
+   if(context->ticket == NULL || context->ticketLen == 0)
+      return ERROR_INVALID_TICKET;
+
+   //Invalid session parameters?
+   if(context->cipherSuite.identifier == 0)
+      return ERROR_INVALID_SESSION;
+
+   //Save session parameters
+   session->version = context->version;
+   session->cipherSuite = context->cipherSuite.identifier;
+
+   //Allocate a memory block to hold the ticket
+   session->ticket = tlsAllocMem(context->ticketLen);
+   //Failed to allocate memory?
+   if(session->ticket == NULL)
+      return ERROR_OUT_OF_MEMORY;
+
+   //Copy session ticket
+   osMemcpy(session->ticket, context->ticket, context->ticketLen);
+   session->ticketLen = context->ticketLen;
+
+   //Save master secret
+   osMemcpy(session->secret, context->masterSecret, TLS_MASTER_SECRET_SIZE);
+
+#if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
+   //Extended master secret computation
+   session->extendedMasterSecret = context->extendedMasterSecretExtReceived;
+#endif
+
+   //Successful processing
+   return NO_ERROR;
+#else
+   //Not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
+}
+
+
+/**
+ * @brief Restore a TLS session using session ID
+ * @param[in] context Pointer to the TLS context
+ * @param[in] session Pointer to the session state
+ * @return Error code
+ **/
+
+error_t tlsRestoreSessionId(TlsContext *context,
+   const TlsSessionState *session)
+{
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //Check TLS version
+   if(session->version < SSL_VERSION_3_0 || session->version > TLS_VERSION_1_2)
+      return ERROR_INVALID_VERSION;
+
+   //Invalid session identifier?
+   if(session->sessionIdLen == 0)
+      return ERROR_INVALID_SESSION;
+
+   //Invalid session parameters?
+   if(session->cipherSuite == 0)
+      return ERROR_INVALID_SESSION;
+
+   //Restore session parameters
+   context->version = session->version;
+   context->cipherSuite.identifier = session->cipherSuite;
+   context->sessionIdLen = 0;
+
+   //Copy session identifier
+   osMemcpy(context->sessionId, session->sessionId, session->sessionIdLen);
+   context->sessionIdLen = session->sessionIdLen;
+
+   //Restore master secret
+   osMemcpy(context->masterSecret, session->secret, TLS_MASTER_SECRET_SIZE);
+
+#if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
+   //Extended master secret computation
+   context->extendedMasterSecretExtReceived = session->extendedMasterSecret;
+#endif
+
+   //Successful processing
+   return NO_ERROR;
+#else
+   //Not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
+}
+
+
+/**
+ * @brief Restore a TLS session using session ticket
+ * @param[in] context Pointer to the TLS context
+ * @param[in] session Pointer to the session state
+ * @return Error code
+ **/
+
+error_t tlsRestoreSessionTicket(TlsContext *context,
+   const TlsSessionState *session)
+{
+#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //Check TLS version
+   if(session->version < SSL_VERSION_3_0 || session->version > TLS_VERSION_1_2)
+      return ERROR_INVALID_VERSION;
+
+   //Invalid session ticket?
+   if(session->ticket == NULL || session->ticketLen == 0)
+      return ERROR_INVALID_TICKET;
+
+   //Invalid session parameters?
+   if(session->cipherSuite == 0)
+      return ERROR_INVALID_SESSION;
+
+   //Restore session parameters
+   context->version = session->version;
+   context->cipherSuite.identifier = session->cipherSuite;
+   context->sessionIdLen = 0;
+
+   //Release existing session ticket, if any
+   if(context->ticket != NULL)
+   {
+      osMemset(context->ticket, 0, context->ticketLen);
+      tlsFreeMem(context->ticket);
+      context->ticket = NULL;
+      context->ticketLen = 0;
+   }
+
+   //Allocate a memory block to hold the ticket
+   context->ticket = tlsAllocMem(session->ticketLen);
+   //Failed to allocate memory?
+   if(context->ticket == NULL)
+      return ERROR_OUT_OF_MEMORY;
+
+   //Copy session ticket
+   osMemcpy(context->ticket, session->ticket, session->ticketLen);
+   context->ticketLen = session->ticketLen;
+
+   //Restore master secret
+   osMemcpy(context->masterSecret, session->secret, TLS_MASTER_SECRET_SIZE);
+
+#if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
+   //Extended master secret computation
+   context->extendedMasterSecretExtReceived = session->extendedMasterSecret;
+#endif
+
+   //Successful processing
+   return NO_ERROR;
+#else
+   //Not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
+}
+
+
+/**
  * @brief Initialize encryption engine
  * @param[in] context Pointer to the TLS context
  * @param[in] encryptionEngine Pointer to the encryption/decryption engine to
@@ -369,7 +612,7 @@ error_t tlsInitEncryptionEngine(TlsContext *context,
 
    //The sequence number is set to zero at the beginning of a connection
    //and whenever the key is changed
-   memset(&encryptionEngine->seqNum, 0, sizeof(TlsSequenceNumber));
+   osMemset(&encryptionEngine->seqNum, 0, sizeof(TlsSequenceNumber));
 
 #if (DTLS_SUPPORT == ENABLED)
    //The epoch number is initially zero and is incremented each time a
@@ -378,7 +621,7 @@ error_t tlsInitEncryptionEngine(TlsContext *context,
 
    //Sequence numbers are maintained separately for each epoch, with each
    //sequence number initially being 0 for each epoch
-   memset(&encryptionEngine->dtlsSeqNum, 0, sizeof(DtlsSequenceNumber));
+   osMemset(&encryptionEngine->dtlsSeqNum, 0, sizeof(DtlsSequenceNumber));
 #endif
 
 #if (TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)
@@ -434,34 +677,34 @@ error_t tlsInitEncryptionEngine(TlsContext *context,
          //Point to the key material
          p = context->keyBlock;
          //Save MAC key
-         memcpy(encryptionEngine->macKey, p, cipherSuite->macKeyLen);
+         osMemcpy(encryptionEngine->macKey, p, cipherSuite->macKeyLen);
 
          //Advance current position in the key block
          p += 2 * cipherSuite->macKeyLen;
          //Save encryption key
-         memcpy(encryptionEngine->encKey, p, cipherSuite->encKeyLen);
+         osMemcpy(encryptionEngine->encKey, p, cipherSuite->encKeyLen);
 
          //Advance current position in the key block
          p += 2 * cipherSuite->encKeyLen;
          //Save initialization vector
-         memcpy(encryptionEngine->iv, p, cipherSuite->fixedIvLen);
+         osMemcpy(encryptionEngine->iv, p, cipherSuite->fixedIvLen);
       }
       else
       {
          //Point to the key material
          p = context->keyBlock + cipherSuite->macKeyLen;
          //Save MAC key
-         memcpy(encryptionEngine->macKey, p, cipherSuite->macKeyLen);
+         osMemcpy(encryptionEngine->macKey, p, cipherSuite->macKeyLen);
 
          //Advance current position in the key block
          p += cipherSuite->macKeyLen + cipherSuite->encKeyLen;
          //Save encryption key
-         memcpy(encryptionEngine->encKey, p, cipherSuite->encKeyLen);
+         osMemcpy(encryptionEngine->encKey, p, cipherSuite->encKeyLen);
 
          //Advance current position in the key block
          p += cipherSuite->encKeyLen + cipherSuite->fixedIvLen;
          //Save initialization vector
-         memcpy(encryptionEngine->iv, p, cipherSuite->fixedIvLen);
+         osMemcpy(encryptionEngine->iv, p, cipherSuite->fixedIvLen);
       }
 
       //Successful processing
@@ -595,7 +838,7 @@ void tlsFreeEncryptionEngine(TlsEncryptionEngine *encryptionEngine)
    if(encryptionEngine->cipherContext != NULL)
    {
       //Erase cipher context
-      memset(encryptionEngine->cipherContext, 0,
+      osMemset(encryptionEngine->cipherContext, 0,
          encryptionEngine->cipherAlgo->contextSize);
 
       //Release memory
@@ -608,7 +851,7 @@ void tlsFreeEncryptionEngine(TlsEncryptionEngine *encryptionEngine)
    if(encryptionEngine->gcmContext != NULL)
    {
       //Erase GCM context
-      memset(encryptionEngine->gcmContext, 0, sizeof(GcmContext));
+      osMemset(encryptionEngine->gcmContext, 0, sizeof(GcmContext));
 
       //Release memory
       tlsFreeMem(encryptionEngine->gcmContext);

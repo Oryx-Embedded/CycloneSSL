@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 #ifndef _TLS_H
@@ -34,6 +34,10 @@
 //Forward declaration of TlsContext structure
 struct _TlsContext;
 #define TlsContext struct _TlsContext
+
+//Forward declaration of TlsEncryptionEngine structure
+struct _TlsEncryptionEngine;
+#define TlsEncryptionEngine struct _TlsEncryptionEngine
 
 //Dependencies
 #include "os_port.h"
@@ -79,13 +83,13 @@ struct _TlsContext;
 #endif
 
 //Version string
-#define CYCLONE_SSL_VERSION_STRING "1.9.6"
+#define CYCLONE_SSL_VERSION_STRING "1.9.8"
 //Major version
 #define CYCLONE_SSL_MAJOR_VERSION 1
 //Minor version
 #define CYCLONE_SSL_MINOR_VERSION 9
 //Revision number
-#define CYCLONE_SSL_REV_NUMBER 6
+#define CYCLONE_SSL_REV_NUMBER 8
 
 //TLS version numbers
 #define SSL_VERSION_3_0 0x0300
@@ -148,6 +152,13 @@ struct _TlsContext;
    #define TLS_TICKET_SUPPORT DISABLED
 #elif (TLS_TICKET_SUPPORT != ENABLED && TLS_TICKET_SUPPORT != DISABLED)
    #error TLS_TICKET_SUPPORT parameter is not valid
+#endif
+
+//Maximum size for session tickets
+#ifndef TLS_MAX_TICKET_SIZE
+   #define TLS_MAX_TICKET_SIZE 1024
+#elif (TLS_MAX_TICKET_SIZE < 32)
+   #error TLS_MAX_TICKET_SIZE parameter is not valid
 #endif
 
 //Lifetime of session tickets
@@ -752,12 +763,12 @@ struct _TlsContext;
    #error TLS_MAX_KEY_UPDATE_MESSAGES parameter is not valid
 #endif
 
-//Memory allocation
+//Allocate memory block
 #ifndef tlsAllocMem
    #define tlsAllocMem(size) osAllocMem(size)
 #endif
 
-//Memory deallocation
+//Deallocate memory block
 #ifndef tlsFreeMem
    #define tlsFreeMem(p) osFreeMem(p)
 #endif
@@ -1120,9 +1131,9 @@ typedef enum
    TLS_SIGN_ALGO_RSA_PSS_PSS_SHA256                 = 9,
    TLS_SIGN_ALGO_RSA_PSS_PSS_SHA384                 = 10,
    TLS_SIGN_ALGO_RSA_PSS_PSS_SHA512                 = 11,
-   TLS_SIGN_ALGO_ECDSA_BRAINPOOLP256R1_TLS13_SHA256 = 26, //RFC draft
-   TLS_SIGN_ALGO_ECDSA_BRAINPOOLP384R1_TLS13_SHA384 = 27, //RFC draft
-   TLS_SIGN_ALGO_ECDSA_BRAINPOOLP512R1_TLS13_SHA512 = 28, //RFC draft
+   TLS_SIGN_ALGO_ECDSA_BRAINPOOLP256R1_TLS13_SHA256 = 26,
+   TLS_SIGN_ALGO_ECDSA_BRAINPOOLP384R1_TLS13_SHA384 = 27,
+   TLS_SIGN_ALGO_ECDSA_BRAINPOOLP512R1_TLS13_SHA512 = 28,
    TLS_SIGN_ALGO_GOSTR34102012_256                  = 64, //RFC draft
    TLS_SIGN_ALGO_GOSTR34102012_512                  = 65  //RFC draft
 } TlsSignatureAlgo;
@@ -1235,9 +1246,9 @@ typedef enum
    TLS_GROUP_BRAINPOOLP512R1       = 28,    //RFC 7027
    TLS_GROUP_ECDH_X25519           = 29,    //RFC 8422
    TLS_GROUP_ECDH_X448             = 30,    //RFC 8422
-   TLS_GROUP_BRAINPOOLP256R1_TLS13 = 31,    //RFC draft
-   TLS_GROUP_BRAINPOOLP384R1_TLS13 = 32,    //RFC draft
-   TLS_GROUP_BRAINPOOLP512R1_TLS13 = 33,    //RFC draft
+   TLS_GROUP_BRAINPOOLP256R1_TLS13 = 31,    //RFC 8734
+   TLS_GROUP_BRAINPOOLP384R1_TLS13 = 32,    //RFC 8734
+   TLS_GROUP_BRAINPOOLP512R1_TLS13 = 33,    //RFC 8734
    TLS_GROUP_GC256A                = 34,    //RFC draft
    TLS_GROUP_GC256B                = 35,    //RFC draft
    TLS_GROUP_GC256C                = 36,    //RFC draft
@@ -1677,6 +1688,18 @@ typedef void TlsCertificateVerify;
 
 
 /**
+ * @brief NewSessionTicket message
+ **/
+
+typedef __start_packed struct
+{
+   uint32_t ticketLifetimeHint; //0-3
+   uint16_t ticketLen;          //4-5
+   uint8_t ticket[];            //6
+} __end_packed TlsNewSessionTicket;
+
+
+/**
  * @brief Finished message
  **/
 
@@ -1731,6 +1754,14 @@ typedef error_t (*TlsSocketSendCallback)(TlsSocketHandle handle,
 
 typedef error_t (*TlsSocketReceiveCallback)(TlsSocketHandle handle,
    void *data, size_t size, size_t *received, uint_t flags);
+
+
+/**
+ * @brief ALPN callback function
+ **/
+
+typedef error_t (*TlsAlpnCallback)(TlsContext *context,
+   const char_t *selectedProtocol);
 
 
 /**
@@ -1842,9 +1873,9 @@ typedef struct
    size_t sessionIdLen;         ///<Length of the session identifier
    bool_t extendedMasterSecret; ///<Extended master secret computation
 #endif
-#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
    uint8_t *ticket;             ///<Session ticket
    size_t ticketLen;            ///<Length of the session ticket
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
    systime_t ticketTimestamp;   ///<Timestamp to manage ticket lifetime
    uint32_t ticketLifetime;     ///<Lifetime of the ticket
    uint32_t ticketAgeAdd;       ///<Random value used to obscure the age of the ticket
@@ -1894,29 +1925,32 @@ typedef struct
 typedef struct
 {
    const TlsSupportedVersionList *supportedVersionList; ///<SupportedVersions extension (ClientHello)
-   const uint8_t *selectedVersion;                      ///<SupportedVersions extension (ServerHello)
+   const TlsExtension *selectedVersion;                 ///<SupportedVersions extension (ServerHello)
    const TlsServerNameList *serverNameList;             ///<ServerName extension
    const TlsSupportedGroupList *supportedGroupList;     ///<SupportedGroups extension
    const TlsEcPointFormatList *ecPointFormatList;       ///<EcPointFormats extension
    const TlsSignHashAlgos *signAlgoList;                ///<SignatureAlgorithms extension
    const TlsSignHashAlgos *certSignAlgoList;            ///<SignatureAlgorithmsCert extension
 #if (TLS_MAX_FRAG_LEN_SUPPORT == ENABLED)
-   const uint8_t *maxFragLen;                           ///<MaxFragmentLength extension
+   const TlsExtension *maxFragLen;                      ///<MaxFragmentLength extension
 #endif
 #if (TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)
-   const uint8_t *recordSizeLimit;                      ///<RecordSizeLimit extension
+   const TlsExtension *recordSizeLimit;                 ///<RecordSizeLimit extension
 #endif
 #if (TLS_ALPN_SUPPORT == ENABLED)
    const TlsProtocolNameList *protocolNameList;         ///<ALPN extension
 #endif
 #if (TLS_RAW_PUBLIC_KEY_SUPPORT == ENABLED)
    const TlsCertTypeList *clientCertTypeList;           ///<ClientCertType extension
-   const uint8_t *clientCertType;
+   const TlsExtension *clientCertType;
    const TlsCertTypeList *serverCertTypeList;           ///<ServerCertType extension
-   const uint8_t *serverCertType;
+   const TlsExtension *serverCertType;
 #endif
 #if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
-   const uint8_t *extendedMasterSecret;                 ///<ExtendedMasterSecret extension
+   const TlsExtension *extendedMasterSecret;            ///<ExtendedMasterSecret extension
+#endif
+#if (TLS_TICKET_SUPPORT == ENABLED)
+   const TlsExtension *sessionTicket;                   ///<SessionTicket extension
 #endif
 #if (TLS_SECURE_RENEGOTIATION_SUPPORT == ENABLED)
    const TlsRenegoInfo *renegoInfo;                     ///<RenegotiationInfo extension
@@ -1924,13 +1958,13 @@ typedef struct
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
    const Tls13Cookie *cookie;                           ///<Cookie extension
    const Tls13KeyShareList *keyShareList;               ///<KeyShare extension (ClientHello)
-   const uint8_t *selectedGroup;                        ///<KeyShare extension (HelloRetryRequest)
+   const TlsExtension *selectedGroup;                   ///<KeyShare extension (HelloRetryRequest)
    const Tls13KeyShareEntry *serverShare;               ///<KeyShare extension (ServerHello)
    const Tls13PskKeModeList *pskKeModeList;             ///<PskKeyExchangeModes extension
    const Tls13PskIdentityList *identityList;            ///<PreSharedKey extension (ClientHello)
    const Tls13PskBinderList *binderList;
-   const uint8_t *selectedIdentity;                     ///<PreSharedKey extension (ServerHello)
-   const uint8_t *earlyDataIndication;                  ///<EarlyData extension
+   const TlsExtension *selectedIdentity;                ///<PreSharedKey extension (ServerHello)
+   const TlsExtension *earlyDataIndication;             ///<EarlyData extension
 #endif
 } TlsHelloExtensions;
 
@@ -1939,12 +1973,12 @@ typedef struct
  * @brief Encryption engine
  **/
 
-typedef struct
+struct _TlsEncryptionEngine
 {
    uint16_t version;              ///<Negotiated TLS version
    uint8_t macKey[48];            ///<MAC key
    size_t macKeyLen;              ///<Length of the MAC key
-   uint8_t encKey[32];            ///<Encryption key
+   uint8_t encKey[48];            ///<Encryption key
    size_t encKeyLen;              ///<Length of the encryption key
    uint8_t iv[16];                ///<Initialization vector
    size_t fixedIvLen;             ///<Length of the fixed part of the IV
@@ -1966,7 +2000,7 @@ typedef struct
 #if (TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)
    size_t recordSizeLimit;        ///<Maximum size of record in octets
 #endif
-} TlsEncryptionEngine;
+};
 
 
 /**
@@ -2023,6 +2057,11 @@ struct _TlsContext
 
    uint8_t *cookie;                          ///<Cookie
    size_t cookieLen;                         ///<Length of the cookie
+
+   uint8_t *ticket;                          ///<Session ticket
+   size_t ticketLen;                         ///<Length of the session ticket
+   systime_t ticketTimestamp;                ///<Timestamp to manage ticket lifetime
+   uint32_t ticketLifetime;                  ///<Lifetime of the ticket
 
    TlsCipherSuiteInfo cipherSuite;           ///<Negotiated cipher suite
    TlsKeyExchMethod keyExchMethod;           ///<Key exchange method
@@ -2091,7 +2130,7 @@ struct _TlsContext
 
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
    uint16_t preferredGroup;                  ///<Preferred ECDHE or FFDHE named group
-   systime_t timestamp;                      ///<Time at which the ClientHello message was sent
+   systime_t clientHelloTimestamp;           ///<Time at which the ClientHello message was sent
    bool_t updatedClientHelloReceived;        ///<An updated ClientHello message has been received
    uint8_t *certRequestContext;              ///<Certificate request context
    size_t certRequestContextLen;             ///<Length of the certificate request context
@@ -2108,12 +2147,8 @@ struct _TlsContext
 
    uint_t newSessionTicketCount;             ///<Number of NewSessionTicket messages that have been sent
 
-   uint8_t *ticket;                          ///<Session ticket
-   size_t ticketLen;                         ///<Length of the session ticket
    uint8_t ticketPsk[TLS_MAX_HKDF_DIGEST_SIZE]; ///<PSK associated with the ticket
    size_t ticketPskLen;                      ///<Length of the PSK associated with the ticket
-   systime_t ticketTimestamp;                ///<Timestamp to manage ticket lifetime
-   uint32_t ticketLifetime;                  ///<Lifetime of the ticket
    uint32_t ticketAgeAdd;                    ///<Random value used to obscure the age of the ticket
    uint32_t ticketNonce;                     ///<A per-ticket value that is unique across all tickets issued
    uint16_t ticketCipherSuite;               ///<Cipher suite associated with the ticket
@@ -2174,6 +2209,7 @@ struct _TlsContext
    bool_t unknownProtocolsAllowed;           ///<Unknown ALPN protocols allowed
    char_t *protocolList;                     ///<List of supported ALPN protocols
    char_t *selectedProtocol;                 ///<Selected ALPN protocol
+   TlsAlpnCallback alpnCallback;             ///<ALPN callback function
 #endif
 
 #if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
@@ -2189,6 +2225,8 @@ struct _TlsContext
 #endif
 
 #if (TLS_TICKET_SUPPORT == ENABLED)
+   bool_t sessionTicketEnabled;              ///<Session ticket mechanism enabled
+   bool_t sessionTicketExtReceived;          ///<The SessionTicket extension has been received
    TlsTicketEncryptCallback ticketEncryptCallback; ///<Ticket encryption callback function
    TlsTicketDecryptCallback ticketDecryptCallback; ///<Ticket decryption callback function
    void *ticketParam;                        ///<Opaque pointer passed to the ticket callbacks
@@ -2307,6 +2345,7 @@ error_t tlsSetKeyLogCallback(TlsContext *context,
 
 error_t tlsAllowUnknownAlpnProtocols(TlsContext *context, bool_t allowed);
 error_t tlsSetAlpnProtocolList(TlsContext *context, const char_t *protocolList);
+error_t tlsSetAlpnCallback(TlsContext *context, TlsAlpnCallback alpnCallback);
 const char_t *tlsGetAlpnProtocol(TlsContext *context);
 
 error_t tlsSetPsk(TlsContext *context, const uint8_t *psk, size_t length);
@@ -2326,6 +2365,7 @@ error_t tlsAddCertificate(TlsContext *context, const char_t *certChain,
 error_t tlsSetCertificateVerifyCallback(TlsContext *context,
    TlsCertVerifyCallback certVerifyCallback, void *param);
 
+error_t tlsEnableSessionTickets(TlsContext *context, bool_t enabled);
 error_t tlsEnableSecureRenegotiation(TlsContext *context, bool_t enabled);
 error_t tlsEnableFallbackScsv(TlsContext *context, bool_t enabled);
 

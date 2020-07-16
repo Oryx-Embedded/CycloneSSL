@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -125,6 +125,39 @@ error_t tlsSendClientHello(TlsContext *context)
       }
    }
 
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //Check status code
+   if(!error)
+   {
+      //In versions of TLS prior to TLS 1.3, the SessionTicket extension is used
+      //to resume a TLS session without requiring session-specific state at the
+      //TLS server
+      if(context->versionMin <= TLS_VERSION_1_2)
+      {
+         //Initial ClientHello?
+         if(context->state == TLS_STATE_CLIENT_HELLO)
+         {
+#if (TLS_TICKET_SUPPORT == ENABLED)
+            //When presenting a ticket, the client may generate and include a
+            //session ID in the TLS ClientHello
+            if(tlsIsTicketValid(context) && context->sessionIdLen == 0)
+            {
+               //If the server accepts the ticket and the session ID is not
+               //empty, then it must respond with the same session ID present in
+               //the ClientHello. This allows the client to easily differentiate
+               //when the server is resuming a session from when it is falling
+               //back to a full handshake
+               context->sessionIdLen = 32;
+
+               //Generate a random session identifier
+               error = tlsGenerateRandomValue(context, context->sessionId);
+            }
+#endif
+         }
+      }
+   }
+#endif
+
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
    //Check status code
    if(!error)
@@ -174,7 +207,7 @@ error_t tlsSendClientHello(TlsContext *context)
       }
 
       //Save current time
-      context->timestamp = osGetSystemTime();
+      context->clientHelloTimestamp = osGetSystemTime();
    }
 #endif
 
@@ -310,7 +343,7 @@ error_t tlsFormatClientHello(TlsContext *context,
    message->clientVersion = htons(context->clientVersion);
 
    //Client random value
-   memcpy(message->random, context->clientRandom, 32);
+   osMemcpy(message->random, context->clientRandom, 32);
 
    //Point to the session ID
    p = message->sessionId;
@@ -529,6 +562,20 @@ error_t tlsFormatClientHello(TlsContext *context,
    //In all handshakes, a client implementing RFC 7627 must send the
    //ExtendedMasterSecret extension in its ClientHello
    error = tlsFormatClientEmsExtension(context, p, &n);
+   //Any error to report?
+   if(error)
+      return error;
+
+   //Fix the length of the extension list
+   extensionList->length += (uint16_t) n;
+   //Point to the next field
+   p += n;
+#endif
+
+#if (TLS_TICKET_SUPPORT == ENABLED)
+   //The SessionTicket extension is used to resume a TLS session without
+   //requiring session-specific state at the TLS server
+   error = tlsFormatClientSessionTicketExtension(context, p, &n);
    //Any error to report?
    if(error)
       return error;
@@ -821,6 +868,24 @@ error_t tlsParseHelloRequest(TlsContext *context,
       //Check whether the secure_renegociation flag is set
       if(context->secureRenegoEnabled && context->secureRenegoFlag)
       {
+         //Release existing session ticket, if any
+         if(context->ticket != NULL)
+         {
+            osMemset(context->ticket, 0, context->ticketLen);
+            tlsFreeMem(context->ticket);
+            context->ticket = NULL;
+            context->ticketLen = 0;
+         }
+
+#if (DTLS_SUPPORT == ENABLED)
+         //Release DTLS cookie
+         if(context->cookie != NULL)
+         {
+            tlsFreeMem(context->cookie);
+            context->cookie = NULL;
+            context->cookieLen = 0;
+         }
+#endif
          //HelloRequest is a simple notification that the client should begin
          //the negotiation process anew
          context->state = TLS_STATE_CLIENT_HELLO;
@@ -992,7 +1057,7 @@ error_t tlsParseServerHello(TlsContext *context,
       return error;
 
    //Save server random value
-   memcpy(context->serverRandom, message->random, 32);
+   osMemcpy(context->serverRandom, message->random, 32);
 
 #if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //SSL 3.0, TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
@@ -1021,8 +1086,17 @@ error_t tlsParseServerHello(TlsContext *context,
          return error;
 
       //Save session identifier
-      memcpy(context->sessionId, message->sessionId, message->sessionIdLen);
+      osMemcpy(context->sessionId, message->sessionId, message->sessionIdLen);
       context->sessionIdLen = message->sessionIdLen;
+
+#if (TLS_TICKET_SUPPORT == ENABLED)
+      //Parse SessionTicket extension
+      error = tlsParseServerSessionTicketExtension(context,
+         extensions.sessionTicket);
+      //Any error to report?
+      if(error)
+         return error;
+#endif
 
 #if (TLS_SECURE_RENEGOTIATION_SUPPORT == ENABLED)
       //Parse RenegotiationInfo extension
@@ -1113,9 +1187,22 @@ error_t tlsParseServerHello(TlsContext *context,
          if(error)
             return error;
 
-         //At this point, both client and server must send ChangeCipherSpec
-         //messages and proceed directly to Finished messages
-         context->state = TLS_STATE_SERVER_CHANGE_CIPHER_SPEC;
+#if (TLS_TICKET_SUPPORT == ENABLED)
+         //The server uses the SessionTicket extension to indicate to the client
+         //that it will send a new session ticket using the NewSessionTicket
+         //handshake message
+         if(context->sessionTicketExtReceived)
+         {
+            //Wait for a NewSessionTicket message from the server
+            context->state = TLS_STATE_NEW_SESSION_TICKET;
+         }
+         else
+#endif
+         {
+            //At this point, both client and server must send ChangeCipherSpec
+            //messages and proceed directly to Finished messages
+            context->state = TLS_STATE_SERVER_CHANGE_CIPHER_SPEC;
+         }
       }
       else
 #endif
@@ -1147,7 +1234,7 @@ error_t tlsParseServerHello(TlsContext *context,
       //match what it sent in the ClientHello must abort the handshake with an
       //illegal_parameter alert (RFC 8446, section 4.1.3)
       if(message->sessionIdLen != context->sessionIdLen ||
-         memcmp(message->sessionId, context->sessionId, message->sessionIdLen))
+         osMemcmp(message->sessionId, context->sessionId, message->sessionIdLen))
       {
          //The legacy_session_id_echo field is not valid
          return ERROR_ILLEGAL_PARAMETER;
@@ -1504,7 +1591,7 @@ error_t tlsParseCertificateRequest(TlsContext *context,
          if(n > length)
             return ERROR_DECODING_FAILED;
 
-         //The supported_signature_algorithms field cannot be emtpy (refer to
+         //The supported_signature_algorithms field cannot be empty (refer to
          //RFC 5246, section 7.4.4)
          if(n == 0)
             return ERROR_DECODING_FAILED;
@@ -1754,8 +1841,106 @@ error_t tlsParseServerHelloDone(TlsContext *context,
    if(length != 0)
       return ERROR_DECODING_FAILED;
 
+   //Another handshake message cannot be packed in the same record as the
+   //ServerHelloDone
+   if(context->rxBufferLen != 0)
+      return ERROR_UNEXPECTED_MESSAGE;
+
    //The client must send a Certificate message if the server requests it
    context->state = TLS_STATE_CLIENT_CERTIFICATE;
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
+ * @brief Parse NewSessionTicket message
+ *
+ * This NewSessionTicket message is sent by the server during the TLS handshake
+ * before the ChangeCipherSpec message
+ *
+ * @param[in] context Pointer to the TLS context
+ * @param[in] message Incoming NewSessionTicket message to parse
+ * @param[in] length Message length
+ * @return Error code
+ **/
+
+error_t tlsParseNewSessionTicket(TlsContext *context,
+   const TlsNewSessionTicket *message, size_t length)
+{
+   size_t n;
+
+   //Debug message
+   TRACE_INFO("NewSessionTicket message received (%" PRIuSIZE " bytes)...\r\n", length);
+   TRACE_DEBUG_ARRAY("  ", message, length);
+
+   //Check TLS version
+   if(context->version > TLS_VERSION_1_2)
+      return ERROR_UNEXPECTED_MESSAGE;
+
+   //Check current state
+   if(context->state != TLS_STATE_NEW_SESSION_TICKET)
+      return ERROR_UNEXPECTED_MESSAGE;
+
+   //Check the length of the NewSessionTicket message
+   if(length < sizeof(TlsNewSessionTicket))
+      return ERROR_DECODING_FAILED;
+
+   //Retrieve the length of the ticket
+   n = ntohs(message->ticketLen);
+
+   //Malformed NewSessionTicket message?
+   if(length != (sizeof(TlsNewSessionTicket) + n))
+      return ERROR_DECODING_FAILED;
+
+#if (TLS_TICKET_SUPPORT == ENABLED)
+   //This message must not be sent if the server did not include a SessionTicket
+   //extension in the ServerHello (refer to RFC 5077, section 3.3)
+   if(!context->sessionTicketExtReceived)
+      return ERROR_UNEXPECTED_MESSAGE;
+
+   //Check the length of the session ticket
+   if(n > 0 && n <= TLS_MAX_TICKET_SIZE)
+   {
+      //Release existing session ticket, if any
+      if(context->ticket != NULL)
+      {
+         osMemset(context->ticket, 0, context->ticketLen);
+         tlsFreeMem(context->ticket);
+         context->ticket = NULL;
+         context->ticketLen = 0;
+      }
+
+      //Allocate a memory block to hold the ticket
+      context->ticket = tlsAllocMem(n);
+      //Failed to allocate memory?
+      if(context->ticket == NULL)
+         return ERROR_OUT_OF_MEMORY;
+
+      //Copy session ticket
+      osMemcpy(context->ticket, message->ticket, n);
+      context->ticketLen = n;
+
+      //The lifetime is relative to when the ticket is received (refer to
+      //RFC 5077, appendix A)
+      context->ticketTimestamp = osGetSystemTime();
+
+      //The ticket_lifetime_hint field contains a hint from the server about
+      //how long the ticket should be stored. A ticket lifetime value of zero
+      //indicates that the lifetime of the ticket is unspecified
+      context->ticketLifetime = ntohl(message->ticketLifetimeHint);
+
+      //If the client receives a session ticket from the server, then it
+      //discards any session ID that was sent in the ServerHello (refer to
+      //RFC 5077, section 3.4)
+      context->sessionIdLen = 0;
+   }
+#endif
+
+   //The NewSessionTicket message is sent by the server during the TLS handshake
+   //before the ChangeCipherSpec message
+   context->state = TLS_STATE_SERVER_CHANGE_CIPHER_SPEC;
 
    //Successful processing
    return NO_ERROR;

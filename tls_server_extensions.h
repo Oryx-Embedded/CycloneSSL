@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 #ifndef _TLS_SERVER_EXTENSIONS_H
@@ -74,10 +74,10 @@ error_t tlsParseClientSniExtension(TlsContext *context,
    const TlsServerNameList *serverNameList);
 
 error_t tlsParseClientMaxFragLenExtension(TlsContext *context,
-   const uint8_t *maxFragLen);
+   const TlsExtension *maxFragLen);
 
 error_t tlsParseClientRecordSizeLimitExtension(TlsContext *context,
-   const uint8_t *recordSizeLimit);
+   const TlsExtension *recordSizeLimit);
 
 error_t tlsParseClientEcPointFormatsExtension(TlsContext *context,
    const TlsEcPointFormatList *ecPointFormatList);
@@ -92,7 +92,7 @@ error_t tlsParseServerCertTypeListExtension(TlsContext *context,
    const TlsCertTypeList *serverCertTypeList);
 
 error_t tlsParseClientEmsExtension(TlsContext *context,
-   const uint8_t *extendedMasterSecret);
+   const TlsExtension *extendedMasterSecret);
 
 error_t tlsParseClientRenegoInfoExtension(TlsContext *context,
    const TlsRenegoInfo *renegoInfo);

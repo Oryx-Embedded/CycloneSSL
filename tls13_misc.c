@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -39,9 +39,11 @@
 #include "tls_signature.h"
 #include "tls_transcript_hash.h"
 #include "tls_ffdhe.h"
+#include "tls_record.h"
 #include "tls_misc.h"
-#include "tls13_misc.h"
 #include "tls13_key_material.h"
+#include "tls13_ticket.h"
+#include "tls13_misc.h"
 #include "pkix/pem_import.h"
 #include "kdf/hkdf.h"
 #include "debug.h"
@@ -115,7 +117,7 @@ error_t tls13ComputePskBinder(TlsContext *context, const void *clientHello,
 
    //Intialize transcript hash
    if(context->transcriptHashContext != NULL)
-      memcpy(hashContext, context->transcriptHashContext, hash->contextSize);
+      osMemcpy(hashContext, context->transcriptHashContext, hash->contextSize);
    else
       hash->init(hashContext);
 
@@ -460,15 +462,19 @@ error_t tls13GenerateSignature(TlsContext *context, uint8_t *p,
       return ERROR_OUT_OF_MEMORY;
 
    //Form a string that consists of octet 32 (0x20) repeated 64 times
-   memset(buffer, ' ', 64);
+   osMemset(buffer, ' ', 64);
 
    //Append the context string. It is used to provide separation between
    //signatures made in different contexts, helping against potential
    //cross-protocol attacks
    if(context->entity == TLS_CONNECTION_END_CLIENT)
-      memcpy(buffer + 64, "TLS 1.3, client CertificateVerify", 33);
+   {
+      osMemcpy(buffer + 64, "TLS 1.3, client CertificateVerify", 33);
+   }
    else
-      memcpy(buffer + 64, "TLS 1.3, server CertificateVerify", 33);
+   {
+      osMemcpy(buffer + 64, "TLS 1.3, server CertificateVerify", 33);
+   }
 
    //Append a single 0 byte which serves as the separator
    buffer[97] = 0x00;
@@ -724,15 +730,19 @@ error_t tls13VerifySignature(TlsContext *context, const uint8_t *p,
       return ERROR_OUT_OF_MEMORY;
 
    //Form a string that consists of octet 32 (0x20) repeated 64 times
-   memset(buffer, ' ', 64);
+   osMemset(buffer, ' ', 64);
 
    //Append the context string. It is used to provide separation between
    //signatures made in different contexts, helping against potential
    //cross-protocol attacks
    if(context->entity == TLS_CONNECTION_END_CLIENT)
-      memcpy(buffer + 64, "TLS 1.3, server CertificateVerify", 33);
+   {
+      osMemcpy(buffer + 64, "TLS 1.3, server CertificateVerify", 33);
+   }
    else
-      memcpy(buffer + 64, "TLS 1.3, client CertificateVerify", 33);
+   {
+      osMemcpy(buffer + 64, "TLS 1.3, client CertificateVerify", 33);
+   }
 
    //Append a single 0 byte which serves as the separator
    buffer[97] = 0x00;
@@ -820,19 +830,19 @@ error_t tls13VerifySignature(TlsContext *context, const uint8_t *p,
                hashAlgo = NULL;
             }
             else if(signAlgo == TLS_SIGN_SCHEME_ECDSA_SECP256R1_SHA256 &&
-               strcmp(context->peerEcParams.name, "secp256r1") == 0)
+               osStrcmp(context->peerEcParams.name, "secp256r1") == 0)
             {
                //Select SHA-256 hash algorithm
                hashAlgo = tlsGetHashAlgo(TLS_HASH_ALGO_SHA256);
             }
             else if(signAlgo == TLS_SIGN_SCHEME_ECDSA_SECP384R1_SHA384 &&
-               strcmp(context->peerEcParams.name, "secp384r1") == 0)
+               osStrcmp(context->peerEcParams.name, "secp384r1") == 0)
             {
                //Select SHA-384 hash algorithm
                hashAlgo = tlsGetHashAlgo(TLS_HASH_ALGO_SHA384);
             }
             else if(signAlgo == TLS_SIGN_SCHEME_ECDSA_SECP521R1_SHA512 &&
-               strcmp(context->peerEcParams.name, "secp521r1") == 0)
+               osStrcmp(context->peerEcParams.name, "secp521r1") == 0)
             {
                //Select SHA-512 hash algorithm
                hashAlgo = tlsGetHashAlgo(TLS_HASH_ALGO_SHA512);
@@ -919,6 +929,53 @@ error_t tls13VerifySignature(TlsContext *context, const uint8_t *p,
 
 
 /**
+ * @brief Compute message authentication code
+ * @param[in] context Pointer to the TLS context
+ * @param[in] encryptionEngine Pointer to the encryption/decryption engine
+ * @param[in] record Pointer to the TLS record
+ * @param[in] data Pointer to the record data
+ * @param[in] dataLen Length of the data
+ * @param[out] mac The computed MAC value
+ * @return Error code
+ **/
+
+error_t tls13ComputeMac(TlsContext *context, TlsEncryptionEngine *encryptionEngine,
+   void *record, const uint8_t *data, size_t dataLen, uint8_t *mac)
+{
+   size_t aadLen;
+   size_t nonceLen;
+   uint8_t aad[13];
+   uint8_t nonce[12];
+   HmacContext *hmacContext;
+
+   //Point to the HMAC context
+   hmacContext = encryptionEngine->hmacContext;
+
+   //Initialize HMAC calculation
+   hmacInit(hmacContext, encryptionEngine->hashAlgo,
+      encryptionEngine->encKey, encryptionEngine->encKeyLen);
+
+   //Additional data to be authenticated
+   tlsFormatAad(context, encryptionEngine, record, aad, &aadLen);
+
+   //Generate the nonce
+   tlsFormatNonce(context, encryptionEngine, record, data, nonce,
+      &nonceLen);
+
+   //Compute HMAC(write_key, nonce || additional_data || plaintext)
+   hmacUpdate(hmacContext, nonce, nonceLen);
+   hmacUpdate(hmacContext, aad, aadLen);
+   hmacUpdate(hmacContext, data, dataLen);
+
+   //Finalize HMAC computation
+   hmacFinal(hmacContext, mac);
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
  * @brief Hash ClientHello1 in the transcript when HelloRetryRequest is used
  * @param[in] context Pointer to the TLS context
  * @return Error code
@@ -996,43 +1053,6 @@ bool_t tls13IsPskValid(TlsContext *context)
    }
 
    //Return TRUE is the PSK is valid, else FALSE
-   return valid;
-}
-
-
-/**
- * @brief Check whether a session ticket is valid
- * @param[in] context Pointer to the TLS context
- * @return TRUE is the session ticket is valid, else FALSE
- **/
-
-bool_t tls13IsTicketValid(TlsContext *context)
-{
-   bool_t valid = FALSE;
-
-   //Make sure the hash algorithm associated with the ticket is valid
-   if(tlsGetHashAlgo(context->ticketHashAlgo) != NULL)
-   {
-      //Valid ticket PSK?
-      if(context->ticketPskLen > 0)
-      {
-         //Check whether TLS operates as a client or a server
-         if(context->entity == TLS_CONNECTION_END_CLIENT)
-         {
-            //Valid ticket?
-            if(context->ticket != NULL && context->ticketLen > 0)
-            {
-               valid = TRUE;
-            }
-         }
-         else
-         {
-            valid = TRUE;
-         }
-      }
-   }
-
-   //Return TRUE is the ticket is valid, else FALSE
    return valid;
 }
 

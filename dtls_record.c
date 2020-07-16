@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -189,7 +189,7 @@ error_t dtlsReadProtocolData(TlsContext *context,
             context->rxDatagramPos = context->rxBufferSize - context->rxDatagramLen;
 
             //Copy the received datagram
-            memmove(context->rxBuffer + context->rxDatagramPos,
+            osMemmove(context->rxBuffer + context->rxDatagramPos,
                context->rxBuffer + context->rxFragQueueLen, context->rxDatagramLen);
          }
       }
@@ -248,7 +248,7 @@ error_t dtlsWriteRecord(TlsContext *context, const uint8_t *data,
    record = (DtlsRecord *) (context->txBuffer + context->txBufferLen);
 
    //Copy record data
-   memmove(record->data, data, length);
+   osMemmove(record->data, data, length);
 
    //Format DTLS record
    record->type = contentType;
@@ -261,7 +261,7 @@ error_t dtlsWriteRecord(TlsContext *context, const uint8_t *data,
       contentType == TLS_TYPE_CHANGE_CIPHER_SPEC)
    {
       //Sequence numbers are handled at record layer
-      memset(&record->seqNum, 0, sizeof(DtlsSequenceNumber));
+      osMemset(&record->seqNum, 0, sizeof(DtlsSequenceNumber));
 
       //Adjust the length of the buffered flight of messages
       context->txBufferLen += n;
@@ -478,22 +478,36 @@ error_t dtlsProcessRecord(TlsContext *context)
       if(LOAD24BE(message->fragLength) == 0 && LOAD24BE(message->length) != 0)
          return ERROR_INVALID_LENGTH;
 
-      //ClientHello message received?
-      if(message->msgType == TLS_TYPE_CLIENT_HELLO &&
-         context->state == TLS_STATE_CLIENT_HELLO &&
-         context->entity == TLS_CONNECTION_END_SERVER)
+      //Check whether TLS operates as a client or a server
+      if(context->entity == TLS_CONNECTION_END_CLIENT)
       {
-         //Initial handshake?
-         if(context->decryptionEngine.epoch == 0)
+         //HelloRequest message received?
+         if(message->msgType == TLS_TYPE_HELLO_REQUEST &&
+            context->state == TLS_STATE_APPLICATION_DATA)
          {
-            //The server must use the record sequence number in the ClientHello
-            //as the record sequence number in its response (HelloVerifyRequest
-            //or ServerHello)
-            context->encryptionEngine.dtlsSeqNum = context->decryptionEngine.dtlsSeqNum;
-
-            //Initialize message sequence numbers
+            //Re-initialize message sequence numbers
             context->rxMsgSeq = ntohs(message->msgSeq);
-            context->txMsgSeq = ntohs(message->msgSeq);
+            context->txMsgSeq = 0;
+         }
+      }
+      else
+      {
+         //ClientHello message received?
+         if(message->msgType == TLS_TYPE_CLIENT_HELLO &&
+            context->state == TLS_STATE_CLIENT_HELLO)
+         {
+            //Initial handshake?
+            if(context->decryptionEngine.epoch == 0)
+            {
+               //The server must use the record sequence number in the ClientHello
+               //as the record sequence number in its response (HelloVerifyRequest
+               //or ServerHello)
+               context->encryptionEngine.dtlsSeqNum = context->decryptionEngine.dtlsSeqNum;
+
+               //Re-initialize message sequence numbers
+               context->rxMsgSeq = ntohs(message->msgSeq);
+               context->txMsgSeq = ntohs(message->msgSeq);
+            }
          }
       }
 
@@ -690,7 +704,7 @@ error_t dtlsProcessRecord(TlsContext *context)
       context->rxBufferPos = 0;
 
       //Copy application data
-      memcpy(context->rxBuffer, context->rxBuffer + context->rxRecordPos,
+      osMemcpy(context->rxBuffer, context->rxBuffer + context->rxRecordPos,
          context->rxRecordLen);
 
       //The DTLS record has been entirely processed
@@ -741,11 +755,18 @@ error_t dtlsSendFlight(TlsContext *context)
       //Point to the current DTLS record
       record = (DtlsRecord *) (context->txBuffer + context->txBufferPos);
 
+      //Advance data pointer
+      context->txBufferPos += ntohs(record->length) + sizeof(DtlsRecord);
+
       //Select the relevant encryption engine
       if(ntohs(record->epoch) == context->encryptionEngine.epoch)
+      {
          encryptionEngine = &context->encryptionEngine;
+      }
       else
+      {
          encryptionEngine = &context->prevEncryptionEngine;
+      }
 
       //Handshake message?
       if(record->type == TLS_TYPE_HANDSHAKE)
@@ -754,8 +775,8 @@ error_t dtlsSendFlight(TlsContext *context)
          message = (DtlsHandshake *) record->data;
 
          //Fragment handshake message into smaller fragments
-         error = dtlsFragmentHandshakeMessage(context,
-            ntohs(record->version), encryptionEngine, message);
+         error = dtlsFragmentHandshakeMessage(context, ntohs(record->version),
+            encryptionEngine, message);
          //Any error to report?
          if(error)
             return error;
@@ -799,7 +820,7 @@ error_t dtlsSendFlight(TlsContext *context)
 
          //Multiple DTLS records may be placed in a single datagram. They are
          //simply encoded consecutively
-         memcpy(datagram + context->txDatagramLen, record,
+         osMemcpy(datagram + context->txDatagramLen, record,
             ntohs(record->length) + sizeof(DtlsRecord));
 
          //Point to the DTLS record header
@@ -830,9 +851,6 @@ error_t dtlsSendFlight(TlsContext *context)
          //Adjust the length of the datagram
          context->txDatagramLen += ntohs(record->length) + sizeof(DtlsRecord);
       }
-
-      //Loop through the flight of messages
-      context->txBufferPos += ntohs(record->length) + sizeof(DtlsRecord);
    }
 
    //Any datagram pending to be sent?
@@ -965,7 +983,7 @@ error_t dtlsFragmentHandshakeMessage(TlsContext *context, uint16_t version,
       STORE24BE(fragLength, fragment->fragLength);
 
       //Copy data
-      memcpy(fragment->data, message->data + fragOffset, fragLength);
+      osMemcpy(fragment->data, message->data + fragOffset, fragLength);
 
       //Debug message
       TRACE_DEBUG("Sending handshake message fragment (%" PRIuSIZE " bytes)...\r\n",
@@ -1065,11 +1083,11 @@ error_t dtlsReassembleHandshakeMessage(TlsContext *context,
    fragment = (DtlsHandshake *) (context->rxBuffer + pos);
 
    //Make room for the new fragment
-   memmove(context->rxBuffer + pos + fragLength, fragment,
+   osMemmove(context->rxBuffer + pos + fragLength, fragment,
       context->rxFragQueueLen - pos);
 
    //Insert the new fragment in the reassembly queue
-   memcpy(fragment, message, fragLength);
+   osMemcpy(fragment, message, fragLength);
    //Update the length of the reassembly queue
    context->rxFragQueueLen += fragLength;
 
@@ -1102,7 +1120,7 @@ error_t dtlsReassembleHandshakeMessage(TlsContext *context,
          if((fragOffset + fragLength) > (prevFragOffset + prevFragLength))
          {
             //Coalesce overlapping fragments
-            memmove(prevFragment->data + fragOffset - prevFragOffset, fragment->data,
+            osMemmove(prevFragment->data + fragOffset - prevFragOffset, fragment->data,
                context->rxFragQueueLen - pos - sizeof(DtlsHandshake));
 
             //Number of bytes that do not overlap with the previous fragment
@@ -1122,7 +1140,7 @@ error_t dtlsReassembleHandshakeMessage(TlsContext *context,
          else
          {
             //Drop current fragment
-            memmove(fragment, fragment->data + fragLength,
+            osMemmove(fragment, fragment->data + fragLength,
                context->rxFragQueueLen - fragLength - sizeof(DtlsHandshake));
 
             //Update the length of the reassembly queue

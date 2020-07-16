@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 #ifndef _TLS_CLIENT_EXTENSIONS_H
@@ -70,6 +70,9 @@ error_t tlsFormatServerCertTypeListExtension(TlsContext *context,
 error_t tlsFormatClientEmsExtension(TlsContext *context,
    uint8_t *p, size_t *written);
 
+error_t tlsFormatClientSessionTicketExtension(TlsContext *context,
+   uint8_t *p, size_t *written);
+
 error_t tlsFormatClientRenegoInfoExtension(TlsContext *context,
    uint8_t *p, size_t *written);
 
@@ -80,10 +83,10 @@ error_t tlsParseServerSniExtension(TlsContext *context,
    const TlsServerNameList *serverNameList);
 
 error_t tlsParseServerMaxFragLenExtension(TlsContext *context,
-   const uint8_t *maxFragLen);
+   const TlsExtension *maxFragLen);
 
 error_t tlsParseServerRecordSizeLimitExtension(TlsContext *context,
-   const uint8_t *recordSizeLimit);
+   const TlsExtension *recordSizeLimit);
 
 error_t tlsParseServerEcPointFormatsExtension(TlsContext *context,
    const TlsEcPointFormatList *ecPointFormatList);
@@ -92,13 +95,16 @@ error_t tlsParseServerAlpnExtension(TlsContext *context,
    const TlsProtocolNameList *protocolNameList);
 
 error_t tlsParseClientCertTypeExtension(TlsContext *context,
-   const uint8_t *clientCertType);
+   const TlsExtension *clientCertType);
 
 error_t tlsParseServerCertTypeExtension(TlsContext *context,
-   const uint8_t *serverCertType);
+   const TlsExtension *serverCertType);
 
 error_t tlsParseServerEmsExtension(TlsContext *context,
-   const uint8_t *extendedMasterSecret);
+   const TlsExtension *extendedMasterSecret);
+
+error_t tlsParseServerSessionTicketExtension(TlsContext *context,
+   const TlsExtension *sessionTicket);
 
 error_t tlsParseServerRenegoInfoExtension(TlsContext *context,
    const TlsHelloExtensions *extensions);

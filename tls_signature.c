@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -986,12 +986,12 @@ error_t tlsGenerateRsaSignature(const RsaPrivateKey *key,
    //Compute the length of the padding string PS
    paddingLen = k - (MD5_DIGEST_SIZE + SHA1_DIGEST_SIZE + 3);
    //Fill the padding string with 0xFF
-   memset(em + 2, 0xFF, paddingLen);
+   osMemset(em + 2, 0xFF, paddingLen);
    //Append a 0x00 octet to PS
    em[paddingLen + 2] = 0x00;
 
    //Append the digest value
-   memcpy(em + paddingLen + 3, digest, MD5_DIGEST_SIZE + SHA1_DIGEST_SIZE);
+   osMemcpy(em + paddingLen + 3, digest, MD5_DIGEST_SIZE + SHA1_DIGEST_SIZE);
 
    //Debug message
    TRACE_DEBUG("  Encoded message\r\n");
@@ -1149,7 +1149,7 @@ error_t tlsVerifyRsaSignature(const RsaPublicKey *key,
       if((k - i - 1) != (MD5_DIGEST_SIZE + SHA1_DIGEST_SIZE))
          break;
       //Check the digest value
-      if(memcmp(digest, em + i + 1, MD5_DIGEST_SIZE + SHA1_DIGEST_SIZE))
+      if(osMemcmp(digest, em + i + 1, MD5_DIGEST_SIZE + SHA1_DIGEST_SIZE))
          break;
 
       //The RSA signature is valid

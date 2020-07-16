@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -76,7 +76,7 @@ error_t tlsWriteProtocolData(TlsContext *context,
          else if(length > 0)
          {
             //Make room for the encryption overhead
-            memmove(context->txBuffer + context->txBufferSize - length, data,
+            osMemmove(context->txBuffer + context->txBufferSize - length, data,
                length);
 
             //Save record type
@@ -194,7 +194,7 @@ error_t tlsReadProtocolData(TlsContext *context,
          if(context->rxBufferPos > 0)
          {
             //Move unread data to the beginning of the buffer
-            memmove(context->rxBuffer, context->rxBuffer +
+            osMemmove(context->rxBuffer, context->rxBuffer +
                context->rxBufferPos, context->rxBufferLen);
 
             //Rewind to the beginning of the buffer
@@ -376,7 +376,7 @@ error_t tlsWriteRecord(TlsContext *context, const uint8_t *data,
          record->length = htons(length);
 
          //Copy record data
-         memmove(record->data, data, length);
+         osMemmove(record->data, data, length);
 
          //Debug message
          TRACE_DEBUG("Sending TLS record (%" PRIuSIZE " bytes)...\r\n", length);
@@ -555,7 +555,7 @@ error_t tlsReadRecord(TlsContext *context, uint8_t *data,
             TRACE_DEBUG_ARRAY("  ", record, *length + sizeof(TlsRecord));
 
             //Discard record header
-            memmove(data, record->data, *length);
+            osMemmove(data, record->data, *length);
 
             //Prepare to receive the next TLS record
             context->rxRecordLen = 0;
@@ -910,10 +910,10 @@ void tlsFormatAad(TlsContext *context, TlsEncryptionEngine *encryptionEngine,
       dtlsRecord = (DtlsRecord *) record;
 
       //Additional data to be authenticated
-      memcpy(aad, (void *) &dtlsRecord->epoch, 2);
-      memcpy(aad + 2, &dtlsRecord->seqNum, 6);
-      memcpy(aad + 8, &dtlsRecord->type, 3);
-      memcpy(aad + 11, (void *) &dtlsRecord->length, 2);
+      osMemcpy(aad, (void *) &dtlsRecord->epoch, 2);
+      osMemcpy(aad + 2, &dtlsRecord->seqNum, 6);
+      osMemcpy(aad + 8, &dtlsRecord->type, 3);
+      osMemcpy(aad + 11, (void *) &dtlsRecord->length, 2);
 
       //Length of the additional data, in bytes
       *aadLen = 13;
@@ -926,8 +926,8 @@ void tlsFormatAad(TlsContext *context, TlsEncryptionEngine *encryptionEngine,
       if(context->version <= TLS_VERSION_1_2)
       {
          //Additional data to be authenticated
-         memcpy(aad, &encryptionEngine->seqNum, 8);
-         memcpy(aad + 8, record, 5);
+         osMemcpy(aad, &encryptionEngine->seqNum, 8);
+         osMemcpy(aad + 8, record, 5);
 
          //Length of the additional data, in bytes
          *aadLen = 13;
@@ -936,7 +936,7 @@ void tlsFormatAad(TlsContext *context, TlsEncryptionEngine *encryptionEngine,
       {
          //The additional data input is the record header (refer to RFC 8446,
          //section 5.2)
-         memcpy(aad, record, 5);
+         osMemcpy(aad, record, 5);
 
          //Length of the additional data, in bytes
          *aadLen = 5;
@@ -968,10 +968,10 @@ void tlsFormatNonce(TlsContext *context, TlsEncryptionEngine *encryptionEngine,
       n = encryptionEngine->fixedIvLen + encryptionEngine->recordIvLen;
 
       //The salt is the implicit part of the nonce and is not sent in the packet
-      memcpy(nonce, encryptionEngine->iv, encryptionEngine->fixedIvLen);
+      osMemcpy(nonce, encryptionEngine->iv, encryptionEngine->fixedIvLen);
 
       //The explicit part of the nonce is chosen by the sender
-      memcpy(nonce + encryptionEngine->fixedIvLen, recordIv,
+      osMemcpy(nonce + encryptionEngine->fixedIvLen, recordIv,
          encryptionEngine->recordIvLen);
    }
    else
@@ -990,8 +990,8 @@ void tlsFormatNonce(TlsContext *context, TlsEncryptionEngine *encryptionEngine,
 
          //The 64-bit record sequence number is serialized as an 8-byte,
          //big-endian value
-         memcpy(nonce + n - 8, (void *) &dtlsRecord->epoch, 2);
-         memcpy(nonce + n - 6, &dtlsRecord->seqNum, 6);
+         osMemcpy(nonce + n - 8, (void *) &dtlsRecord->epoch, 2);
+         osMemcpy(nonce + n - 6, &dtlsRecord->seqNum, 6);
       }
       else
 #endif
@@ -999,11 +999,11 @@ void tlsFormatNonce(TlsContext *context, TlsEncryptionEngine *encryptionEngine,
       {
          //The 64-bit record sequence number is serialized as an 8-byte,
          //big-endian value
-         memcpy(nonce + n - 8, &encryptionEngine->seqNum, 8);
+         osMemcpy(nonce + n - 8, &encryptionEngine->seqNum, 8);
       }
 
       //The 64-bit record sequence number is padded on the left by zeros
-      memset(nonce, 0, n - 8);
+      osMemset(nonce, 0, n - 8);
 
       //The padded sequence number is XORed with the IV to form the nonce
       for(i = 0; i < n; i++)

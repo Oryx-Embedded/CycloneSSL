@@ -1,6 +1,6 @@
 /**
- * @file tls13_client.h
- * @brief Handshake message processing (TLS 1.3 client)
+ * @file tls_ticket.h
+ * @brief TLS session tickets
  *
  * @section License
  *
@@ -28,35 +28,25 @@
  * @version 1.9.8
  **/
 
-#ifndef _TLS13_CLIENT_H
-#define _TLS13_CLIENT_H
+#ifndef _TLS13_TICKET_H
+#define _TLS13_TICKET_H
 
 //Dependencies
 #include "tls.h"
 
-//C++ guard
-#ifdef __cplusplus
-extern "C" {
-#endif
+//TLS related functions
+bool_t tls13IsTicketValid(TlsContext *context);
 
-//TLS 1.3 client specific functions
-error_t tls13SendEndOfEarlyData(TlsContext *context);
+error_t tls13SaveSessionTicket(const TlsContext *context,
+   TlsSessionState *session);
 
-error_t tls13FormatEndOfEarlyData(TlsContext *context,
-   Tls13EndOfEarlyData *message, size_t *length);
+error_t tls13RestoreSessionTicket(TlsContext *context,
+   const TlsSessionState *session);
 
-error_t tls13ParseHelloRetryRequest(TlsContext *context,
-   const Tls13HelloRetryRequest *message, size_t length);
+error_t tls13GenerateTicket(TlsContext *context,
+   const Tls13NewSessionTicket *message, uint8_t *ticket, size_t *length);
 
-error_t tls13ParseEncryptedExtensions(TlsContext *context,
-   const Tls13EncryptedExtensions *message, size_t length);
-
-error_t tls13ParseNewSessionTicket(TlsContext *context,
-   const Tls13NewSessionTicket *message, size_t length);
-
-//C++ guard
-#ifdef __cplusplus
-}
-#endif
+error_t tls13VerifyTicket(TlsContext *context, const uint8_t *ticket,
+   size_t length, uint32_t obfuscatedTicketAge);
 
 #endif

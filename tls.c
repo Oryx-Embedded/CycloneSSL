@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -48,6 +48,7 @@
 #include "tls_record.h"
 #include "tls_misc.h"
 #include "tls13_client_misc.h"
+#include "tls13_ticket.h"
 #include "dtls_record.h"
 #include "pkix/pem_import.h"
 #include "pkix/x509_cert_parse.h"
@@ -73,7 +74,7 @@ TlsContext *tlsInit(void)
    if(context != NULL)
    {
       //Clear TLS context
-      memset(context, 0, sizeof(TlsContext));
+      osMemset(context, 0, sizeof(TlsContext));
 
       //Default state
       context->state = TLS_STATE_INIT;
@@ -372,7 +373,7 @@ error_t tlsSetServerName(TlsContext *context, const char_t *serverName)
       return ERROR_INVALID_PARAMETER;
 
    //Retrieve the length of the server name
-   length = strlen(serverName);
+   length = osStrlen(serverName);
 
    //Check whether the server name has already been configured
    if(context->serverName != NULL)
@@ -393,7 +394,7 @@ error_t tlsSetServerName(TlsContext *context, const char_t *serverName)
 
       //Convert the hostname into lowercase
       for(i = 0; i < length; i++)
-         context->serverName[i] = tolower((uint8_t) serverName[i]);
+         context->serverName[i] = osTolower(serverName[i]);
 
       //Properly terminate the string with a NULL character
       context->serverName[length] = '\0';
@@ -814,7 +815,7 @@ error_t tlsSetAlpnProtocolList(TlsContext *context, const char_t *protocolList)
       return ERROR_INVALID_PARAMETER;
 
    //Retrieve the length of the list
-   length = strlen(protocolList);
+   length = osStrlen(protocolList);
 
    //Check whether the list of supported protocols has already been configured
    if(context->protocolList != NULL)
@@ -834,8 +835,34 @@ error_t tlsSetAlpnProtocolList(TlsContext *context, const char_t *protocolList)
          return ERROR_OUT_OF_MEMORY;
 
       //Save the list of supported protocols
-      strcpy(context->protocolList, protocolList);
+      osStrcpy(context->protocolList, protocolList);
    }
+
+   //Successful processing
+   return NO_ERROR;
+#else
+   //ALPN is not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
+}
+
+
+/**
+ * @brief Register ALPN callback function
+ * @param[in] context Pointer to the TLS context
+ * @param[in] alpnCallback ALPN callback function
+ * @return Error code
+ **/
+
+error_t tlsSetAlpnCallback(TlsContext *context, TlsAlpnCallback alpnCallback)
+{
+#if (TLS_ALPN_SUPPORT == ENABLED)
+   //Check parameters
+   if(context == NULL || alpnCallback == NULL)
+      return ERROR_INVALID_PARAMETER;
+
+   //Save the ALPN callback function
+   context->alpnCallback = alpnCallback;
 
    //Successful processing
    return NO_ERROR;
@@ -895,7 +922,7 @@ error_t tlsSetPsk(TlsContext *context, const uint8_t *psk, size_t length)
    if(context->psk != NULL)
    {
       //Release memory
-      memset(context->psk, 0, context->pskLen);
+      osMemset(context->psk, 0, context->pskLen);
       tlsFreeMem(context->psk);
       context->psk = NULL;
       context->pskLen = 0;
@@ -911,7 +938,7 @@ error_t tlsSetPsk(TlsContext *context, const uint8_t *psk, size_t length)
          return ERROR_OUT_OF_MEMORY;
 
       //Save the pre-shared key
-      memcpy(context->psk, psk, length);
+      osMemcpy(context->psk, psk, length);
       //Save the length of the key
       context->pskLen = length;
    }
@@ -951,7 +978,7 @@ error_t tlsSetPskIdentity(TlsContext *context, const char_t *pskIdentity)
       return ERROR_INVALID_PARAMETER;
 
    //Retrieve the length of the PSK identity
-   length = strlen(pskIdentity);
+   length = osStrlen(pskIdentity);
 
    //Check whether the PSK identity has already been configured
    if(context->pskIdentity != NULL)
@@ -971,7 +998,7 @@ error_t tlsSetPskIdentity(TlsContext *context, const char_t *pskIdentity)
          return ERROR_OUT_OF_MEMORY;
 
       //Save the PSK identity
-      strcpy(context->pskIdentity, pskIdentity);
+      osStrcpy(context->pskIdentity, pskIdentity);
    }
 
    //Successful processing
@@ -1000,7 +1027,7 @@ error_t tlsSetPskIdentityHint(TlsContext *context, const char_t *pskIdentityHint
       return ERROR_INVALID_PARAMETER;
 
    //Retrieve the length of the PSK identity hint
-   length = strlen(pskIdentityHint);
+   length = osStrlen(pskIdentityHint);
 
    //Check whether the PSK identity hint has already been configured
    if(context->pskIdentityHint != NULL)
@@ -1020,7 +1047,7 @@ error_t tlsSetPskIdentityHint(TlsContext *context, const char_t *pskIdentityHint
          return ERROR_OUT_OF_MEMORY;
 
       //Save the PSK identity hint
-      strcpy(context->pskIdentityHint, pskIdentityHint);
+      osStrcpy(context->pskIdentityHint, pskIdentityHint);
    }
 
    //Successful processing
@@ -1033,7 +1060,7 @@ error_t tlsSetPskIdentityHint(TlsContext *context, const char_t *pskIdentityHint
 
 
 /**
- * @brief Register the PSK callback function
+ * @brief Register PSK callback function
  * @param[in] context Pointer to the TLS context
  * @param[in] pskCallback PSK callback function
  * @return Error code
@@ -1191,7 +1218,7 @@ error_t tlsAddCertificate(TlsContext *context, const char_t *certChain,
       }
 
       //Parse X.509 certificate
-      error = x509ParseCertificate(derCert, derCertLen, certInfo);
+      error = x509ParseCertificateEx(derCert, derCertLen, certInfo, TRUE);
       //Failed to parse the X.509 certificate?
       if(error)
          break;
@@ -1259,6 +1286,32 @@ error_t tlsSetCertificateVerifyCallback(TlsContext *context,
 
    //Successful processing
    return NO_ERROR;
+}
+
+
+/**
+ * @brief Enable session ticket mechanism
+ * @param[in] context Pointer to the TLS context
+ * @param[in] enabled Specifies whether session tickets are allowed
+ * @return Error code
+ **/
+
+error_t tlsEnableSessionTickets(TlsContext *context, bool_t enabled)
+{
+#if (TLS_TICKET_SUPPORT == ENABLED)
+   //Invalid TLS context?
+   if(context == NULL)
+      return ERROR_INVALID_PARAMETER;
+
+   //Enable or disable session ticket mechanism
+   context->sessionTicketEnabled = enabled;
+
+   //Successful processing
+   return NO_ERROR;
+#else
+   //Session ticket mechanism is not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
 }
 
 
@@ -1873,7 +1926,7 @@ error_t tlsRead(TlsContext *context, void *data,
                   else
                   {
                      //Copy data to user buffer
-                     memcpy(data, p, n);
+                     osMemcpy(data, p, n);
                      //Total number of data that have been read
                      *received = n;
                   }
@@ -1910,7 +1963,7 @@ error_t tlsRead(TlsContext *context, void *data,
                      n = MIN(n, i + 1);
 
                      //Copy data to user buffer
-                     memcpy(data, p, n);
+                     osMemcpy(data, p, n);
                      //Total number of data that have been read
                      *received += n;
 
@@ -1926,7 +1979,7 @@ error_t tlsRead(TlsContext *context, void *data,
                   else
                   {
                      //Copy data to user buffer
-                     memcpy(data, p, n);
+                     osMemcpy(data, p, n);
                      //Total number of data that have been read
                      *received += n;
 
@@ -2283,34 +2336,35 @@ void tlsFree(TlsContext *context)
       //Release cookie
       if(context->cookie != NULL)
       {
-         memset(context->cookie, 0, context->cookieLen);
+         osMemset(context->cookie, 0, context->cookieLen);
          tlsFreeMem(context->cookie);
       }
 
       //Release send buffer
       if(context->txBuffer != NULL)
       {
-         memset(context->txBuffer, 0, context->txBufferSize);
+         osMemset(context->txBuffer, 0, context->txBufferSize);
          tlsFreeMem(context->txBuffer);
       }
 
       //Release receive buffer
       if(context->rxBuffer != NULL)
       {
-         memset(context->rxBuffer, 0, context->rxBufferSize);
+         osMemset(context->rxBuffer, 0, context->rxBufferSize);
          tlsFreeMem(context->rxBuffer);
       }
 
       //Release transcript hash context
       tlsFreeTranscriptHash(context);
 
-#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
-      //Release session ticket (TLS 1.3)
+      //Release session ticket
       if(context->ticket != NULL)
       {
+         osMemset(context->ticket, 0, context->ticketLen);
          tlsFreeMem(context->ticket);
       }
 
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
       //Release the ALPN protocol associated with the ticket
       if(context->ticketAlpn != NULL)
       {
@@ -2349,7 +2403,7 @@ void tlsFree(TlsContext *context)
       //Release the pre-shared key
       if(context->psk != NULL)
       {
-         memset(context->psk, 0, context->pskLen);
+         osMemset(context->psk, 0, context->pskLen);
          tlsFreeMem(context->psk);
       }
 
@@ -2391,7 +2445,7 @@ void tlsFree(TlsContext *context)
 #endif
 
       //Clear the TLS context before freeing memory
-      memset(context, 0, sizeof(TlsContext));
+      osMemset(context, 0, sizeof(TlsContext));
       tlsFreeMem(context);
    }
 }
@@ -2410,7 +2464,7 @@ error_t tlsInitSessionState(TlsSessionState *session)
       return ERROR_INVALID_PARAMETER;
 
    //Erase session state
-   memset(session, 0, sizeof(TlsSessionState));
+   osMemset(session, 0, sizeof(TlsSessionState));
 
    //Sucessful initialization
    return NO_ERROR;
@@ -2427,6 +2481,8 @@ error_t tlsInitSessionState(TlsSessionState *session)
 error_t tlsSaveSessionState(const TlsContext *context,
    TlsSessionState *session)
 {
+   error_t error;
+
    //Check parameters
    if(context == NULL || session == NULL)
       return ERROR_INVALID_PARAMETER;
@@ -2438,54 +2494,21 @@ error_t tlsSaveSessionState(const TlsContext *context,
    //SSL 3.0, TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
    if(context->version >= SSL_VERSION_3_0 && context->version <= TLS_VERSION_1_2)
    {
-      //Valid session parameters?
-      if(context->cipherSuite.identifier != 0 &&
-         context->sessionIdLen > 0)
+      //Valid session?
+      if(context->ticketLen > 0)
       {
-         //Get current time
-         session->timestamp = osGetSystemTime();
-
-         //Save session parameters
-         session->version = context->version;
-         session->cipherSuite = context->cipherSuite.identifier;
-
+         //Save session ticket
+         error = tlsSaveSessionTicket(context, session);
+      }
+      else if(context->sessionIdLen > 0)
+      {
          //Save session identifier
-         memcpy(session->sessionId, context->sessionId, context->sessionIdLen);
-         session->sessionIdLen = context->sessionIdLen;
-
-         //Save master secret
-         memcpy(session->secret, context->masterSecret, TLS_MASTER_SECRET_SIZE);
-
-#if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
-         //Extended master secret computation
-         session->extendedMasterSecret = context->extendedMasterSecretExtReceived;
-#endif
-
-#if (TLS_SNI_SUPPORT == ENABLED)
-         //Any ServerName extension received by the server?
-         if(context->entity == TLS_CONNECTION_END_SERVER &&
-            context->serverName != NULL)
-         {
-            size_t n;
-
-            //Retrieve the length of the server name
-            n = strlen(context->serverName);
-
-            //Allocate a memory block to hold the server name
-            session->serverName = tlsAllocMem(n + 1);
-            //Failed to allocate memory?
-            if(session->serverName == NULL)
-            {
-               //Clean up side effects
-               tlsFreeSessionState(session);
-               //Report an error
-               return ERROR_OUT_OF_MEMORY;
-            }
-
-            //Copy the server name
-            strcpy(session->serverName, context->serverName);
-         }
-#endif
+         error = tlsSaveSessionId(context, session);
+      }
+      else
+      {
+         //No valid session to save
+         error = ERROR_INVALID_SESSION;
       }
    }
    else
@@ -2494,80 +2517,22 @@ error_t tlsSaveSessionState(const TlsContext *context,
    //TLS 1.3 currently selected?
    if(context->version == TLS_VERSION_1_3)
    {
-      //Valid session parameters?
-      if(context->cipherSuite.identifier != 0 &&
-         context->cipherSuite.prfHashAlgo != NULL &&
-         context->ticketLen > 0)
-      {
-         const HashAlgo *hashAlgo;
-
-         //Point to the cipher suite hash algorithm
-         hashAlgo = context->cipherSuite.prfHashAlgo;
-
-         //Allocate a memory block to hold the ticket
-         session->ticket = tlsAllocMem(context->ticketLen);
-         //Failed to allocate memory?
-         if(session->ticket == NULL)
-            return ERROR_OUT_OF_MEMORY;
-
-         //Get current time
-         session->timestamp = osGetSystemTime();
-
-         //Save session parameters
-         session->version = context->version;
-         session->cipherSuite = context->cipherSuite.identifier;
-         session->ticketTimestamp = context->ticketTimestamp;
-         session->ticketLifetime = context->ticketLifetime;
-         session->ticketAgeAdd = context->ticketAgeAdd;
-         session->maxEarlyDataSize = context->maxEarlyDataSize;
-
-         //Copy session ticket
-         memcpy(session->ticket, context->ticket, context->ticketLen);
-         session->ticketLen = context->ticketLen;
-
-         //Each PSK established via the ticket mechanism is associated with
-         //a single hash algorithm
-         if(hashAlgo == tlsGetHashAlgo(TLS_HASH_ALGO_SHA256))
-            session->ticketHashAlgo = TLS_HASH_ALGO_SHA256;
-         else if(hashAlgo == tlsGetHashAlgo(TLS_HASH_ALGO_SHA384))
-            session->ticketHashAlgo = TLS_HASH_ALGO_SHA384;
-         else
-            session->ticketHashAlgo = TLS_HASH_ALGO_NONE;
-
-         //Copy ticket PSK
-         memcpy(session->secret, context->ticketPsk, hashAlgo->digestSize);
-
-#if (TLS_ALPN_SUPPORT == ENABLED)
-         //Valid ALPN protocol?
-         if(context->selectedProtocol != NULL)
-         {
-            size_t n;
-
-            //Retrieve the length of the ALPN protocol
-            n = strlen(context->selectedProtocol);
-
-            //Allocate a memory block to hold the ALPN protocol
-            session->ticketAlpn = tlsAllocMem(n + 1);
-            //Failed to allocate memory?
-            if(session->ticketAlpn == NULL)
-            {
-               //Clean up side effects
-               tlsFreeSessionState(session);
-               //Report an error
-               return ERROR_OUT_OF_MEMORY;
-            }
-
-            //Copy the ALPN protocol associated with the ticket
-            strcpy(session->ticketAlpn, context->selectedProtocol);
-         }
-#endif
-      }
+      //Save session ticket
+      error = tls13SaveSessionTicket(context, session);
    }
    else
 #endif
    //Invalid TLS version?
    {
       //Do not save session state
+      error = ERROR_INVALID_VERSION;
+   }
+
+   //Check status code
+   if(error)
+   {
+      //Clean up side effects
+      tlsFreeSessionState(session);
    }
 
    //Successful processing
@@ -2593,24 +2558,20 @@ error_t tlsRestoreSessionState(TlsContext *context,
    //SSL 3.0, TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
    if(session->version >= SSL_VERSION_3_0 && session->version <= TLS_VERSION_1_2)
    {
-      //Valid session state?
-      if(session->cipherSuite != 0 && session->sessionIdLen > 0)
+      //Valid session?
+      if(session->ticketLen > 0)
       {
-         //Restore session parameters
-         context->version = session->version;
-         context->cipherSuite.identifier = session->cipherSuite;
-
-         //Restore session identifier
-         memcpy(context->sessionId, session->sessionId, session->sessionIdLen);
-         context->sessionIdLen = session->sessionIdLen;
-
-         //Restore master secret
-         memcpy(context->masterSecret, session->secret, TLS_MASTER_SECRET_SIZE);
-
-#if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
-         //Extended master secret computation
-         context->extendedMasterSecretExtReceived = session->extendedMasterSecret;
-#endif
+         //Restore a TLS session using session ticket
+         tlsRestoreSessionTicket(context, session);
+      }
+      else if(session->sessionIdLen > 0)
+      {
+         //Restore a TLS session using session ID
+         tlsRestoreSessionId(context, session);
+      }
+      else
+      {
+         //No valid session to restore
       }
    }
    else
@@ -2619,77 +2580,8 @@ error_t tlsRestoreSessionState(TlsContext *context,
    //TLS 1.3 currently selected?
    if(session->version == TLS_VERSION_1_3)
    {
-      //Valid ticket?
-      if(session->cipherSuite != 0 && session->ticketLen > 0)
-      {
-         //Restore session parameters
-         context->version = session->version;
-         context->ticketCipherSuite = session->cipherSuite;
-         context->ticketHashAlgo = session->ticketHashAlgo;
-         context->ticketTimestamp = session->ticketTimestamp;
-         context->ticketLifetime = session->ticketLifetime;
-         context->ticketAgeAdd = session->ticketAgeAdd;
-         context->maxEarlyDataSize = session->maxEarlyDataSize;
-         context->sessionIdLen = 0;
-
-         //Release existing session ticket, if any
-         if(context->ticket != NULL)
-         {
-            memset(context->ticket, 0, context->ticketLen);
-            tlsFreeMem(context->ticket);
-            context->ticket = NULL;
-            context->ticketLen = 0;
-         }
-
-         //Allocate a memory block to hold the ticket
-         context->ticket = tlsAllocMem(session->ticketLen);
-         //Failed to allocate memory?
-         if(context->ticket == NULL)
-            return ERROR_OUT_OF_MEMORY;
-
-         //Copy session ticket
-         memcpy(context->ticket, session->ticket, session->ticketLen);
-         context->ticketLen = session->ticketLen;
-
-         //Each PSK established via the ticket mechanism is associated with
-         //a single hash algorithm
-         if(session->ticketHashAlgo == TLS_HASH_ALGO_SHA256)
-            context->ticketPskLen = SHA256_DIGEST_SIZE;
-         else if(session->ticketHashAlgo == TLS_HASH_ALGO_SHA384)
-            context->ticketPskLen = SHA384_DIGEST_SIZE;
-         else
-            context->ticketPskLen = 0;
-
-         //Copy ticket PSK
-         memcpy(context->ticketPsk, session->secret, context->ticketPskLen);
-
-#if (TLS_ALPN_SUPPORT == ENABLED)
-         //Release ALPN protocol, if any
-         if(context->ticketAlpn != NULL)
-         {
-            tlsFreeMem(context->ticketAlpn);
-            context->ticketAlpn = NULL;
-         }
-
-         //Valid ALPN protocol?
-         if(session->ticketAlpn != NULL)
-         {
-            size_t n;
-
-            //Retrieve the length of the ALPN protocol
-            n = strlen(session->ticketAlpn);
-
-            //Allocate a memory block to hold the ALPN protocol
-            context->ticketAlpn = tlsAllocMem(n + 1);
-            //Failed to allocate memory?
-            if(context->ticketAlpn == NULL)
-               return ERROR_OUT_OF_MEMORY;
-
-            //Copy the ALPN protocol associated with the ticket
-            strcpy(context->ticketAlpn, session->ticketAlpn);
-         }
-#endif
-      }
+      //Restore TLS session using session ticket
+      tls13RestoreSessionTicket(context, session);
    }
    else
 #endif
@@ -2713,13 +2605,14 @@ void tlsFreeSessionState(TlsSessionState *session)
    //Make sure the session state is valid
    if(session != NULL)
    {
-#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
       //Release session ticket
       if(session->ticket != NULL)
       {
+         osMemset(session->ticket, 0, session->ticketLen);
          tlsFreeMem(session->ticket);
       }
 
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
       //Release the ALPN protocol associated with the ticket
       if(session->ticketAlpn != NULL)
       {
@@ -2736,7 +2629,7 @@ void tlsFreeSessionState(TlsSessionState *session)
 #endif
 
       //Erase session state
-      memset(session, 0, sizeof(TlsSessionState));
+      osMemset(session, 0, sizeof(TlsSessionState));
    }
 }
 

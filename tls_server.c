@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -412,7 +412,7 @@ error_t tlsFormatServerHello(TlsContext *context,
    message->serverVersion = htons(version);
 
    //Server random value
-   memcpy(message->random, context->serverRandom, 32);
+   osMemcpy(message->random, context->serverRandom, 32);
 
    //Point to the session ID
    p = message->sessionId;
@@ -424,7 +424,7 @@ error_t tlsFormatServerHello(TlsContext *context,
    {
 #if (TLS_SESSION_RESUME_SUPPORT == ENABLED)
       //The session ID uniquely identifies the current session
-      memcpy(message->sessionId, context->sessionId, context->sessionIdLen);
+      osMemcpy(message->sessionId, context->sessionId, context->sessionIdLen);
       message->sessionIdLen = (uint8_t) context->sessionIdLen;
 #else
       //The server may return an empty session ID to indicate that the session
@@ -436,7 +436,7 @@ error_t tlsFormatServerHello(TlsContext *context,
    {
       //The legacy_session_id_echo echoes the contents of the client's
       //legacy_session_id field
-      memcpy(message->sessionId, context->sessionId, context->sessionIdLen);
+      osMemcpy(message->sessionId, context->sessionId, context->sessionIdLen);
       message->sessionIdLen = (uint8_t) context->sessionIdLen;
    }
 
@@ -1011,7 +1011,7 @@ error_t tlsFormatCertificateRequest(TlsContext *context,
                         STORE16BE(certInfo->tbsCert.subject.rawDataLen, p);
 
                         //The distinguished name shall be DER-encoded
-                        memcpy(p + 2, certInfo->tbsCert.subject.rawData,
+                        osMemcpy(p + 2, certInfo->tbsCert.subject.rawData,
                            certInfo->tbsCert.subject.rawDataLen);
 
                         //Advance write pointer
@@ -1022,7 +1022,7 @@ error_t tlsFormatCertificateRequest(TlsContext *context,
                      {
                         //Report an error
                         error = ERROR_MESSAGE_TOO_LONG;
-                     } 
+                     }
                   }
                   else
                   {
@@ -1419,12 +1419,20 @@ error_t tlsParseClientHello(TlsContext *context,
    }
 
    //Save client random value
-   memcpy(context->clientRandom, message->random, 32);
+   osMemcpy(context->clientRandom, message->random, 32);
 
 #if (TLS_SNI_SUPPORT == ENABLED)
    //In order to provide the server name, clients may include a ServerName
    //extension
    error = tlsParseClientSniExtension(context, extensions.serverNameList);
+   //Any error to report?
+   if(error)
+      return error;
+#endif
+
+#if (TLS_ALPN_SUPPORT == ENABLED)
+   //Parse ALPN extension
+   error = tlsParseClientAlpnExtension(context, extensions.protocolNameList);
    //Any error to report?
    if(error)
       return error;
@@ -1491,7 +1499,7 @@ error_t tlsParseClientHello(TlsContext *context,
    if(context->version == TLS_VERSION_1_3)
    {
       //Save the client's legacy_session_id field
-      memcpy(context->sessionId, message->sessionId, message->sessionIdLen);
+      osMemcpy(context->sessionId, message->sessionId, message->sessionIdLen);
       context->sessionIdLen = message->sessionIdLen;
 
       //Perform cipher suite and key exchange method negotiation
@@ -1554,14 +1562,6 @@ error_t tlsParseClientHello(TlsContext *context,
       return error;
 #endif
 
-#if (TLS_ALPN_SUPPORT == ENABLED)
-   //Parse ALPN extension
-   error = tlsParseClientAlpnExtension(context, extensions.protocolNameList);
-   //Any error to report?
-   if(error)
-      return error;
-#endif
-
 #if (TLS_RAW_PUBLIC_KEY_SUPPORT == ENABLED)
    //Parse ClientCertType extension
    error = tlsParseClientCertTypeListExtension(context,
@@ -1577,6 +1577,11 @@ error_t tlsParseClientHello(TlsContext *context,
    if(error)
       return error;
 #endif
+
+   //Another handshake message cannot be packed in the same record as the
+   //ClientHello
+   if(context->rxBufferLen != 0)
+      return ERROR_UNEXPECTED_MESSAGE;
 
    //Version of TLS prior to TLS 1.3?
    if(context->version <= TLS_VERSION_1_2)

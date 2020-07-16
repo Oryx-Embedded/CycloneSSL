@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -268,7 +268,7 @@ error_t tlsFinalizeTranscriptHash(TlsContext *context, const HashAlgo *hash,
    if(tempHashContext != NULL)
    {
       //The original hash context must be preserved
-      memcpy(tempHashContext, hashContext, hash->contextSize);
+      osMemcpy(tempHashContext, hashContext, hash->contextSize);
 
 #if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= SSL_VERSION_3_0)
       //SSL 3.0 currently selected?
@@ -278,7 +278,7 @@ error_t tlsFinalizeTranscriptHash(TlsContext *context, const HashAlgo *hash,
          size_t padLen;
 
          //Retrieve the length of the label
-         labelLen = strlen(label);
+         labelLen = osStrlen(label);
 
          //The pad character is repeated 48 times for MD5 or 40 times for SHA-1
          padLen = (hash == MD5_HASH_ALGO) ? 48 : 40;
@@ -345,7 +345,7 @@ void tlsFreeTranscriptHash(TlsContext *context)
    //Release MD5 hash context
    if(context->transcriptMd5Context != NULL)
    {
-      memset(context->transcriptMd5Context, 0, sizeof(Md5Context));
+      osMemset(context->transcriptMd5Context, 0, sizeof(Md5Context));
       tlsFreeMem(context->transcriptMd5Context);
       context->transcriptMd5Context = NULL;
    }
@@ -355,7 +355,7 @@ void tlsFreeTranscriptHash(TlsContext *context)
    //Release SHA-1 hash context
    if(context->transcriptSha1Context != NULL)
    {
-      memset(context->transcriptSha1Context, 0, sizeof(Sha1Context));
+      osMemset(context->transcriptSha1Context, 0, sizeof(Sha1Context));
       tlsFreeMem(context->transcriptSha1Context);
       context->transcriptSha1Context = NULL;
    }
@@ -471,7 +471,7 @@ error_t tlsComputeVerifyData(TlsContext *context, TlsConnectionEnd entity,
          if(hashContext != NULL)
          {
             //The original hash context must be preserved
-            memcpy(hashContext, context->transcriptHashContext,
+            osMemcpy(hashContext, context->transcriptHashContext,
                hashAlgo->contextSize);
 
             //Finalize hash computation

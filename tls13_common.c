@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -187,6 +187,10 @@ error_t tls13ParseKeyUpdate(TlsContext *context, const Tls13KeyUpdate *message,
    if(context->version != TLS_VERSION_1_3)
       return ERROR_UNEXPECTED_MESSAGE;
 
+   //Check the length of the KeyUpdate message
+   if(length != sizeof(Tls13KeyUpdate))
+      return ERROR_DECODING_FAILED;
+
    //Ensure the value of the request_update field is valid
    if(message->requestUpdate != TLS_KEY_UPDATE_NOT_REQUESTED &&
       message->requestUpdate != TLS_KEY_UPDATE_REQUESTED)
@@ -195,10 +199,6 @@ error_t tls13ParseKeyUpdate(TlsContext *context, const Tls13KeyUpdate *message,
       //connection with an illegal_parameter alert
       return ERROR_ILLEGAL_PARAMETER;
    }
-
-   //Check the length of the KeyUpdate message
-   if(length != sizeof(Tls13KeyUpdate))
-      return ERROR_DECODING_FAILED;
 
    //Implementations that receive a KeyUpdate prior to receiving a Finished
    //message must terminate the connection with an unexpected_message alert

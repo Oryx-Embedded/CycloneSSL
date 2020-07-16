@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -104,7 +104,7 @@ error_t tlsGenerateSessionKeys(TlsContext *context)
 
       //The premaster secret should be deleted from memory once the master
       //secret has been computed
-      memset(context->premasterSecret, 0, TLS_PREMASTER_SECRET_SIZE);
+      osMemset(context->premasterSecret, 0, TLS_PREMASTER_SECRET_SIZE);
    }
 
    //Debug message
@@ -148,8 +148,8 @@ error_t tlsGenerateMasterSecret(TlsContext *context)
    uint8_t random[2 * TLS_RANDOM_SIZE];
 
    //Concatenate client_random and server_random values
-   memcpy(random, context->clientRandom, TLS_RANDOM_SIZE);
-   memcpy(random + 32, context->serverRandom, TLS_RANDOM_SIZE);
+   osMemcpy(random, context->clientRandom, TLS_RANDOM_SIZE);
+   osMemcpy(random + 32, context->serverRandom, TLS_RANDOM_SIZE);
 
 #if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= SSL_VERSION_3_0)
    //SSL 3.0 currently selected?
@@ -256,7 +256,7 @@ error_t tlsGenerateExtendedMasterSecret(TlsContext *context)
       if(hashContext != NULL)
       {
          //The original hash context must be preserved
-         memcpy(hashContext, context->transcriptHashContext,
+         osMemcpy(hashContext, context->transcriptHashContext,
             hashAlgo->contextSize);
 
          //Finalize hash computation
@@ -321,9 +321,9 @@ error_t tlsGeneratePskPremasterSecret(TlsContext *context)
          //long, concatenate a uint16 with the value N, N zero octets, a second
          //uint16 with the value N, and the PSK itself
          STORE16BE(n, context->premasterSecret);
-         memset(context->premasterSecret + 2, 0, n);
+         osMemset(context->premasterSecret + 2, 0, n);
          STORE16BE(n, context->premasterSecret + n + 2);
-         memcpy(context->premasterSecret + n + 4, context->psk, n);
+         osMemcpy(context->premasterSecret + n + 4, context->psk, n);
 
          //Save the length of the premaster secret
          context->premasterSecretLen = n * 2 + 4;
@@ -357,7 +357,7 @@ error_t tlsGeneratePskPremasterSecret(TlsContext *context)
       {
          //The "other_secret" field comes from the Diffie-Hellman, ECDH or
          //RSA exchange (DHE_PSK, ECDH_PSK and RSA_PSK, respectively)
-         memmove(context->premasterSecret + 2, context->premasterSecret,
+         osMemmove(context->premasterSecret + 2, context->premasterSecret,
             context->premasterSecretLen);
 
          //The "other_secret" field is preceded by a 2-byte length field
@@ -367,7 +367,7 @@ error_t tlsGeneratePskPremasterSecret(TlsContext *context)
          STORE16BE(n, context->premasterSecret + context->premasterSecretLen + 2);
 
          //Concatenate the PSK itself
-         memcpy(context->premasterSecret + context->premasterSecretLen + 4,
+         osMemcpy(context->premasterSecret + context->premasterSecretLen + 4,
             context->psk, n);
 
          //Adjust the length of the premaster secret
@@ -408,8 +408,8 @@ error_t tlsGenerateKeyBlock(TlsContext *context, size_t keyBlockLen)
    uint8_t random[2 * TLS_RANDOM_SIZE];
 
    //Concatenate server_random and client_random values
-   memcpy(random, context->serverRandom, TLS_RANDOM_SIZE);
-   memcpy(random + 32, context->clientRandom, TLS_RANDOM_SIZE);
+   osMemcpy(random, context->serverRandom, TLS_RANDOM_SIZE);
+   osMemcpy(random + 32, context->clientRandom, TLS_RANDOM_SIZE);
 
 #if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= SSL_VERSION_3_0)
    //SSL 3.0 currently selected?
@@ -502,8 +502,8 @@ error_t tlsExportKeyingMaterial(TlsContext *context, const char_t *label,
       return ERROR_OUT_OF_RESOURCES;
 
    //Concatenate client_random and server_random values
-   memcpy(seed, context->clientRandom, TLS_RANDOM_SIZE);
-   memcpy(seed + 32, context->serverRandom, TLS_RANDOM_SIZE);
+   osMemcpy(seed, context->clientRandom, TLS_RANDOM_SIZE);
+   osMemcpy(seed + 32, context->serverRandom, TLS_RANDOM_SIZE);
 
    //Check whether a context is provided
    if(useContextValue)
@@ -513,7 +513,7 @@ error_t tlsExportKeyingMaterial(TlsContext *context, const char_t *label,
       STORE16BE(contextValueLen, seed + 64);
 
       //Copy the context value provided by the application using the exporter
-      memcpy(seed + 66, contextValue, contextValueLen);
+      osMemcpy(seed + 66, contextValue, contextValueLen);
    }
 
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
@@ -640,7 +640,7 @@ error_t tlsPrf(const uint8_t *secret, size_t secretLen, const char_t *label,
    if(hmacContext != NULL)
    {
       //Retrieve the length of the label
-      labelLen = strlen(label);
+      labelLen = osStrlen(label);
 
       //The secret is partitioned into two halves S1 and S2
       //with the possibility of one shared byte
@@ -764,7 +764,7 @@ error_t tls12Prf(const HashAlgo *hash, const uint8_t *secret, size_t secretLen,
    if(hmacContext != NULL)
    {
       //Retrieve the length of the label
-      labelLen = strlen(label);
+      labelLen = osStrlen(label);
 
       //First compute A(1) = HMAC_hash(secret, label + seed)
       hmacInit(hmacContext, hash, secret, secretLen);
@@ -785,7 +785,7 @@ error_t tls12Prf(const HashAlgo *hash, const uint8_t *secret, size_t secretLen,
          //Calculate the number of bytes to copy
          n = MIN(outputLen, hash->digestSize);
          //Copy the resulting digest
-         memcpy(output, hmacContext->digest, n);
+         osMemcpy(output, hmacContext->digest, n);
 
          //Compute A(i + 1) = HMAC_hash(secret, A(i))
          hmacInit(hmacContext, hash, secret, secretLen);
@@ -840,13 +840,13 @@ void tlsDumpSecret(TlsContext *context, const char_t *label,
       char_t buffer[194];
 
       //Retrieve the length of the label
-      n = strlen(label);
+      n = osStrlen(label);
 
       //Sanity check
       if((n + 2 * secretLen + 67) <= sizeof(buffer))
       {
          //Copy the identifying label
-         strncpy(buffer, label, n);
+         osStrncpy(buffer, label, n);
 
          //Append a space character
          buffer[n++] = ' ';
@@ -855,7 +855,7 @@ void tlsDumpSecret(TlsContext *context, const char_t *label,
          for(i = 0; i < 32; i++)
          {
             //Format current byte
-            n += sprintf(buffer + n, "%02" PRIX8, context->clientRandom[i]);
+            n += osSprintf(buffer + n, "%02" PRIX8, context->clientRandom[i]);
          }
 
          //Append a space character
@@ -865,7 +865,7 @@ void tlsDumpSecret(TlsContext *context, const char_t *label,
          for(i = 0; i < secretLen; i++)
          {
             //Format current byte
-            n += sprintf(buffer + n, "%02" PRIX8, secret[i]);
+            n += osSprintf(buffer + n, "%02" PRIX8, secret[i]);
          }
 
          //Properly terminate the string with a NULL character

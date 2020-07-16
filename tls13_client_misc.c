@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -42,6 +42,7 @@
 #include "tls_misc.h"
 #include "tls13_client_misc.h"
 #include "tls13_key_material.h"
+#include "tls13_ticket.h"
 #include "debug.h"
 
 //Check TLS library configuration
@@ -68,7 +69,7 @@ bool_t tls13IsHelloRetryRequest(const TlsServerHello *message, size_t length)
    {
       //Upon receiving a message with type ServerHello, implementations must
       //first examine the Random field
-      if(!memcmp(&message->random, tls13HelloRetryRequestRandom,
+      if(!osMemcmp(&message->random, tls13HelloRetryRequestRandom,
          sizeof(tls13HelloRetryRequestRandom)))
       {
          //The Random field matches the special value

@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -1102,6 +1102,16 @@ const TlsCipherSuiteInfo tlsSupportedCipherSuites[] =
 //TLS_DH_anon_WITH_RC4_128_MD5 cipher suite
 #if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2 && TLS_DH_ANON_KE_SUPPORT == ENABLED && TLS_STREAM_CIPHER_SUPPORT == ENABLED && TLS_RC4_SUPPORT == ENABLED && TLS_MD5_SUPPORT == ENABLED)
    TLS_CIPHER_SUITE(TLS_DH_ANON_WITH_RC4_128_MD5, TLS_KEY_EXCH_DH_ANON, RC4_CIPHER_ALGO, CIPHER_MODE_STREAM, MD5_HASH_ALGO, NULL, 16, 16, 0, 0, 0, 12),
+#endif
+
+//TLS_SHA256_SHA256 cipher suite
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3 && TLS_NULL_CIPHER_SUPPORT == ENABLED && TLS_SHA256_SUPPORT == ENABLED)
+   TLS_CIPHER_SUITE(TLS_SHA256_SHA256, TLS_KEY_EXCH_NONE, NULL, CIPHER_MODE_NULL, SHA256_HASH_ALGO, SHA256_HASH_ALGO, 0, 32, 12, 0, 0, 32),
+#endif
+
+//TLS_SHA384_SHA384 cipher suite
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3 && TLS_NULL_CIPHER_SUPPORT == ENABLED && TLS_SHA384_SUPPORT == ENABLED)
+   TLS_CIPHER_SUITE(TLS_SHA384_SHA384, TLS_KEY_EXCH_NONE, NULL, CIPHER_MODE_NULL, SHA384_HASH_ALGO, SHA384_HASH_ALGO, 0, 48, 12, 0, 0, 48),
 #endif
 
 //TLS_ECDHE_ECDSA_WITH_NULL_SHA cipher suite

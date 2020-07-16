@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -159,12 +159,12 @@ error_t tlsEncryptAeadRecord(TlsContext *context,
    //TLS 1.3 currently selected?
    if(encryptionEngine->version == TLS_VERSION_1_3)
    {
-      //The type field indicates the higher-level protocol used to process
-      //the enclosed fragment
+      //The type field indicates the higher-level protocol used to process the
+      //enclosed fragment
       data[length++] = tlsGetRecordType(context, record);
 
-      //In TLS 1.3, the outer opaque_type field of a TLS record is always
-      //set to the value 23 (application data)
+      //In TLS 1.3, the outer opaque_type field of a TLS record is always set
+      //to the value 23 (application data)
       tlsSetRecordType(context, record, TLS_TYPE_APPLICATION_DATA);
 
       //Fix the length field of the TLS record
@@ -179,7 +179,7 @@ error_t tlsEncryptAeadRecord(TlsContext *context,
    if(encryptionEngine->recordIvLen != 0)
    {
       //Make room for the explicit nonce at the beginning of the record
-      memmove(data + encryptionEngine->recordIvLen, data, length);
+      osMemmove(data + encryptionEngine->recordIvLen, data, length);
 
       //The explicit part of the nonce is chosen by the sender and is
       //carried in each TLS record
@@ -298,7 +298,7 @@ error_t tlsEncryptCbcRecord(TlsContext *context,
    if(encryptionEngine->version >= TLS_VERSION_1_1)
    {
       //Make room for the IV at the beginning of the data
-      memmove(data + encryptionEngine->recordIvLen, data, length);
+      osMemmove(data + encryptionEngine->recordIvLen, data, length);
 
       //The initialization vector should be chosen at random
       error = context->prngAlgo->read(context->prngContext, data,
@@ -428,10 +428,33 @@ error_t tlsAppendMessageAuthCode(TlsContext *context,
 #endif
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
-   if(encryptionEngine->version >= TLS_VERSION_1_0)
+   if(encryptionEngine->version >= TLS_VERSION_1_0 &&
+      encryptionEngine->version <= TLS_VERSION_1_2)
    {
       //TLS uses a HMAC construction
       error = tlsComputeMac(context, encryptionEngine, record, data,
+         length, data + length);
+   }
+   else
+#endif
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+   //TLS 1.3 currently selected?
+   if(encryptionEngine->version == TLS_VERSION_1_3)
+   {
+      //The type field indicates the higher-level protocol used to process the
+      //enclosed fragment
+      data[length++] = tlsGetRecordType(context, record);
+
+      //In TLS 1.3, the outer opaque_type field of a TLS record is always set
+      //to the value 23 (application data)
+      tlsSetRecordType(context, record, TLS_TYPE_APPLICATION_DATA);
+
+      //Fix the length field of the TLS record
+      tlsSetRecordLength(context, record, length +
+         encryptionEngine->hashAlgo->digestSize);
+
+      //The record is protected using HMAC SHA-256 or SHA-384
+      error = tls13ComputeMac(context, encryptionEngine, record, data,
          length, data + length);
    }
    else

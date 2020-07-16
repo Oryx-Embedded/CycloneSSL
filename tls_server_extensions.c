@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -334,12 +334,12 @@ error_t tlsFormatServerAlpnExtension(TlsContext *context,
          protocolName = (TlsProtocolName *) protocolNameList->value;
 
          //Retrieve the length of the protocol name
-         n = strlen(context->selectedProtocol);
+         n = osStrlen(context->selectedProtocol);
 
          //Fill in the length field
          protocolName->length = (uint8_t) n;
          //Copy protocol name
-         memcpy(protocolName->value, context->selectedProtocol, n);
+         osMemcpy(protocolName->value, context->selectedProtocol, n);
 
          //Adjust the length of the list
          n += sizeof(TlsProtocolName);
@@ -539,11 +539,11 @@ error_t tlsFormatServerRenegoInfoExtension(TlsContext *context,
          renegoInfo->length = (uint8_t) n;
 
          //Copy the saved client_verify_data
-         memcpy(renegoInfo->value, context->clientVerifyData,
+         osMemcpy(renegoInfo->value, context->clientVerifyData,
             context->clientVerifyDataLen);
 
          //Copy the saved client_verify_data
-         memcpy(renegoInfo->value + context->clientVerifyDataLen,
+         osMemcpy(renegoInfo->value + context->clientVerifyDataLen,
             context->serverVerifyData, context->serverVerifyDataLen);
 
          //Consider the length field that precedes the renegotiated_connection
@@ -690,7 +690,7 @@ error_t tlsParseClientSniExtension(TlsContext *context,
                   return ERROR_OUT_OF_MEMORY;
 
                //Save server name
-               memcpy(context->serverName, serverName->hostname, n);
+               osMemcpy(context->serverName, serverName->hostname, n);
                //Properly terminate the string with a NULL character
                context->serverName[n] = '\0';
             }
@@ -712,7 +712,7 @@ error_t tlsParseClientSniExtension(TlsContext *context,
  **/
 
 error_t tlsParseClientMaxFragLenExtension(TlsContext *context,
-   const uint8_t *maxFragLen)
+   const TlsExtension *maxFragLen)
 {
    error_t error;
 
@@ -726,7 +726,7 @@ error_t tlsParseClientMaxFragLenExtension(TlsContext *context,
       size_t n;
 
       //Retrieve the value advertised by the client
-      switch(*maxFragLen)
+      switch(maxFragLen->value[0])
       {
       case TLS_MAX_FRAGMENT_LENGTH_512:
          n = 512;
@@ -785,7 +785,7 @@ error_t tlsParseClientMaxFragLenExtension(TlsContext *context,
  **/
 
 error_t tlsParseClientRecordSizeLimitExtension(TlsContext *context,
-   const uint8_t *recordSizeLimit)
+   const TlsExtension *recordSizeLimit)
 {
 #if (TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)
    //RecordSizeLimit extension found?
@@ -795,7 +795,7 @@ error_t tlsParseClientRecordSizeLimitExtension(TlsContext *context,
 
       //The value of RecordSizeLimit is the maximum size of record in octets
       //that the peer is willing to receive
-      n = LOAD16BE(recordSizeLimit);
+      n = LOAD16BE(recordSizeLimit->value);
 
       //Endpoints must not send a RecordSizeLimit extension with a value
       //smaller than 64
@@ -930,6 +930,16 @@ error_t tlsParseClientAlpnExtension(TlsContext *context,
    const TlsProtocolNameList *protocolNameList)
 {
 #if (TLS_ALPN_SUPPORT == ENABLED)
+   //The protocol identified in the ALPN extension type in the ServerHello
+   //shall be definitive for the connection, until renegotiated (refer to
+   //RFC 7301, section 3.2)
+   if(context->selectedProtocol != NULL)
+   {
+      //Release memory
+      tlsFreeMem(context->selectedProtocol);
+      context->selectedProtocol = NULL;
+   }
+
    //ALPN extension found?
    if(protocolNameList != NULL)
    {
@@ -937,15 +947,6 @@ error_t tlsParseClientAlpnExtension(TlsContext *context,
       size_t n;
       size_t length;
       const TlsProtocolName *protocolName;
-
-      //When session resumption is used, the previous contents of this
-      //extension are irrelevant
-      if(context->selectedProtocol != NULL)
-      {
-         //Release memory
-         tlsFreeMem(context->selectedProtocol);
-         context->selectedProtocol = NULL;
-      }
 
       //Retrieve the length of the list
       length = ntohs(protocolNameList->length);
@@ -986,7 +987,7 @@ error_t tlsParseClientAlpnExtension(TlsContext *context,
                   return ERROR_OUT_OF_MEMORY;
 
                //Save protocol name
-               memcpy(context->selectedProtocol, protocolName->value, n);
+               osMemcpy(context->selectedProtocol, protocolName->value, n);
                //Properly terminate the string with a NULL character
                context->selectedProtocol[n] = '\0';
             }
@@ -1005,6 +1006,13 @@ error_t tlsParseClientAlpnExtension(TlsContext *context,
             return ERROR_NO_APPLICATION_PROTOCOL;
          }
       }
+   }
+
+   //Any registered callback?
+   if(context->alpnCallback != NULL)
+   {
+      //Invoke user callback function
+      return context->alpnCallback(context, context->selectedProtocol);
    }
 #endif
 
@@ -1164,7 +1172,7 @@ error_t tlsParseServerCertTypeListExtension(TlsContext *context,
  **/
 
 error_t tlsParseClientEmsExtension(TlsContext *context,
-   const uint8_t *extendedMasterSecret)
+   const TlsExtension *extendedMasterSecret)
 {
    error_t error;
 
@@ -1261,7 +1269,7 @@ error_t tlsParseClientRenegoInfoExtension(TlsContext *context,
          {
             //Verify that the value of the renegotiated_connection field
             //is equal to the saved client_verify_data value
-            if(memcmp(renegoInfo->value, context->clientVerifyData,
+            if(osMemcmp(renegoInfo->value, context->clientVerifyData,
                context->clientVerifyDataLen))
             {
                //If it is not, the server must abort the handshake

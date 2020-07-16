@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2019 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.6
+ * @version 1.9.8
  **/
 
 //Switch to the appropriate trace level
@@ -35,6 +35,7 @@
 #include <string.h>
 #include "tls.h"
 #include "tls_cache.h"
+#include "tls_misc.h"
 #include "debug.h"
 
 //Check TLS library configuration
@@ -66,7 +67,7 @@ TlsCache *tlsInitCache(uint_t size)
       return NULL;
 
    //Clear memory
-   memset(cache, 0, n);
+   osMemset(cache, 0, n);
 
    //Create a mutex to prevent simultaneous access to the cache
    if(!osCreateMutex(&cache->mutex))
@@ -135,7 +136,7 @@ TlsSessionState *tlsFindCache(TlsCache *cache, const uint8_t *sessionId,
    {
       //Check whether the current identifier matches the specified session ID
       if(cache->sessions[i].sessionIdLen == sessionIdLen &&
-         !memcmp(cache->sessions[i].sessionId, sessionId, sessionIdLen))
+         !osMemcmp(cache->sessions[i].sessionId, sessionId, sessionIdLen))
       {
          //A matching session has been found
          session = &cache->sessions[i];
@@ -202,7 +203,7 @@ error_t tlsSaveToCache(TlsContext *context)
 
       //If the session ID already exists, we are done
       if(session->sessionIdLen == context->sessionIdLen &&
-         !memcmp(session->sessionId, context->sessionId, session->sessionIdLen))
+         !osMemcmp(session->sessionId, context->sessionId, session->sessionIdLen))
       {
          //Do not write to session cache
          firstFreeEntry = NULL;
@@ -236,11 +237,17 @@ error_t tlsSaveToCache(TlsContext *context)
 
    //Add current session to cache if necessary
    if(firstFreeEntry != NULL)
-      error = tlsSaveSessionState(context, firstFreeEntry);
+   {
+      error = tlsSaveSessionId(context, firstFreeEntry);
+   }
    else if(oldestEntry != NULL)
-      error = tlsSaveSessionState(context, oldestEntry);
+   {
+      error = tlsSaveSessionId(context, oldestEntry);
+   }
    else
+   {
       error = NO_ERROR;
+   }
 
    //Release exclusive access to the session cache
    osReleaseMutex(&context->cache->mutex);
@@ -289,7 +296,7 @@ error_t tlsRemoveFromCache(TlsContext *context)
 
       //Check whether the current identifier matches the specified session ID
       if(session->sessionIdLen == context->sessionIdLen &&
-         !memcmp(session->sessionId, context->sessionId, session->sessionIdLen))
+         !osMemcmp(session->sessionId, context->sessionId, session->sessionIdLen))
       {
          //Drop current entry
          tlsFreeSessionState(session);
