@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.8
+ * @version 2.0.0
  **/
 
 #ifndef _TLS_CIPHER_SUITES_H
@@ -413,6 +413,8 @@ typedef enum
    TLS_AES_128_CCM_SHA256                        = 0x1304, //RFC 8446
    TLS_AES_128_CCM_8_SHA256                      = 0x1305, //RFC 8446
    TLS_CHACHA20_POLY1305_SHA256                  = 0x1303, //RFC 8446
+   TLS_SM4_GCM_SM3                               = 0x00C6, //RFC draft
+   TLS_SM4_CCM_SM3                               = 0x00C7, //RFC draft
    TLS_SHA256_SHA256                             = 0xC0B4, //RFC draft
    TLS_SHA384_SHA384                             = 0xC0B5, //RFC draft
 

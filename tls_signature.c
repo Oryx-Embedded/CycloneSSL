@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.8
+ * @version 2.0.0
  **/
 
 //Switch to the appropriate trace level
@@ -1432,15 +1432,16 @@ error_t tlsVerifyEcdsaSignature(TlsContext *context, const uint8_t *digest,
 /**
  * @brief Generate EdDSA signature
  * @param[in] context Pointer to the TLS context
- * @param[in] message Pointer to the message to be signed
- * @param[in] messageLen Length of the message, in bytes
+ * @param[in] messageChunks Collection of chunks representing the message to
+ *   be signed
  * @param[out] signature Resulting signature
  * @param[out] signatureLen Length of the resulting signature
  * @return Error code
  **/
 
-error_t tlsGenerateEddsaSignature(TlsContext *context, const uint8_t *message,
-   size_t messageLen, uint8_t *signature, size_t *signatureLen)
+error_t tlsGenerateEddsaSignature(TlsContext *context,
+   const EddsaMessageChunk *messageChunks, uint8_t *signature,
+   size_t *signatureLen)
 {
 #if (TLS_EDDSA_SIGN_SUPPORT == ENABLED)
    error_t error;
@@ -1471,8 +1472,8 @@ error_t tlsGenerateEddsaSignature(TlsContext *context, const uint8_t *message,
          if(!error)
          {
             //Generate Ed25519 signature (PureEdDSA mode)
-            error = ed25519GenerateSignature(d, NULL, message, messageLen,
-               NULL, 0, 0, signature);
+            error = ed25519GenerateSignatureEx(d, NULL, messageChunks, NULL,
+               0, 0, signature);
          }
 
          //Length of the resulting EdDSA signature
@@ -1515,8 +1516,8 @@ error_t tlsGenerateEddsaSignature(TlsContext *context, const uint8_t *message,
          if(!error)
          {
             //Generate Ed448 signature (PureEdDSA mode)
-            error = ed448GenerateSignature(d, NULL, message, messageLen,
-               NULL, 0, 0, signature);
+            error = ed448GenerateSignatureEx(d, NULL, messageChunks, NULL,
+               0, 0, signature);
          }
 
          //Length of the resulting EdDSA signature
@@ -1551,15 +1552,16 @@ error_t tlsGenerateEddsaSignature(TlsContext *context, const uint8_t *message,
 /**
  * @brief Verify EdDSA signature
  * @param[in] context Pointer to the TLS context
- * @param[in] message Message whose signature is to be verified
- * @param[in] messageLen Length of the message, in bytes
+ * @param[in] messageChunks Collection of chunks representing the message
+ *   whose signature is to be verified
  * @param[in] signature Signature to be verified
  * @param[in] signatureLen Length of the signature to be verified
  * @return Error code
  **/
 
-error_t tlsVerifyEddsaSignature(TlsContext *context, const uint8_t *message,
-   size_t messageLen, const uint8_t *signature, size_t signatureLen)
+error_t tlsVerifyEddsaSignature(TlsContext *context,
+   const EddsaMessageChunk *messageChunks, const uint8_t *signature,
+   size_t signatureLen)
 {
 #if (TLS_EDDSA_SIGN_SUPPORT == ENABLED)
    error_t error;
@@ -1581,8 +1583,8 @@ error_t tlsVerifyEddsaSignature(TlsContext *context, const uint8_t *message,
          if(!error)
          {
             //Verify Ed25519 signature (PureEdDSA mode)
-            error = ed25519VerifySignature(publicKey, message, messageLen,
-               NULL, 0, 0, signature);
+            error = ed25519VerifySignatureEx(publicKey, messageChunks, NULL,
+               0, 0, signature);
          }
       }
       else
@@ -1610,8 +1612,8 @@ error_t tlsVerifyEddsaSignature(TlsContext *context, const uint8_t *message,
          if(!error)
          {
             //Verify Ed448 signature (PureEdDSA mode)
-            error = ed448VerifySignature(publicKey, message, messageLen,
-               NULL, 0, 0, signature);
+            error = ed448VerifySignatureEx(publicKey, messageChunks, NULL,
+               0, 0, signature);
          }
       }
       else

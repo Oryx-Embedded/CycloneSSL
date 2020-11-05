@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.8
+ * @version 2.0.0
  **/
 
 #ifndef _TLS_SIGNATURE_H
@@ -73,11 +73,13 @@ error_t tlsGenerateEcdsaSignature(TlsContext *context, const uint8_t *digest,
 error_t tlsVerifyEcdsaSignature(TlsContext *context, const uint8_t *digest,
    size_t digestLen, const uint8_t *signature, size_t signatureLen);
 
-error_t tlsGenerateEddsaSignature(TlsContext *context, const uint8_t *message,
-   size_t messageLen, uint8_t *signature, size_t *signatureLen);
+error_t tlsGenerateEddsaSignature(TlsContext *context,
+   const EddsaMessageChunk *messageChunks, uint8_t *signature,
+   size_t *signatureLen);
 
-error_t tlsVerifyEddsaSignature(TlsContext *context, const uint8_t *message,
-   size_t messageLen, const uint8_t *signature, size_t signatureLen);
+error_t tlsVerifyEddsaSignature(TlsContext *context,
+   const EddsaMessageChunk *messageChunks, const uint8_t *signature,
+   size_t signatureLen);
 
 //C++ guard
 #ifdef __cplusplus

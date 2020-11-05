@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.8
+ * @version 2.0.0
  **/
 
 //Switch to the appropriate trace level
@@ -336,7 +336,8 @@ error_t tlsSetConnectionEnd(TlsContext *context, TlsConnectionEnd entity)
  * @return Error code
  **/
 
-error_t tlsSetPrng(TlsContext *context, const PrngAlgo *prngAlgo, void *prngContext)
+error_t tlsSetPrng(TlsContext *context, const PrngAlgo *prngAlgo,
+   void *prngContext)
 {
    //Invalid TLS context?
    if(context == NULL)
@@ -1280,7 +1281,6 @@ error_t tlsSetCertificateVerifyCallback(TlsContext *context,
 
    //Save certificate verification callback
    context->certVerifyCallback = certVerifyCallback;
-
    //This opaque pointer will be directly passed to the callback function
    context->certVerifyParam = param;
 

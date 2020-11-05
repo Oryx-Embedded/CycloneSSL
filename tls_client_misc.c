@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.8
+ * @version 2.0.0
  **/
 
 //Switch to the appropriate trace level
@@ -1218,55 +1218,44 @@ error_t tls12VerifyServerKeySignature(TlsContext *context,
    if(signature->algorithm.signature == TLS_SIGN_ALGO_ED25519 ||
       signature->algorithm.signature == TLS_SIGN_ALGO_ED448)
    {
-      uint8_t *buffer;
+      EddsaMessageChunk messageChunks[4];
 
-      //A temporary buffer is needed to concatenate ClientHello.random +
-      //ServerHello.random + ServerKeyExchange.params
-      buffer = tlsAllocMem(paramsLen + 2 * TLS_RANDOM_SIZE);
-
-      //Successful memory allocation?
-      if(buffer != NULL)
-      {
-         //Data to be verified is run through the EdDSA algorithm with no
-         //hashing
-         osMemcpy(buffer, context->clientRandom, TLS_RANDOM_SIZE);
-         osMemcpy(buffer + 32, context->serverRandom, TLS_RANDOM_SIZE);
-         osMemcpy(buffer + 64, params, paramsLen);
+      //Data to be verified is run through the EdDSA algorithm without
+      //pre-hashing
+      messageChunks[0].buffer = context->clientRandom;
+      messageChunks[0].length = TLS_RANDOM_SIZE;
+      messageChunks[1].buffer = context->serverRandom;
+      messageChunks[1].length = TLS_RANDOM_SIZE;
+      messageChunks[2].buffer = params;
+      messageChunks[2].length = paramsLen;
+      messageChunks[3].buffer = NULL;
+      messageChunks[3].length = 0;
 
 #if (TLS_ED25519_SUPPORT == ENABLED)
-         //Ed25519 signature scheme?
-         if(signature->algorithm.signature == TLS_SIGN_ALGO_ED25519 &&
-            context->peerCertType == TLS_CERT_ED25519_SIGN)
-         {
-            //EdDSA signature verification
-            error = tlsVerifyEddsaSignature(context, buffer, paramsLen + 64,
-               signature->value, ntohs(signature->length));
-         }
-         else
-#endif
-#if (TLS_ED448_SUPPORT == ENABLED)
-         //Ed448 signature scheme?
-         if(signature->algorithm.signature == TLS_SIGN_ALGO_ED448 &&
-            context->peerCertType == TLS_CERT_ED448_SIGN)
-         {
-            //EdDSA signature verification
-            error = tlsVerifyEddsaSignature(context, buffer, paramsLen + 64,
-               signature->value, ntohs(signature->length));
-         }
-         else
-#endif
-         //Invalid signature scheme?
-         {
-            error = ERROR_INVALID_SIGNATURE;
-         }
-
-         //Release previously allocated memory
-         tlsFreeMem(buffer);
+      //Ed25519 signature scheme?
+      if(signature->algorithm.signature == TLS_SIGN_ALGO_ED25519 &&
+         context->peerCertType == TLS_CERT_ED25519_SIGN)
+      {
+         //EdDSA signature verification
+         error = tlsVerifyEddsaSignature(context, messageChunks,
+            signature->value, ntohs(signature->length));
       }
       else
+#endif
+#if (TLS_ED448_SUPPORT == ENABLED)
+      //Ed448 signature scheme?
+      if(signature->algorithm.signature == TLS_SIGN_ALGO_ED448 &&
+         context->peerCertType == TLS_CERT_ED448_SIGN)
       {
-         //Failed to allocate memory
-         error = ERROR_OUT_OF_MEMORY;
+         //EdDSA signature verification
+         error = tlsVerifyEddsaSignature(context, messageChunks,
+            signature->value, ntohs(signature->length));
+      }
+      else
+#endif
+      //Invalid signature scheme?
+      {
+         error = ERROR_INVALID_SIGNATURE;
       }
    }
    else

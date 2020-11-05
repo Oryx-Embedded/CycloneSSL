@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.8
+ * @version 2.0.0
  **/
 
 //Switch to the appropriate trace level
@@ -722,62 +722,51 @@ error_t tls12GenerateServerKeySignature(TlsContext *context,
    if(context->signAlgo == TLS_SIGN_ALGO_ED25519 ||
       context->signAlgo == TLS_SIGN_ALGO_ED448)
    {
-      uint8_t *buffer;
+      EddsaMessageChunk messageChunks[4];
 
-      //A temporary buffer is needed to concatenate ClientHello.random +
-      //ServerHello.random + ServerKeyExchange.params
-      buffer = tlsAllocMem(paramsLen + 2 * TLS_RANDOM_SIZE);
-
-      //Successful memory allocation?
-      if(buffer != NULL)
-      {
-         //Data to be verified is run through the EdDSA algorithm with no
-         //hashing
-         osMemcpy(buffer, context->clientRandom, TLS_RANDOM_SIZE);
-         osMemcpy(buffer + 32, context->serverRandom, TLS_RANDOM_SIZE);
-         osMemcpy(buffer + 64, params, paramsLen);
+      //Data to be signed is run through the EdDSA algorithm without
+      //pre-hashing
+      messageChunks[0].buffer = context->clientRandom;
+      messageChunks[0].length = TLS_RANDOM_SIZE;
+      messageChunks[1].buffer = context->serverRandom;
+      messageChunks[1].length = TLS_RANDOM_SIZE;
+      messageChunks[2].buffer = params;
+      messageChunks[2].length = paramsLen;
+      messageChunks[3].buffer = NULL;
+      messageChunks[3].length = 0;
 
 #if (TLS_ED25519_SUPPORT == ENABLED)
-         //Ed25519 signature scheme?
-         if(context->signAlgo == TLS_SIGN_ALGO_ED25519)
-         {
-            //The hashing is intrinsic to the signature algorithm
-            signature->algorithm.signature = TLS_SIGN_ALGO_ED25519;
-            signature->algorithm.hash = TLS_HASH_ALGO_INTRINSIC;
+      //Ed25519 signature scheme?
+      if(context->signAlgo == TLS_SIGN_ALGO_ED25519)
+      {
+         //The hashing is intrinsic to the signature algorithm
+         signature->algorithm.signature = TLS_SIGN_ALGO_ED25519;
+         signature->algorithm.hash = TLS_HASH_ALGO_INTRINSIC;
 
-            //Sign the key exchange parameters using EdDSA
-            error = tlsGenerateEddsaSignature(context, buffer, paramsLen + 64,
-               signature->value, written);
-         }
-         else
-#endif
-#if (TLS_ED448_SUPPORT == ENABLED)
-         //Ed448 signature scheme?
-         if(context->signAlgo == TLS_SIGN_ALGO_ED448)
-         {
-            //The hashing is intrinsic to the signature algorithm
-            signature->algorithm.signature = TLS_SIGN_ALGO_ED448;
-            signature->algorithm.hash = TLS_HASH_ALGO_INTRINSIC;
-
-            //Sign the key exchange parameters using EdDSA
-            error = tlsGenerateEddsaSignature(context, buffer, paramsLen + 64,
-               signature->value, written);
-         }
-         else
-#endif
-         //Invalid signature scheme?
-         {
-            //Report an error
-            error = ERROR_UNSUPPORTED_SIGNATURE_ALGO;
-         }
-
-         //Release previously allocated memory
-         tlsFreeMem(buffer);
+         //Sign the key exchange parameters using EdDSA
+         error = tlsGenerateEddsaSignature(context, messageChunks,
+            signature->value, written);
       }
       else
+#endif
+#if (TLS_ED448_SUPPORT == ENABLED)
+      //Ed448 signature scheme?
+      if(context->signAlgo == TLS_SIGN_ALGO_ED448)
       {
-         //Failed to allocate memory
-         error = ERROR_OUT_OF_MEMORY;
+         //The hashing is intrinsic to the signature algorithm
+         signature->algorithm.signature = TLS_SIGN_ALGO_ED448;
+         signature->algorithm.hash = TLS_HASH_ALGO_INTRINSIC;
+
+         //Sign the key exchange parameters using EdDSA
+         error = tlsGenerateEddsaSignature(context, messageChunks,
+            signature->value, written);
+      }
+      else
+#endif
+      //Invalid signature scheme?
+      {
+         //Report an error
+         error = ERROR_UNSUPPORTED_SIGNATURE_ALGO;
       }
    }
    else

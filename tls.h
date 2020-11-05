@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.8
+ * @version 2.0.0
  **/
 
 #ifndef _TLS_H
@@ -83,13 +83,13 @@ struct _TlsEncryptionEngine;
 #endif
 
 //Version string
-#define CYCLONE_SSL_VERSION_STRING "1.9.8"
+#define CYCLONE_SSL_VERSION_STRING "2.0.0"
 //Major version
-#define CYCLONE_SSL_MAJOR_VERSION 1
+#define CYCLONE_SSL_MAJOR_VERSION 2
 //Minor version
-#define CYCLONE_SSL_MINOR_VERSION 9
+#define CYCLONE_SSL_MINOR_VERSION 0
 //Revision number
-#define CYCLONE_SSL_REV_NUMBER 8
+#define CYCLONE_SSL_REV_NUMBER 0
 
 //TLS version numbers
 #define SSL_VERSION_3_0 0x0300
@@ -1256,6 +1256,7 @@ typedef enum
    TLS_GROUP_GC512A                = 38,    //RFC draft
    TLS_GROUP_GC512B                = 39,    //RFC draft
    TLS_GROUP_GC512C                = 40,    //RFC draft
+   TLS_GROUP_SM2                   = 41,    //RFC draft
    TLS_GROUP_FFDHE2048             = 256,   //RFC 7919
    TLS_GROUP_FFDHE3072             = 257,   //RFC 7919
    TLS_GROUP_FFDHE4096             = 258,   //RFC 7919
@@ -2308,7 +2309,9 @@ error_t tlsSetTransportProtocol(TlsContext *context,
    TlsTransportProtocol transportProtocol);
 
 error_t tlsSetConnectionEnd(TlsContext *context, TlsConnectionEnd entity);
-error_t tlsSetPrng(TlsContext *context, const PrngAlgo *prngAlgo, void *prngContext);
+
+error_t tlsSetPrng(TlsContext *context, const PrngAlgo *prngAlgo,
+   void *prngContext);
 
 error_t tlsSetServerName(TlsContext *context, const char_t *serverName);
 const char_t *tlsGetServerName(TlsContext *context);

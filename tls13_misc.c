@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.8
+ * @version 2.0.0
  **/
 
 //Switch to the appropriate trace level
@@ -656,8 +656,17 @@ error_t tls13GenerateSignature(TlsContext *context, uint8_t *p,
          //Check status code
          if(!error)
          {
-            //Generate a signature in PureEdDSA mode, without pre-hashing
-            error = tlsGenerateEddsaSignature(context, buffer, n,
+            EddsaMessageChunk messageChunks[2];
+
+            //Data to be signed is run through the EdDSA algorithm without
+            //pre-hashing
+            messageChunks[0].buffer = buffer;
+            messageChunks[0].length = n;
+            messageChunks[1].buffer = NULL;
+            messageChunks[1].length = 0;
+
+            //Generate a signature in PureEdDSA mode
+            error = tlsGenerateEddsaSignature(context, messageChunks,
                signature->value, length);
          }
       }
@@ -882,8 +891,17 @@ error_t tls13VerifySignature(TlsContext *context, const uint8_t *p,
          //Enforce the type of the certificate provided by the peer
          if(context->peerCertType == TLS_CERT_ED25519_SIGN)
          {
+            EddsaMessageChunk messageChunks[2];
+
+            //Data to be verified is run through the EdDSA algorithm without
+            //pre-hashing
+            messageChunks[0].buffer = buffer;
+            messageChunks[0].length = n;
+            messageChunks[1].buffer = NULL;
+            messageChunks[1].length = 0;
+
             //Verify EdDSA signature (PureEdDSA mode)
-            error = tlsVerifyEddsaSignature(context, buffer, n,
+            error = tlsVerifyEddsaSignature(context, messageChunks,
                signature->value, ntohs(signature->length));
          }
          else
@@ -901,8 +919,17 @@ error_t tls13VerifySignature(TlsContext *context, const uint8_t *p,
          //Enforce the type of the certificate provided by the peer
          if(context->peerCertType == TLS_CERT_ED448_SIGN)
          {
+            EddsaMessageChunk messageChunks[2];
+
+            //Data to be verified is run through the EdDSA algorithm without
+            //pre-hashing
+            messageChunks[0].buffer = buffer;
+            messageChunks[0].length = n;
+            messageChunks[1].buffer = NULL;
+            messageChunks[1].length = 0;
+
             //Verify EdDSA signature (PureEdDSA mode)
-            error = tlsVerifyEddsaSignature(context, buffer, n,
+            error = tlsVerifyEddsaSignature(context, messageChunks,
                signature->value, ntohs(signature->length));
          }
          else

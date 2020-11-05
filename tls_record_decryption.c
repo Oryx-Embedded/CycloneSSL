@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 1.9.8
+ * @version 2.0.0
  **/
 
 //Switch to the appropriate trace level
@@ -886,9 +886,13 @@ uint32_t tlsExtractMac(TlsEncryptionEngine *decryptionEngine,
 
    //Calculate the minimum possible length of the plaintext data
    if(maxDataLen > (macSize + 255))
+   {
       minDataLen = maxDataLen - macSize - 255;
+   }
    else
+   {
       minDataLen = 0;
+   }
 
    //Check whether the length of the payload is correct
    bad = CRYPTO_TEST_LT_32(dataLen, macSize);
@@ -913,7 +917,9 @@ uint32_t tlsExtractMac(TlsEncryptionEngine *decryptionEngine,
 
       //Increment index and wrap around if necessary
       if(++j >= macSize)
+      {
          j = 0;
+      }
    }
 
    //Debug message
@@ -934,7 +940,9 @@ uint32_t tlsExtractMac(TlsEncryptionEngine *decryptionEngine,
 
          //Increment index and wrap around if necessary
          if(++j >= macSize)
+         {
             j = 0;
+         }
       }
 
       //Copy the value of the rotated MAC
