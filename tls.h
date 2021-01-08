@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2020 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2021 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.0.0
+ * @version 2.0.2
  **/
 
 #ifndef _TLS_H
@@ -83,13 +83,13 @@ struct _TlsEncryptionEngine;
 #endif
 
 //Version string
-#define CYCLONE_SSL_VERSION_STRING "2.0.0"
+#define CYCLONE_SSL_VERSION_STRING "2.0.2"
 //Major version
 #define CYCLONE_SSL_MAJOR_VERSION 2
 //Minor version
 #define CYCLONE_SSL_MINOR_VERSION 0
 //Revision number
-#define CYCLONE_SSL_REV_NUMBER 0
+#define CYCLONE_SSL_REV_NUMBER 2
 
 //TLS version numbers
 #define SSL_VERSION_3_0 0x0300
@@ -122,7 +122,7 @@ struct _TlsEncryptionEngine;
 //Minimum TLS version that can be negotiated
 #ifndef TLS_MIN_VERSION
    #define TLS_MIN_VERSION TLS_VERSION_1_0
-#elif (TLS_MIN_VERSION < SSL_VERSION_3_0)
+#elif (TLS_MIN_VERSION < TLS_VERSION_1_0)
    #error TLS_MIN_VERSION parameter is not valid
 #endif
 
