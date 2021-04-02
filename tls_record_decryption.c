@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.0.2
+ * @version 2.0.4
  **/
 
 //Switch to the appropriate trace level
@@ -641,8 +641,7 @@ uint32_t tlsVerifyPadding(const uint8_t *data, size_t dataLen,
    //Make sure the padding length is valid
    bad = CRYPTO_TEST_GTE_32(n, dataLen);
 
-   //Each byte in the padding data must be filled with the padding
-   //length value
+   //Each byte in the padding data must be filled with the padding length value
    for(i = 1; i < dataLen && i < 256; i++)
    {
       //Read current byte

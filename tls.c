@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.0.2
+ * @version 2.0.4
  **/
 
 //Switch to the appropriate trace level
@@ -1933,7 +1933,7 @@ error_t tlsRead(TlsContext *context, void *data,
 
                   //If the TLS_FLAG_PEEK flag is set, the data is copied into
                   //the buffer but is not removed from the receive queue
-                  if(!(flags & TLS_FLAG_PEEK))
+                  if((flags & TLS_FLAG_PEEK) == 0)
                   {
                      //Flush receive buffer
                      context->rxBufferPos = 0;
@@ -1952,7 +1952,7 @@ error_t tlsRead(TlsContext *context, void *data,
 
                   //The TLS_FLAG_BREAK_CHAR flag causes the function to stop reading
                   //data as soon as the specified break character is encountered
-                  if(flags & TLS_FLAG_BREAK_CHAR)
+                  if((flags & TLS_FLAG_BREAK_CHAR) != 0)
                   {
                      //Retrieve the break character code
                      char_t c = LSB(flags);
@@ -1990,7 +1990,7 @@ error_t tlsRead(TlsContext *context, void *data,
 
                      //The TLS_FLAG_WAIT_ALL flag causes the function to return
                      //only when the requested number of bytes have been read
-                     if(!(flags & TLS_FLAG_WAIT_ALL))
+                     if((flags & TLS_FLAG_WAIT_ALL) == 0)
                         break;
                   }
 
