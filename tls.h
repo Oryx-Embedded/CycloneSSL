@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.0.4
+ * @version 2.1.0
  **/
 
 #ifndef _TLS_H
@@ -83,13 +83,13 @@ struct _TlsEncryptionEngine;
 #endif
 
 //Version string
-#define CYCLONE_SSL_VERSION_STRING "2.0.4"
+#define CYCLONE_SSL_VERSION_STRING "2.1.0"
 //Major version
 #define CYCLONE_SSL_MAJOR_VERSION 2
 //Minor version
-#define CYCLONE_SSL_MINOR_VERSION 0
+#define CYCLONE_SSL_MINOR_VERSION 1
 //Revision number
-#define CYCLONE_SSL_REV_NUMBER 4
+#define CYCLONE_SSL_REV_NUMBER 0
 
 //TLS version numbers
 #define SSL_VERSION_3_0 0x0300
@@ -121,14 +121,14 @@ struct _TlsEncryptionEngine;
 
 //Minimum TLS version that can be negotiated
 #ifndef TLS_MIN_VERSION
-   #define TLS_MIN_VERSION TLS_VERSION_1_0
+   #define TLS_MIN_VERSION TLS_VERSION_1_2
 #elif (TLS_MIN_VERSION < TLS_VERSION_1_0)
    #error TLS_MIN_VERSION parameter is not valid
 #endif
 
 //Maximum TLS version that can be negotiated
 #ifndef TLS_MAX_VERSION
-   #define TLS_MAX_VERSION TLS_VERSION_1_2
+   #define TLS_MAX_VERSION TLS_VERSION_1_3
 #elif (TLS_MAX_VERSION > TLS_VERSION_1_3 || TLS_MAX_VERSION < TLS_MIN_VERSION)
    #error TLS_MAX_VERSION parameter is not valid
 #endif
@@ -441,18 +441,46 @@ struct _TlsEncryptionEngine;
    #error TLS_3DES_SUPPORT parameter is not valid
 #endif
 
-//AES cipher support
-#ifndef TLS_AES_SUPPORT
-   #define TLS_AES_SUPPORT ENABLED
-#elif (TLS_AES_SUPPORT != ENABLED && TLS_AES_SUPPORT != DISABLED)
-   #error TLS_AES_SUPPORT parameter is not valid
+//AES 128-bit cipher support
+#ifndef TLS_AES_128_SUPPORT
+   #define TLS_AES_128_SUPPORT ENABLED
+#elif (TLS_AES_128_SUPPORT != ENABLED && TLS_AES_128_SUPPORT != DISABLED)
+   #error TLS_AES_128_SUPPORT parameter is not valid
 #endif
 
-//Camellia cipher support
-#ifndef TLS_CAMELLIA_SUPPORT
-   #define TLS_CAMELLIA_SUPPORT DISABLED
-#elif (TLS_CAMELLIA_SUPPORT != ENABLED && TLS_CAMELLIA_SUPPORT != DISABLED)
-   #error TLS_CAMELLIA_SUPPORT parameter is not valid
+//AES 256-bit cipher support
+#ifndef TLS_AES_256_SUPPORT
+   #define TLS_AES_256_SUPPORT ENABLED
+#elif (TLS_AES_256_SUPPORT != ENABLED && TLS_AES_256_SUPPORT != DISABLED)
+   #error TLS_AES_256_SUPPORT parameter is not valid
+#endif
+
+//Camellia 128-bit cipher support
+#ifndef TLS_CAMELLIA_128_SUPPORT
+   #define TLS_CAMELLIA_128_SUPPORT DISABLED
+#elif (TLS_CAMELLIA_128_SUPPORT != ENABLED && TLS_CAMELLIA_128_SUPPORT != DISABLED)
+   #error TLS_CAMELLIA_128_SUPPORT parameter is not valid
+#endif
+
+//Camellia 256-bit cipher support
+#ifndef TLS_CAMELLIA_256_SUPPORT
+   #define TLS_CAMELLIA_256_SUPPORT DISABLED
+#elif (TLS_CAMELLIA_256_SUPPORT != ENABLED && TLS_CAMELLIA_256_SUPPORT != DISABLED)
+   #error TLS_CAMELLIA_256_SUPPORT parameter is not valid
+#endif
+
+//ARIA 128-bit cipher support
+#ifndef TLS_ARIA_128_SUPPORT
+   #define TLS_ARIA_128_SUPPORT DISABLED
+#elif (TLS_ARIA_128_SUPPORT != ENABLED && TLS_ARIA_128_SUPPORT != DISABLED)
+   #error TLS_ARIA_128_SUPPORT parameter is not valid
+#endif
+
+//ARIA 256-bit cipher support
+#ifndef TLS_ARIA_256_SUPPORT
+   #define TLS_ARIA_256_SUPPORT DISABLED
+#elif (TLS_ARIA_256_SUPPORT != ENABLED && TLS_ARIA_256_SUPPORT != DISABLED)
+   #error TLS_ARIA_256_SUPPORT parameter is not valid
 #endif
 
 //SEED cipher support
@@ -460,13 +488,6 @@ struct _TlsEncryptionEngine;
    #define TLS_SEED_SUPPORT DISABLED
 #elif (TLS_SEED_SUPPORT != ENABLED && TLS_SEED_SUPPORT != DISABLED)
    #error TLS_SEED_SUPPORT parameter is not valid
-#endif
-
-//ARIA cipher support
-#ifndef TLS_ARIA_SUPPORT
-   #define TLS_ARIA_SUPPORT DISABLED
-#elif (TLS_ARIA_SUPPORT != ENABLED && TLS_ARIA_SUPPORT != DISABLED)
-   #error TLS_ARIA_SUPPORT parameter is not valid
 #endif
 
 //MD5 hash support (insecure)
@@ -774,7 +795,7 @@ struct _TlsEncryptionEngine;
 #endif
 
 //Support for Diffie-Hellman?
-#if ((TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2) && \
+#if ((TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2) && \
    (TLS_DH_ANON_KE_SUPPORT == ENABLED || TLS_DHE_RSA_KE_SUPPORT == ENABLED || \
    TLS_DHE_DSS_KE_SUPPORT == ENABLED || TLS_DHE_PSK_KE_SUPPORT == ENABLED))
    #define TLS_DH_SUPPORT ENABLED
@@ -786,7 +807,7 @@ struct _TlsEncryptionEngine;
 #endif
 
 //Support for ECDH?
-#if ((TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2) && \
+#if ((TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2) && \
    (TLS_ECDH_ANON_KE_SUPPORT == ENABLED || TLS_ECDHE_RSA_KE_SUPPORT == ENABLED || \
    TLS_ECDHE_ECDSA_KE_SUPPORT == ENABLED || TLS_ECDHE_PSK_KE_SUPPORT == ENABLED))
    #define TLS_ECDH_SUPPORT ENABLED
@@ -798,7 +819,7 @@ struct _TlsEncryptionEngine;
 #endif
 
 //Support for RSA?
-#if ((TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2) && \
+#if ((TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2) && \
    (TLS_RSA_SIGN_SUPPORT == ENABLED || TLS_RSA_PSS_SIGN_SUPPORT == ENABLED || \
    TLS_RSA_KE_SUPPORT == ENABLED || TLS_DHE_RSA_KE_SUPPORT == ENABLED || \
    TLS_ECDHE_RSA_KE_SUPPORT == ENABLED || TLS_RSA_PSK_KE_SUPPORT == ENABLED))
@@ -811,7 +832,7 @@ struct _TlsEncryptionEngine;
 #endif
 
 //Support for PSK?
-#if ((TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2) && \
+#if ((TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2) && \
    (TLS_PSK_KE_SUPPORT == ENABLED || TLS_RSA_PSK_KE_SUPPORT == ENABLED || \
    TLS_DHE_PSK_KE_SUPPORT == ENABLED || TLS_ECDHE_PSK_KE_SUPPORT == ENABLED))
    #define TLS_PSK_SUPPORT ENABLED
@@ -1562,7 +1583,7 @@ typedef __start_packed struct
 
 
 /**
- * @brief Digitally-signed element (SSL 3.0, TLS 1.0 and TLS 1.1)
+ * @brief Digitally-signed element (TLS 1.0 and TLS 1.1)
  **/
 
 typedef __start_packed struct
@@ -1869,7 +1890,7 @@ typedef struct
    uint16_t cipherSuite;        ///<Cipher suite identifier
    systime_t timestamp;         ///<Time stamp to manage entry lifetime
    uint8_t secret[48];          ///<Master secret (TLS 1.2) or ticket PSK (TLS 1.3)
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    uint8_t sessionId[32];       ///<Session identifier
    size_t sessionIdLen;         ///<Length of the session identifier
    bool_t extendedMasterSecret; ///<Extended master secret computation
@@ -2110,15 +2131,15 @@ struct _TlsContext
    TlsEncryptionEngine encryptionEngine;     ///<Encryption engine
    TlsEncryptionEngine decryptionEngine;     ///<Decryption engine
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_0)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_0)
    size_t txLastRecordLen;                   ///<Length of the previous TLS record
 #endif
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
    Md5Context *transcriptMd5Context;         ///<MD5 context used to compute verify data
 #endif
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    uint8_t masterSecret[TLS_MASTER_SECRET_SIZE]; ///<Master secret
    uint8_t keyBlock[192];                    ///<Key material
    HmacContext hmacContext;                  ///<HMAC context

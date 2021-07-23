@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.0.4
+ * @version 2.1.0
  **/
 
 //Switch to the appropriate trace level
@@ -1784,7 +1784,7 @@ error_t tlsWrite(TlsContext *context, const void *data,
             n = MIN(n, context->recordSizeLimit);
 #endif
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_0)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_0)
             //The 1/n-1 record splitting technique is a workaround for the
             //BEAST attack
             if(context->version <= TLS_VERSION_1_0 &&
@@ -1803,7 +1803,7 @@ error_t tlsWrite(TlsContext *context, const void *data,
          //Check status code
          if(!error)
          {
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_0)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_0)
             //Save the length of the TLS record
             context->txLastRecordLen = n;
 #endif
@@ -2490,9 +2490,9 @@ error_t tlsSaveSessionState(const TlsContext *context,
    //Release previous session state
    tlsFreeSessionState(session);
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
-   //SSL 3.0, TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
-   if(context->version >= SSL_VERSION_3_0 && context->version <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
+   if(context->version >= TLS_VERSION_1_0 && context->version <= TLS_VERSION_1_2)
    {
       //Valid session?
       if(context->ticketLen > 0)
@@ -2554,9 +2554,9 @@ error_t tlsRestoreSessionState(TlsContext *context,
    if(context == NULL || session == NULL)
       return ERROR_INVALID_PARAMETER;
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
-   //SSL 3.0, TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
-   if(session->version >= SSL_VERSION_3_0 && session->version <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
+   if(session->version >= TLS_VERSION_1_0 && session->version <= TLS_VERSION_1_2)
    {
       //Valid session?
       if(session->ticketLen > 0)

@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.0.4
+ * @version 2.1.0
  **/
 
 //Switch to the appropriate trace level
@@ -38,7 +38,6 @@
 #include "tls_key_material.h"
 #include "tls_transcript_hash.h"
 #include "tls13_key_material.h"
-#include "ssl_misc.h"
 #include "debug.h"
 
 //Check TLS library configuration
@@ -53,7 +52,7 @@
 
 error_t tlsInitTranscriptHash(TlsContext *context)
 {
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
    //MD5 context already instantiated?
    if(context->transcriptMd5Context != NULL)
    {
@@ -62,7 +61,7 @@ error_t tlsInitTranscriptHash(TlsContext *context)
    }
 #endif
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //SHA-1 context already instantiated?
    if(context->transcriptSha1Context != NULL)
    {
@@ -80,8 +79,8 @@ error_t tlsInitTranscriptHash(TlsContext *context)
    }
 #endif
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
-   //SSL 3.0, TLS 1.0 or TLS 1.1 currently selected?
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
+   //TLS 1.0 or TLS 1.1 currently selected?
    if(context->version <= TLS_VERSION_1_1)
    {
       //Allocate MD5 context
@@ -95,8 +94,8 @@ error_t tlsInitTranscriptHash(TlsContext *context)
    }
 #endif
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
-   //SSL 3.0, TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
    if(context->version <= TLS_VERSION_1_2)
    {
       //Allocate SHA-1 context
@@ -195,8 +194,8 @@ error_t tlsInitTranscriptHash(TlsContext *context)
 void tlsUpdateTranscriptHash(TlsContext *context, const void *data,
    size_t length)
 {
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
-   //SSL 3.0, TLS 1.0 or TLS 1.1 currently selected?
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
+   //TLS 1.0 or TLS 1.1 currently selected?
    if(context->version <= TLS_VERSION_1_1)
    {
       //Valid MD5 context?
@@ -208,8 +207,8 @@ void tlsUpdateTranscriptHash(TlsContext *context, const void *data,
    }
 #endif
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
-   //SSL 3.0, TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
    if(context->version <= TLS_VERSION_1_2)
    {
       //Valid SHA-1 context?
@@ -270,57 +269,14 @@ error_t tlsFinalizeTranscriptHash(TlsContext *context, const HashAlgo *hash,
       //The original hash context must be preserved
       osMemcpy(tempHashContext, hashContext, hash->contextSize);
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= SSL_VERSION_3_0)
-      //SSL 3.0 currently selected?
-      if(context->version == SSL_VERSION_3_0)
-      {
-         size_t labelLen;
-         size_t padLen;
-
-         //Retrieve the length of the label
-         labelLen = osStrlen(label);
-
-         //The pad character is repeated 48 times for MD5 or 40 times for SHA-1
-         padLen = (hash == MD5_HASH_ALGO) ? 48 : 40;
-
-         //hash(handshakeMessages + label + masterSecret + pad1)
-         hash->update(tempHashContext, label, labelLen);
-         hash->update(tempHashContext, context->masterSecret, TLS_MASTER_SECRET_SIZE);
-         hash->update(tempHashContext, sslPad1, padLen);
-         hash->final(tempHashContext, output);
-
-         //hash(masterSecret + pad2 + hash(handshakeMessages + label +
-         //masterSecret + pad1))
-         hash->init(tempHashContext);
-         hash->update(tempHashContext, context->masterSecret, TLS_MASTER_SECRET_SIZE);
-         hash->update(tempHashContext, sslPad2, padLen);
-         hash->update(tempHashContext, output, hash->digestSize);
-         hash->final(tempHashContext, output);
-
-         //Successful processing
-         error = NO_ERROR;
-      }
-      else
-#endif
-#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
-      //TLS 1.0, TLS 1.1, TLS 1.2 or TLS 1.3 currently selected?
-      if(context->version >= TLS_VERSION_1_0 && context->version <= TLS_VERSION_1_3)
-      {
-         //Compute hash(handshakeMessages)
-         hash->final(tempHashContext, output);
-         //Successful processing
-         error = NO_ERROR;
-      }
-      else
-#endif
-      //Invalid TLS version?
-      {
-         //Report an error
-         error = ERROR_INVALID_VERSION;
-      }
+      //Compute hash(handshakeMessages)
+      hash->final(tempHashContext, output);
 
       //Release previously allocated resources
       tlsFreeMem(tempHashContext);
+
+      //Successful processing
+      error = NO_ERROR;
    }
    else
    {
@@ -340,7 +296,7 @@ error_t tlsFinalizeTranscriptHash(TlsContext *context, const HashAlgo *hash,
 
 void tlsFreeTranscriptHash(TlsContext *context)
 {
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
    //Release MD5 hash context
    if(context->transcriptMd5Context != NULL)
    {
@@ -350,7 +306,7 @@ void tlsFreeTranscriptHash(TlsContext *context)
    }
 #endif
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //Release SHA-1 hash context
    if(context->transcriptSha1Context != NULL)
    {
@@ -386,34 +342,6 @@ error_t tlsComputeVerifyData(TlsContext *context, TlsConnectionEnd entity,
 {
    error_t error;
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= SSL_VERSION_3_0)
-   //SSL 3.0 currently selected?
-   if(context->version == SSL_VERSION_3_0)
-   {
-      const char_t *label;
-
-      //Check whether the computation is performed at client or server side
-      if(entity == TLS_CONNECTION_END_CLIENT)
-         label = "CLNT";
-      else
-         label = "SRVR";
-
-      //Compute MD5(masterSecret + pad2 + MD5(handshakeMessages + label +
-      //masterSecret + pad1))
-      error = tlsFinalizeTranscriptHash(context, MD5_HASH_ALGO,
-         context->transcriptMd5Context, label, verifyData);
-
-      //Check status code
-      if(!error)
-      {
-         //Compute SHA(masterSecret + pad2 + SHA(handshakeMessages + label +
-         //masterSecret + pad1))
-         error = tlsFinalizeTranscriptHash(context, SHA1_HASH_ALGO,
-            context->transcriptSha1Context, label, verifyData + MD5_DIGEST_SIZE);
-      }
-   }
-   else
-#endif
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
    //TLS 1.0 or 1.1 currently selected?
    if(context->version == TLS_VERSION_1_0 || context->version == TLS_VERSION_1_1)

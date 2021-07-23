@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.0.4
+ * @version 2.1.0
  **/
 
 #ifndef _TLS_LEGACY_H
@@ -103,5 +103,20 @@
 #define TlsSession TlsSessionState
 #define tlsSaveSession tlsSaveSessionState
 #define tlsRestoreSession tlsRestoreSessionState
+
+#ifdef TLS_AES_SUPPORT
+   #define TLS_AES_128_SUPPORT TLS_AES_SUPPORT
+   #define TLS_AES_256_SUPPORT TLS_AES_SUPPORT
+#endif
+
+#ifdef TLS_CAMELLIA_SUPPORT
+   #define TLS_CAMELLIA_128_SUPPORT TLS_CAMELLIA_SUPPORT
+   #define TLS_CAMELLIA_256_SUPPORT TLS_CAMELLIA_SUPPORT
+#endif
+
+#ifdef TLS_ARIA_SUPPORT
+   #define TLS_ARIA_128_SUPPORT TLS_ARIA_SUPPORT
+   #define TLS_ARIA_256_SUPPORT TLS_ARIA_SUPPORT
+#endif
 
 #endif

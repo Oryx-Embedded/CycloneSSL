@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.0.4
+ * @version 2.1.0
  **/
 
 //Switch to the appropriate trace level
@@ -111,7 +111,7 @@ error_t tlsFormatServerKeyParams(TlsContext *context,
 {
    error_t error;
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //Initialize status code
    error = NO_ERROR;
 
@@ -313,7 +313,7 @@ error_t tlsFormatServerKeyParams(TlsContext *context,
 
 
 /**
- * @brief Sign server's key exchange parameters (SSL 3.0, TLS 1.0 and TLS 1.1)
+ * @brief Sign server's key exchange parameters (TLS 1.0 and TLS 1.1)
  * @param[in] context Pointer to the TLS context
  * @param[in] signature Output stream where to write the digital signature
  * @param[in] params Pointer to the server's key exchange parameters
@@ -328,7 +328,7 @@ error_t tlsGenerateServerKeySignature(TlsContext *context,
 {
    error_t error;
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
    //Initialize status code
    error = NO_ERROR;
 
@@ -913,7 +913,7 @@ error_t tlsResumeServerSession(TlsContext *context, const uint8_t *sessionId,
 {
    error_t error;
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //Initialize status code
    error = NO_ERROR;
 
@@ -1286,8 +1286,8 @@ error_t tlsSelectGroup(TlsContext *context,
    //Initialize status code
    error = NO_ERROR;
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
-   //SSL 3.0, TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
    if(context->version <= TLS_VERSION_1_2)
    {
       //ECC cipher suite?
@@ -1451,8 +1451,8 @@ error_t tlsSelectCertificate(TlsContext *context,
    //Number of certificate types
    n = 0;
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
-   //SSL 3.0, TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
    if(context->version <= TLS_VERSION_1_2)
    {
       //The server requires a valid certificate whenever the agreed-upon key
@@ -1658,7 +1658,7 @@ error_t tlsParsePskIdentity(TlsContext *context,
    {
       error_t error;
 
-      //The server selects which key to use depending on the the PSK identity
+      //The server selects which key to use depending on the PSK identity
       //provided by the client
       error = context->pskCallback(context, pskIdentity->value, n);
       //Any error to report?
@@ -1689,7 +1689,7 @@ error_t tlsParseClientKeyParams(TlsContext *context,
 {
    error_t error;
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //Initialize status code
    error = NO_ERROR;
 
@@ -1704,33 +1704,24 @@ error_t tlsParseClientKeyParams(TlsContext *context,
       RsaPrivateKey privateKey;
       uint8_t randPremasterSecret[48];
 
+      //Malformed ClientKeyExchange message?
+      if(length < 2)
+         return ERROR_DECODING_FAILED;
+
       //The RSA-encrypted premaster secret in a ClientKeyExchange is preceded by
-      //two length bytes. SSL 3.0 implementations do not include these bytes
-      if(context->version > SSL_VERSION_3_0)
-      {
-         //Malformed ClientKeyExchange message?
-         if(length < 2)
-            return ERROR_DECODING_FAILED;
+      //two length bytes
+      n = LOAD16BE(p);
 
-         //Decode the length field
-         n = LOAD16BE(p);
+      //Check the length of the RSA-encrypted premaster secret
+      if(n > (length - 2))
+         return ERROR_DECODING_FAILED;
 
-         //Check the length of the RSA-encrypted premaster secret
-         if(n > (length - 2))
-            return ERROR_DECODING_FAILED;
-
-         //Save the length of the RSA-encrypted premaster secret
-         length = n;
-         //Advance the pointer over the length field
-         p += 2;
-         //Total number of bytes that have been consumed
-         *consumed = length + 2;
-      }
-      else
-      {
-         //Total number of bytes that have been consumed
-         *consumed = length;
-      }
+      //Save the length of the RSA-encrypted premaster secret
+      length = n;
+      //Advance the pointer over the length field
+      p += 2;
+      //Total number of bytes that have been consumed
+      *consumed = length + 2;
 
       //Initialize RSA private key
       rsaInitPrivateKey(&privateKey);

@@ -1,6 +1,6 @@
 /**
  * @file tls_signature.c
- * @brief RSA/DSA/ECDSA/EdDSA signature generation and verification
+ * @brief RSA/DSA/ECDSA/EdDSA signature generation and verification (TLS 1.3)
  *
  * @section License
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.0.4
+ * @version 2.1.0
  **/
 
 //Switch to the appropriate trace level
@@ -41,8 +41,7 @@
 #include "pkc/rsa.h"
 #include "pkc/dsa.h"
 #include "ecc/ecdsa.h"
-#include "ecc/ed25519.h"
-#include "ecc/ed448.h"
+#include "ecc/eddsa.h"
 #include "debug.h"
 
 //Check TLS library configuration
@@ -138,6 +137,10 @@ error_t tlsSelectSignatureScheme(TlsContext *context, const TlsCertDesc *cert,
                      //RSASSA-PSS RSAE signature scheme with SHA-512
                      hashAlgoId = TLS_HASH_ALGO_SHA512;
                   }
+                  else
+                  {
+                     //Just for sanity
+                  }
                }
             }
             else
@@ -173,20 +176,24 @@ error_t tlsSelectSignatureScheme(TlsContext *context, const TlsCertDesc *cert,
                   if(cert->namedCurve == TLS_GROUP_SECP256R1 &&
                      p[i].hash == TLS_HASH_ALGO_SHA256)
                   {
-                     //Select current hash algorithm
+                     //Select SHA-256 hash algorithm
                      hashAlgoId = TLS_HASH_ALGO_SHA256;
                   }
                   else if(cert->namedCurve == TLS_GROUP_SECP384R1 &&
                      p[i].hash == TLS_HASH_ALGO_SHA384)
                   {
-                     //Select current hash algorithm
+                     //Select SHA-384 hash algorithm
                      hashAlgoId = TLS_HASH_ALGO_SHA384;
                   }
                   else if(cert->namedCurve == TLS_GROUP_SECP521R1 &&
                      p[i].hash == TLS_HASH_ALGO_SHA512)
                   {
-                     //Select current hash algorithm
+                     //Select SHA-512 hash algorithm
                      hashAlgoId = TLS_HASH_ALGO_SHA512;
+                  }
+                  else
+                  {
+                     //Just for sanity
                   }
                }
             }
@@ -288,13 +295,25 @@ error_t tlsSelectSignatureScheme(TlsContext *context, const TlsCertDesc *cert,
                {
                   //Check signature scheme
                   if(p[i].signature == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA256)
+                  {
+                     //Select SHA-256 hash algorithm
                      hashAlgoId = TLS_HASH_ALGO_SHA256;
+                  }
                   else if(p[i].signature == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA384)
+                  {
+                     //Select SHA-384 hash algorithm
                      hashAlgoId = TLS_HASH_ALGO_SHA384;
+                  }
                   else if(p[i].signature == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA512)
+                  {
+                     //Select SHA-512 hash algorithm
                      hashAlgoId = TLS_HASH_ALGO_SHA512;
+                  }
                   else
+                  {
+                     //Invalid signature scheme
                      hashAlgoId = TLS_HASH_ALGO_NONE;
+                  }
 
                   //Check whether the hash algorithm is supported
                   if(tlsGetHashAlgo(hashAlgoId) != NULL)
@@ -346,10 +365,10 @@ error_t tlsSelectSignatureScheme(TlsContext *context, const TlsCertDesc *cert,
 }
 
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
 
 /**
- * @brief Digital signature generation(SSL 3.0, TLS 1.0 or TLS 1.1)
+ * @brief Digital signature generation(TLS 1.0 or TLS 1.1)
  * @param[in] context Pointer to the TLS context
  * @param[out] p Buffer where to store the digitally-signed element
  * @param[out] length Length of the digitally-signed element
@@ -468,7 +487,7 @@ error_t tlsGenerateSignature(TlsContext *context, uint8_t *p,
 
 
 /**
- * @brief Digital signature verification (SSL 3.0, TLS 1.0 and TLS 1.1)
+ * @brief Digital signature verification (TLS 1.0 and TLS 1.1)
  * @param[in] context Pointer to the TLS context
  * @param[in] p Pointer to the digitally-signed element to be verified
  * @param[in] length Length of the digitally-signed element
@@ -780,27 +799,39 @@ error_t tls12VerifySignature(TlsContext *context, const uint8_t *p,
    {
       //The hashing is intrinsic to the signature algorithm
       if(signature->algorithm.hash == TLS_HASH_ALGO_INTRINSIC)
+      {
          hashAlgo = tlsGetHashAlgo(TLS_HASH_ALGO_SHA256);
+      }
       else
+      {
          hashAlgo = NULL;
+      }
    }
    else if(signature->algorithm.signature == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA384 ||
       signature->algorithm.signature == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA384)
    {
       //The hashing is intrinsic to the signature algorithm
       if(signature->algorithm.hash == TLS_HASH_ALGO_INTRINSIC)
+      {
          hashAlgo = tlsGetHashAlgo(TLS_HASH_ALGO_SHA384);
+      }
       else
+      {
          hashAlgo = NULL;
+      }
    }
    else if(signature->algorithm.signature == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA512 ||
       signature->algorithm.signature == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA512)
    {
       //The hashing is intrinsic to the signature algorithm
       if(signature->algorithm.hash == TLS_HASH_ALGO_INTRINSIC)
+      {
          hashAlgo = tlsGetHashAlgo(TLS_HASH_ALGO_SHA512);
+      }
       else
+      {
          hashAlgo = NULL;
+      }
    }
    else
    {
@@ -920,10 +951,10 @@ error_t tls12VerifySignature(TlsContext *context, const uint8_t *p,
 }
 
 #endif
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
 
 /**
- * @brief Generate RSA signature (SSL 3.0, TLS 1.0 and TLS 1.1)
+ * @brief Generate RSA signature (TLS 1.0 and TLS 1.1)
  * @param[in] key Signer's RSA private key
  * @param[in] digest Digest of the message to be signed
  * @param[out] signature Resulting signature
@@ -1042,7 +1073,7 @@ error_t tlsGenerateRsaSignature(const RsaPrivateKey *key,
 
 
 /**
- * @brief Verify RSA signature (SSL 3.0, TLS 1.0 and TLS 1.1)
+ * @brief Verify RSA signature (TLS 1.0 and TLS 1.1)
  * @param[in] key Signer's RSA public key
  * @param[in] digest Digest of the message whose signature is to be verified
  * @param[in] signature Signature to be verified
@@ -1055,7 +1086,6 @@ error_t tlsVerifyRsaSignature(const RsaPublicKey *key,
 {
 #if (TLS_RSA_SIGN_SUPPORT == ENABLED)
    error_t error;
-   uint_t i;
    uint_t k;
    uint8_t *em;
    Mpi s;
@@ -1115,45 +1145,8 @@ error_t tlsVerifyRsaSignature(const RsaPublicKey *key,
       TRACE_DEBUG("  Encoded message\r\n");
       TRACE_DEBUG_ARRAY("    ", em, k);
 
-      //Assume an error...
-      error = ERROR_INVALID_SIGNATURE;
-
-      //The first octet of EM must have a value of 0x00
-      if(em[0] != 0x00)
-         break;
-      //The block type BT shall be 0x01
-      if(em[1] != 0x01)
-         break;
-
-      //Check the padding string PS
-      for(i = 2; i < k; i++)
-      {
-         //A 0x00 octet indicates the end of the padding string
-         if(em[i] == 0x00)
-            break;
-
-         //Each byte of PS must be set to 0xFF when the block type is 0x01
-         if(em[i] != 0xFF)
-            break;
-      }
-
-      //Check whether the padding string is properly terminated
-      if(i >= k || em[i] != 0x00)
-         break;
-
-      //The length of PS cannot be less than 8 octets
-      if(i < 10)
-         break;
-
-      //Check the length of the digest
-      if((k - i - 1) != (MD5_DIGEST_SIZE + SHA1_DIGEST_SIZE))
-         break;
-      //Check the digest value
-      if(osMemcmp(digest, em + i + 1, MD5_DIGEST_SIZE + SHA1_DIGEST_SIZE))
-         break;
-
-      //The RSA signature is valid
-      error = NO_ERROR;
+      //Verify the encoded message EM
+      error = tlsVerifyRsaEm(digest, em, k);
 
       //End of exception handling block
    } while(0);
@@ -1170,6 +1163,57 @@ error_t tlsVerifyRsaSignature(const RsaPublicKey *key,
    //RSA signature verification is not supported
    return ERROR_NOT_IMPLEMENTED;
 #endif
+}
+
+
+/**
+ * @brief Verify RSA encoded message
+ * @param[in] digest Digest value
+ * @param[in] em Encoded message
+ * @param[in] emLen Length of the encoded message
+ * @return Error code
+ **/
+
+error_t tlsVerifyRsaEm(const uint8_t *digest, const uint8_t *em, size_t emLen)
+{
+   size_t i;
+   size_t j;
+   size_t n;
+   uint8_t bad;
+
+   //Check the length of the encoded message
+   if(emLen < (MD5_DIGEST_SIZE + SHA1_DIGEST_SIZE + 11))
+      return ERROR_INVALID_LENGTH;
+
+   //Point to the first byte of the encoded message
+   i = 0;
+
+   //The first octet of EM must have hexadecimal value 0x00
+   bad = em[i++];
+   //The second octet of EM must have hexadecimal value 0x01
+   bad |= em[i++] ^ 0x01;
+
+   //Determine the length of the padding string PS
+   n = emLen - MD5_DIGEST_SIZE - SHA1_DIGEST_SIZE - 3;
+
+   //Each byte of PS must be set to 0xFF when the block type is 0x01
+   for(j = 0; j < n; j++)
+   {
+      bad |= em[i++] ^ 0xFF;
+   }
+
+   //The padding string must be followed by a 0x00 octet
+   bad |= em[i++];
+
+   //Recover the underlying hash value, and then compare it to the newly
+   //computed hash value
+   for(j = 0; j < (MD5_DIGEST_SIZE + SHA1_DIGEST_SIZE); j++)
+   {
+      bad |= em[i++] ^ digest[j];
+   }
+
+   //Verification result
+   return (bad != 0) ? ERROR_INVALID_SIGNATURE : NO_ERROR;
 }
 
 #endif

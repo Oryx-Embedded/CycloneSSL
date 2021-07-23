@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.0.4
+ * @version 2.1.0
  **/
 
 //Switch to the appropriate trace level
@@ -140,7 +140,7 @@ error_t tlsPerformClientHandshake(TlsContext *context)
          error = tlsSendFinished(context);
          break;
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
       //Sending ClientKeyExchange message?
       case TLS_STATE_CLIENT_KEY_EXCHANGE:
          //This message is always sent by the client. It must immediately
@@ -337,7 +337,7 @@ error_t tlsParseServerHandshakeMessage(TlsContext *context, uint8_t msgType,
       break;
 #endif
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //ServerKeyExchange message received?
    case TLS_TYPE_SERVER_KEY_EXCHANGE:
       //The ServerKeyExchange message is sent by the server only when the

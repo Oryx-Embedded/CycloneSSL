@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.0.4
+ * @version 2.1.0
  **/
 
 //Switch to the appropriate trace level
@@ -98,7 +98,7 @@ TlsCache *tlsInitCache(uint_t size)
 TlsSessionState *tlsFindCache(TlsCache *cache, const uint8_t *sessionId,
    size_t sessionIdLen)
 {
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    uint_t i;
    systime_t time;
    TlsSessionState *session;
@@ -164,7 +164,7 @@ TlsSessionState *tlsFindCache(TlsCache *cache, const uint8_t *sessionId,
 
 error_t tlsSaveToCache(TlsContext *context)
 {
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    error_t error;
    uint_t i;
    systime_t time;
@@ -269,7 +269,7 @@ error_t tlsSaveToCache(TlsContext *context)
 
 error_t tlsRemoveFromCache(TlsContext *context)
 {
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    uint_t i;
    TlsSessionState *session;
 

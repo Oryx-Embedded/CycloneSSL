@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.0.4
+ * @version 2.1.0
  **/
 
 #ifndef _TLS13_MISC_H
@@ -399,12 +399,6 @@ error_t tls13ComputePskBinder(TlsContext *context, const void *clientHello,
 error_t tls13GenerateKeyShare(TlsContext *context, uint16_t namedGroup);
 
 error_t tls13GenerateSharedSecret(TlsContext *context, const uint8_t *keyShare,
-   size_t length);
-
-error_t tls13GenerateSignature(TlsContext *context, uint8_t *p,
-   size_t *length);
-
-error_t tls13VerifySignature(TlsContext *context, const uint8_t *p,
    size_t length);
 
 error_t tls13ComputeMac(TlsContext *context, TlsEncryptionEngine *encryptionEngine,

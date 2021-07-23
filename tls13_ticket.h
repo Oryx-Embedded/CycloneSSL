@@ -1,6 +1,6 @@
 /**
- * @file tls_ticket.h
- * @brief TLS session tickets
+ * @file tls13_ticket.h
+ * @brief TLS 1.3 session tickets
  *
  * @section License
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.0.4
+ * @version 2.1.0
  **/
 
 #ifndef _TLS13_TICKET_H

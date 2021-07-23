@@ -1,6 +1,6 @@
 /**
- * @file ssl_misc.h
- * @brief SSL 3.0 helper functions
+ * @file tls13_signature.h
+ * @brief RSA/DSA/ECDSA/EdDSA signature generation and verification
  *
  * @section License
  *
@@ -25,38 +25,23 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.0.4
+ * @version 2.1.0
  **/
 
-#ifndef _SSL_MISC_H
-#define _SSL_MISC_H
-
-//Dependencies
-#include "core/crypto.h"
-#include "tls.h"
+#ifndef _TLS13_SIGNATURE_H
+#define _TLS13_SIGNATURE_H
 
 //C++ guard
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-//SSL 3.0 related constants
-extern const uint8_t sslPad1[48];
-extern const uint8_t sslPad2[48];
+//TLS 1.3 related functions
+error_t tls13GenerateSignature(TlsContext *context, uint8_t *p,
+   size_t *length);
 
-//SSL 3.0 related functions
-error_t sslExpandKey(const uint8_t *secret, size_t secretLen,
-   const uint8_t *random, size_t randomLen, uint8_t *output, size_t outputLen);
-
-error_t sslComputeMac(TlsEncryptionEngine *encryptionEngine,
-   const TlsRecord *record, const uint8_t *data, size_t dataLen, uint8_t *mac);
-
-uint32_t sslVerifyPadding(TlsEncryptionEngine *decryptionEngine,
-   const uint8_t *data, size_t dataLen, size_t *paddingLen);
-
-uint32_t sslVerifyMac(TlsEncryptionEngine *decryptionEngine,
-   const TlsRecord *record, const uint8_t *data, size_t dataLen,
-   size_t maxDataLen, const uint8_t *mac);
+error_t tls13VerifySignature(TlsContext *context, const uint8_t *p,
+   size_t length);
 
 //C++ guard
 #ifdef __cplusplus

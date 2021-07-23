@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.0.4
+ * @version 2.1.0
  **/
 
 //Switch to the appropriate trace level
@@ -320,12 +320,7 @@ error_t tlsSelectCipherSuite(TlsContext *context, uint16_t identifier)
          context->cipherSuite.prfHashAlgo = SHA256_HASH_ALGO;
 
       //The length of the verify data depends on the TLS version currently used
-      if(context->version == SSL_VERSION_3_0)
-      {
-         //Verify data is always 36-byte long for SSL 3.0
-         context->cipherSuite.verifyDataLen = 36;
-      }
-      else if(context->version <= TLS_VERSION_1_1)
+      if(context->version <= TLS_VERSION_1_1)
       {
          //Verify data is always 12-byte long for TLS 1.0 and 1.1
          context->cipherSuite.verifyDataLen = 12;
@@ -354,9 +349,9 @@ error_t tlsSelectCipherSuite(TlsContext *context, uint16_t identifier)
 error_t tlsSaveSessionId(const TlsContext *context,
    TlsSessionState *session)
 {
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //Check TLS version
-   if(context->version < SSL_VERSION_3_0 || context->version > TLS_VERSION_1_2)
+   if(context->version < TLS_VERSION_1_0 || context->version > TLS_VERSION_1_2)
       return ERROR_INVALID_VERSION;
 
    //Invalid session identifier?
@@ -426,9 +421,9 @@ error_t tlsSaveSessionId(const TlsContext *context,
 error_t tlsSaveSessionTicket(const TlsContext *context,
    TlsSessionState *session)
 {
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //Check TLS version
-   if(context->version < SSL_VERSION_3_0 || context->version > TLS_VERSION_1_2)
+   if(context->version < TLS_VERSION_1_0 || context->version > TLS_VERSION_1_2)
       return ERROR_INVALID_VERSION;
 
    //Invalid session ticket?
@@ -480,9 +475,9 @@ error_t tlsSaveSessionTicket(const TlsContext *context,
 error_t tlsRestoreSessionId(TlsContext *context,
    const TlsSessionState *session)
 {
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //Check TLS version
-   if(session->version < SSL_VERSION_3_0 || session->version > TLS_VERSION_1_2)
+   if(session->version < TLS_VERSION_1_0 || session->version > TLS_VERSION_1_2)
       return ERROR_INVALID_VERSION;
 
    //Invalid session identifier?
@@ -529,9 +524,9 @@ error_t tlsRestoreSessionId(TlsContext *context,
 error_t tlsRestoreSessionTicket(TlsContext *context,
    const TlsSessionState *session)
 {
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //Check TLS version
-   if(session->version < SSL_VERSION_3_0 || session->version > TLS_VERSION_1_2)
+   if(session->version < TLS_VERSION_1_0 || session->version > TLS_VERSION_1_2)
       return ERROR_INVALID_VERSION;
 
    //Invalid session ticket?
@@ -654,7 +649,7 @@ error_t tlsInitEncryptionEngine(TlsContext *context,
    //Initialize cipher context
    encryptionEngine->cipherContext = NULL;
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //Initialize HMAC context
    encryptionEngine->hmacContext = &context->hmacContext;
 #endif
@@ -664,8 +659,8 @@ error_t tlsInitEncryptionEngine(TlsContext *context,
    encryptionEngine->gcmContext = NULL;
 #endif
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
-   //SSL 3.0, TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
    if(context->version <= TLS_VERSION_1_2)
    {
       const uint8_t *p;

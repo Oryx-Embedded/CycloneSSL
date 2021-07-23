@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.0.4
+ * @version 2.1.0
  **/
 
 //Switch to the appropriate trace level
@@ -45,6 +45,7 @@
 #include "tls_cache.h"
 #include "tls_record.h"
 #include "tls_misc.h"
+#include "tls13_signature.h"
 #include "dtls_record.h"
 #include "pkix/x509_common.h"
 #include "debug.h"
@@ -78,31 +79,19 @@ error_t tlsSendCertificate(TlsContext *context)
       //The client must send a Certificate message if the server requests it
       if(context->clientCertRequested)
       {
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= SSL_VERSION_3_0)
-         //No suitable certificate available?
-         if(context->cert == NULL && context->version == SSL_VERSION_3_0)
-         {
-            //The client should send a no_certificate alert instead
-            error = tlsSendAlert(context, TLS_ALERT_LEVEL_WARNING,
-               TLS_ALERT_NO_CERTIFICATE);
-         }
-         else
-#endif
-         {
-            //Format Certificate message
-            error = tlsFormatCertificate(context, message, &length);
+         //Format Certificate message
+         error = tlsFormatCertificate(context, message, &length);
 
-            //Check status code
-            if(!error)
-            {
-               //Debug message
-               TRACE_INFO("Sending Certificate message (%" PRIuSIZE " bytes)...\r\n", length);
-               TRACE_DEBUG_ARRAY("  ", message, length);
+         //Check status code
+         if(!error)
+         {
+            //Debug message
+            TRACE_INFO("Sending Certificate message (%" PRIuSIZE " bytes)...\r\n", length);
+            TRACE_DEBUG_ARRAY("  ", message, length);
 
-               //Send handshake message
-               error = tlsSendHandshakeMessage(context, message, length,
-                  TLS_TYPE_CERTIFICATE);
-            }
+            //Send handshake message
+            error = tlsSendHandshakeMessage(context, message, length,
+               TLS_TYPE_CERTIFICATE);
          }
       }
    }
@@ -561,7 +550,7 @@ error_t tlsSendAlert(TlsContext *context, uint8_t level, uint8_t description)
       //termination of the connection
       context->fatalAlertSent = TRUE;
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
       //Any connection terminated with a fatal alert must not be resumed
       if(context->entity == TLS_CONNECTION_END_SERVER)
       {
@@ -687,8 +676,8 @@ error_t tlsFormatCertificateVerify(TlsContext *context,
    //Length of the handshake message
    *length = 0;
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
-   //SSL 3.0, TLS 1.0 or TLS 1.1 currently selected?
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
+   //TLS 1.0 or TLS 1.1 currently selected?
    if(context->version <= TLS_VERSION_1_1)
    {
       //In TLS version prior to 1.2, the digitally-signed element combines
@@ -1479,8 +1468,8 @@ error_t tlsParseCertificateVerify(TlsContext *context,
          return ERROR_UNEXPECTED_MESSAGE;
    }
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
-   //SSL 3.0, TLS 1.0 or TLS 1.1 currently selected?
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
+   //TLS 1.0 or TLS 1.1 currently selected?
    if(context->version <= TLS_VERSION_1_1)
    {
       //In TLS version prior to 1.2, the digitally-signed element combines
@@ -1858,7 +1847,7 @@ error_t tlsParseAlert(TlsContext *context,
       //A fatal alert message has been received
       context->fatalAlertReceived = TRUE;
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
       //Any connection terminated with a fatal alert must not be resumed
       if(context->entity == TLS_CONNECTION_END_SERVER)
       {

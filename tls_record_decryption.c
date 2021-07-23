@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.0.4
+ * @version 2.1.0
  **/
 
 //Switch to the appropriate trace level
@@ -38,7 +38,6 @@
 #include "tls_record_decryption.h"
 #include "tls_record_encryption.h"
 #include "tls_misc.h"
-#include "ssl_misc.h"
 #include "cipher_mode/cbc.h"
 #include "aead/ccm.h"
 #include "aead/gcm.h"
@@ -353,19 +352,8 @@ error_t tlsDecryptCbcRecord(TlsContext *context,
    TRACE_DEBUG("Record with padding (%" PRIuSIZE " bytes):\r\n", length);
    TRACE_DEBUG_ARRAY("  ", record, length + sizeof(TlsRecord));
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= SSL_VERSION_3_0)
-   //SSL 3.0 currently selected?
-   if(decryptionEngine->version == SSL_VERSION_3_0)
-   {
-      //The receiver must check the padding
-      bad = sslVerifyPadding(decryptionEngine, data, length, &paddingLen);
-   }
-   else
-#endif
-   {
-      //The receiver must check the padding
-      bad = tlsVerifyPadding(data, length, &paddingLen);
-   }
+   //The receiver must check the padding
+   bad = tlsVerifyPadding(data, length, &paddingLen);
 
    //Actual length of the payload
    n = length - paddingLen - 1;
@@ -387,38 +375,14 @@ error_t tlsDecryptCbcRecord(TlsContext *context,
    //Fix the length field of the TLS record
    tlsSetRecordLength(context, record, n);
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= SSL_VERSION_3_0)
-   //SSL 3.0 currently selected?
-   if(decryptionEngine->version == SSL_VERSION_3_0)
-   {
-      //SSL 3.0 uses an older obsolete version of the HMAC construction
-      bad |= sslVerifyMac(decryptionEngine, record, data, n, m, mac);
-   }
-   else
-#endif
-#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
-   //TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
-   if(decryptionEngine->version >= TLS_VERSION_1_0)
-   {
-      //TLS uses a HMAC construction
-      bad |= tlsVerifyMac(context, decryptionEngine, record, data, n, m, mac);
-   }
-   else
-#endif
-   //Invalid TLS version?
-   {
-      //Just for sanity
-      bad = TRUE;
-   }
+   //TLS uses a HMAC construction
+   bad |= tlsVerifyMac(context, decryptionEngine, record, data, n, m, mac);
 
    //Increment sequence number
    tlsIncSequenceNumber(&decryptionEngine->seqNum);
 
    //Return status code
-   if(bad)
-      return ERROR_BAD_RECORD_MAC;
-   else
-      return NO_ERROR;
+   return bad ? ERROR_BAD_RECORD_MAC : NO_ERROR;
 #else
    //CBC cipher mode is not supported
    return ERROR_UNSUPPORTED_CIPHER_MODE;
@@ -507,18 +471,6 @@ error_t tlsVerifyMessageAuthCode(TlsContext *context,
    //Adjust the length of the message
    length -= hashAlgo->digestSize;
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= SSL_VERSION_3_0)
-   //SSL 3.0 currently selected?
-   if(decryptionEngine->version == SSL_VERSION_3_0)
-   {
-      //Fix the length field of the record
-      tlsSetRecordLength(context, record, length);
-
-      //SSL 3.0 uses an older obsolete version of the HMAC construction
-      error = sslComputeMac(decryptionEngine, record, data, length, digest);
-   }
-   else
-#endif
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
    if(decryptionEngine->version >= TLS_VERSION_1_0 &&
@@ -773,65 +725,77 @@ uint32_t tlsVerifyMac(TlsContext *context,
       hmacUpdate(hmacContext, tlsRecord, sizeof(TlsRecord));
    }
 
-   //Point to the first byte of the plaintext data
-   i = 0;
-
-   //We can process the first blocks normally because the (secret) padding
-   //length cannot affect them
-   if(maxDataLen > 255)
+   //If intermediate hash calculation is supported by the hardware accelerator,
+   //then compute the MAC in constant time without leaking information
+   if(hashAlgo->finalRaw != NULL)
    {
-      //Digest the first part of the plaintext data
-      hmacUpdate(hmacContext, data, maxDataLen - 255);
-      i += maxDataLen - 255;
-   }
+      //Point to the first byte of the plaintext data
+      i = 0;
 
-   //The last blocks need to be handled carefully
-   while(i < n)
-   {
-      //Initialize the value of the current byte
-      b = 0;
-
-      //Generate the contents of each block in constant time
-      c = CRYPTO_TEST_LT_32(i, dataLen);
-      b = CRYPTO_SELECT_8(b, data[i], c);
-
-      c = CRYPTO_TEST_EQ_32(i, dataLen);
-      b = CRYPTO_SELECT_8(b, 0x80, c);
-
-      j = dataLen + paddingLen;
-      c = CRYPTO_TEST_GTE_32(i, j);
-      j += 8;
-      c &= CRYPTO_TEST_LT_32(i, j);
-      b = CRYPTO_SELECT_8(b, bitLen & 0xFF, c);
-      bitLen = CRYPTO_SELECT_64(bitLen, bitLen >> 8, c);
-
-      //Digest the current byte
-      hashAlgo->update(hmacContext->hashContext, &b, sizeof(uint8_t));
-
-      //Increment byte counter
-      i++;
-
-      //End of block detected?
-      if(((i + headerLen) & blockSizeMask) == 0)
+      //We can process the first blocks normally because the (secret) padding
+      //length cannot affect them
+      if(maxDataLen > 255)
       {
-         //For each block we serialize the hash
-         hashAlgo->finalRaw(hmacContext->hashContext, temp);
+         //Digest the first part of the plaintext data
+         hmacUpdate(hmacContext, data, maxDataLen - 255);
+         i += maxDataLen - 255;
+      }
 
-         //Check whether the current block of data is the final block
-         c = CRYPTO_TEST_EQ_32(i, dataLen + paddingLen + 8);
+      //The last blocks need to be handled carefully
+      while(i < n)
+      {
+         //Initialize the value of the current byte
+         b = 0;
 
-         //The hash is copied with a mask so that only the correct hash value
-         //is copied out, but the amount of computation remains constant
-         for(j = 0; j < hashAlgo->digestSize; j++)
+         //Generate the contents of each block in constant time
+         c = CRYPTO_TEST_LT_32(i, dataLen);
+         b = CRYPTO_SELECT_8(b, data[i], c);
+
+         c = CRYPTO_TEST_EQ_32(i, dataLen);
+         b = CRYPTO_SELECT_8(b, 0x80, c);
+
+         j = dataLen + paddingLen;
+         c = CRYPTO_TEST_GTE_32(i, j);
+         j += 8;
+         c &= CRYPTO_TEST_LT_32(i, j);
+         b = CRYPTO_SELECT_8(b, bitLen & 0xFF, c);
+         bitLen = CRYPTO_SELECT_64(bitLen, bitLen >> 8, c);
+
+         //Digest the current byte
+         hashAlgo->update(&hmacContext->hashContext, &b, sizeof(uint8_t));
+
+         //Increment byte counter
+         i++;
+
+         //End of block detected?
+         if(((i + headerLen) & blockSizeMask) == 0)
          {
-            hmacContext->digest[j] = CRYPTO_SELECT_8(hmacContext->digest[j],
-               temp[j], c);
+            //For each block we serialize the hash
+            hashAlgo->finalRaw(&hmacContext->hashContext, temp);
+
+            //Check whether the current block of data is the final block
+            c = CRYPTO_TEST_EQ_32(i, dataLen + paddingLen + 8);
+
+            //The hash is copied with a mask so that only the correct hash value
+            //is copied out, but the amount of computation remains constant
+            for(j = 0; j < hashAlgo->digestSize; j++)
+            {
+               hmacContext->digest[j] = CRYPTO_SELECT_8(hmacContext->digest[j],
+                  temp[j], c);
+            }
          }
       }
-   }
 
-   //Finalize HMAC computation
-   hmacFinalRaw(hmacContext, temp);
+      //Finalize HMAC computation
+      hmacFinalRaw(hmacContext, temp);
+   }
+   else
+   {
+      //Intermediate hash calculation is not supported by the hardware
+      //accelerator
+      hmacUpdate(hmacContext, data, dataLen);
+      hmacFinal(hmacContext, temp);
+   }
 
    //Debug message
    TRACE_DEBUG("Read sequence number:\r\n");

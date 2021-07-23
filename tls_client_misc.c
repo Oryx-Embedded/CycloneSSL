@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.0.4
+ * @version 2.1.0
  **/
 
 //Switch to the appropriate trace level
@@ -366,7 +366,7 @@ error_t tlsFormatPskIdentity(TlsContext *context, uint8_t *p,
 error_t tlsFormatClientKeyParams(TlsContext *context, uint8_t *p,
    size_t *written)
 {
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    error_t error;
    size_t n;
 
@@ -393,35 +393,19 @@ error_t tlsFormatClientKeyParams(TlsContext *context, uint8_t *p,
       if(error)
          return error;
 
+      //Encrypt the premaster secret using the server public key
+      error = rsaesPkcs1v15Encrypt(context->prngAlgo, context->prngContext,
+         &context->peerRsaPublicKey, context->premasterSecret, 48, p + 2, &n);
+      //RSA encryption failed?
+      if(error)
+         return error;
+
       //The RSA-encrypted premaster secret in a ClientKeyExchange is preceded by
-      //two length bytes. SSL 3.0 implementations do not include these bytes
-      if(context->version > SSL_VERSION_3_0)
-      {
-         //Encrypt the premaster secret using the server public key
-         error = rsaesPkcs1v15Encrypt(context->prngAlgo, context->prngContext,
-            &context->peerRsaPublicKey, context->premasterSecret, 48, p + 2, &n);
-         //RSA encryption failed?
-         if(error)
-            return error;
-
-         //Write the length field
-         STORE16BE(n, p);
-
-         //Length of the resulting octet string
-         n += 2;
-      }
-      else
-      {
-         //Encrypt the premaster secret using the server public key
-         error = rsaesPkcs1v15Encrypt(context->prngAlgo, context->prngContext,
-            &context->peerRsaPublicKey, context->premasterSecret, 48, p, &n);
-         //RSA encryption failed?
-         if(error)
-            return error;
-      }
+      //two length bytes
+      STORE16BE(n, p);
 
       //Total number of bytes that have been written
-      *written = n;
+      *written = n + 2;
    }
    else
 #endif
@@ -618,7 +602,7 @@ error_t tlsParsePskIdentityHint(TlsContext *context, const uint8_t *p,
 error_t tlsParseServerKeyParams(TlsContext *context, const uint8_t *p,
    size_t length, size_t *consumed)
 {
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    error_t error;
    const uint8_t *params;
 
@@ -832,7 +816,7 @@ error_t tlsParseServerKeyParams(TlsContext *context, const uint8_t *p,
 
 
 /**
- * @brief Verify server's key exchange parameters signature (SSL 3.0, TLS 1.0 and TLS 1.1)
+ * @brief Verify server's key exchange parameters signature (TLS 1.0 and TLS 1.1)
  * @param[in] context Pointer to the TLS context
  * @param[in] signature Pointer to the digital signature
  * @param[in] length Number of bytes available in the input stream
@@ -848,7 +832,7 @@ error_t tlsVerifyServerKeySignature(TlsContext *context,
 {
    error_t error;
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
    //Initialize status code
    error = NO_ERROR;
 

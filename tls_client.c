@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.0.4
+ * @version 2.1.0
  **/
 
 //Switch to the appropriate trace level
@@ -1059,8 +1059,8 @@ error_t tlsParseServerHello(TlsContext *context,
    //Save server random value
    osMemcpy(context->serverRandom, message->random, 32);
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
-   //SSL 3.0, TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
    if(context->version <= TLS_VERSION_1_2)
    {
       //Reset the named group to its default value
@@ -1409,8 +1409,8 @@ error_t tlsParseServerKeyExchange(TlsContext *context,
       context->keyExchMethod == TLS_KEY_EXCH_ECDHE_RSA ||
       context->keyExchMethod == TLS_KEY_EXCH_ECDHE_ECDSA)
    {
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
-      //SSL 3.0, TLS 1.0 or TLS 1.1 currently selected?
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
+      //TLS 1.0 or TLS 1.1 currently selected?
       if(context->version <= TLS_VERSION_1_1)
       {
          //Signature verification
@@ -1547,7 +1547,7 @@ error_t tlsParseCertificateRequest(TlsContext *context,
    //Point to the beginning of the handshake message
    p = (uint8_t *) message;
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //Version of TLS prior to TLS 1.3?
    if(context->version <= TLS_VERSION_1_2)
    {

@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.0.4
+ * @version 2.1.0
  **/
 
 //Switch to the appropriate trace level
@@ -139,10 +139,6 @@ error_t tlsFormatClientSupportedVersionsExtension(TlsContext *context,
          //Check whether TLS 1.0 is supported
          if(context->versionMax >= TLS_VERSION_1_0 && context->versionMin <= TLS_VERSION_1_0)
             supportedVersionList->value[n++] = HTONS(TLS_VERSION_1_0);
-
-         //Check whether SSL 3.0 is supported
-         if(context->versionMax >= SSL_VERSION_3_0 && context->versionMin <= SSL_VERSION_3_0)
-            supportedVersionList->value[n++] = HTONS(SSL_VERSION_3_0);
       }
 
       //Compute the length, in bytes, of the list
@@ -481,7 +477,7 @@ error_t tlsFormatClientEcPointFormatsExtension(TlsContext *context,
 {
    size_t n = 0;
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //TLS 1.3 has removed point format negotiation in favor of a single point
    //format for each curve (refer to RFC 8446, section 1.2)
    if(context->versionMin <= TLS_VERSION_1_2)
@@ -858,7 +854,7 @@ error_t tlsFormatClientRenegoInfoExtension(TlsContext *context,
 {
    size_t n = 0;
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //TLS 1.3 forbids renegotiation
    if(context->versionMin <= TLS_VERSION_1_2)
    {
@@ -1330,10 +1326,6 @@ error_t tlsParseServerEmsExtension(TlsContext *context,
    //ExtendedMasterSecret extension found?
    if(extendedMasterSecret != NULL)
    {
-      //The countermeasure described in RFC 7627 cannot be used with SSL 3.0
-      if(context->version == SSL_VERSION_3_0)
-         return ERROR_UNSUPPORTED_EXTENSION;
-
       //Abbreviated handshake?
       if(context->resume)
       {

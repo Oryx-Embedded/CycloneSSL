@@ -1,6 +1,6 @@
 /**
  * @file tls_signature.h
- * @brief RSA/DSA/ECDSA/EdDSA signature generation and verification
+ * @brief RSA/DSA/ECDSA/EdDSA signature generation and verification (TLS 1.3)
  *
  * @section License
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.0.4
+ * @version 2.1.0
  **/
 
 #ifndef _TLS_SIGNATURE_H
@@ -60,6 +60,8 @@ error_t tlsGenerateRsaSignature(const RsaPrivateKey *key,
 
 error_t tlsVerifyRsaSignature(const RsaPublicKey *key,
    const uint8_t *digest, const uint8_t *signature, size_t signatureLen);
+
+error_t tlsVerifyRsaEm(const uint8_t *digest, const uint8_t *em, size_t emLen);
 
 error_t tlsGenerateDsaSignature(TlsContext *context, const uint8_t *digest,
    size_t digestLen, uint8_t *signature, size_t *signatureLen);

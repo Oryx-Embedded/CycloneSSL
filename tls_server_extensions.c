@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.0.4
+ * @version 2.1.0
  **/
 
 //Switch to the appropriate trace level
@@ -238,7 +238,7 @@ error_t tlsFormatServerEcPointFormatsExtension(TlsContext *context,
 {
    size_t n = 0;
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //TLS 1.3 has removed point format negotiation in favor of a single point
    //format for each curve (refer to RFC 8446, section 1.2)
    if(context->version <= TLS_VERSION_1_2)
@@ -587,8 +587,7 @@ error_t tlsParseClientSupportedVersionsExtension(TlsContext *context,
       TLS_VERSION_1_3,
       TLS_VERSION_1_2,
       TLS_VERSION_1_1,
-      TLS_VERSION_1_0,
-      SSL_VERSION_3_0
+      TLS_VERSION_1_0
    };
 
    //Initialize status code
@@ -870,7 +869,7 @@ error_t tlsParseClientEcPointFormatsExtension(TlsContext *context,
 {
    error_t error;
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //Initialize status code
    error = NO_ERROR;
 
@@ -1183,18 +1182,8 @@ error_t tlsParseClientEmsExtension(TlsContext *context,
    //ExtendedMasterSecret extension found?
    if(extendedMasterSecret != NULL)
    {
-      //SSL 3.0 currently selected?
-      if(context->version == SSL_VERSION_3_0)
-      {
-         //If the client chooses to support SSL 3.0, the resulting session
-         //must use the legacy master secret computation
-         context->extendedMasterSecretExtReceived = FALSE;
-      }
-      else
-      {
-         //Use the extended master secret computation
-         context->extendedMasterSecretExtReceived = TRUE;
-      }
+      //Use the extended master secret computation
+      context->extendedMasterSecretExtReceived = TRUE;
    }
    else
    {

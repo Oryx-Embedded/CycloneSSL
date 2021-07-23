@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.0.4
+ * @version 2.1.0
  **/
 
 //Switch to the appropriate trace level
@@ -37,7 +37,6 @@
 #include "tls_key_material.h"
 #include "tls_transcript_hash.h"
 #include "tls13_key_material.h"
-#include "ssl_misc.h"
 #include "debug.h"
 
 //Check TLS library configuration
@@ -52,7 +51,7 @@
 
 error_t tlsGenerateSessionKeys(TlsContext *context)
 {
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    error_t error;
    size_t keyBlockLen;
    TlsCipherSuiteInfo *cipherSuite;
@@ -151,17 +150,6 @@ error_t tlsGenerateMasterSecret(TlsContext *context)
    osMemcpy(random, context->clientRandom, TLS_RANDOM_SIZE);
    osMemcpy(random + 32, context->serverRandom, TLS_RANDOM_SIZE);
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= SSL_VERSION_3_0)
-   //SSL 3.0 currently selected?
-   if(context->version == SSL_VERSION_3_0)
-   {
-      //SSL 3.0 does not use a PRF, instead makes use abundantly of MD5
-      error = sslExpandKey(context->premasterSecret,
-         context->premasterSecretLen, random, sizeof(random),
-         context->masterSecret, TLS_MASTER_SECRET_SIZE);
-   }
-   else
-#endif
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
    //TLS 1.0 or TLS 1.1 currently selected?
    if(context->version == TLS_VERSION_1_0 || context->version == TLS_VERSION_1_1)
@@ -411,16 +399,6 @@ error_t tlsGenerateKeyBlock(TlsContext *context, size_t keyBlockLen)
    osMemcpy(random, context->serverRandom, TLS_RANDOM_SIZE);
    osMemcpy(random + 32, context->clientRandom, TLS_RANDOM_SIZE);
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= SSL_VERSION_3_0)
-   //SSL 3.0 currently selected?
-   if(context->version == SSL_VERSION_3_0)
-   {
-      //SSL 3.0 does not use a PRF, instead makes use abundantly of MD5
-      error = sslExpandKey(context->masterSecret, TLS_MASTER_SECRET_SIZE,
-         random, sizeof(random), context->keyBlock, keyBlockLen);
-   }
-   else
-#endif
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
    //TLS 1.0 or TLS 1.1 currently selected?
    if(context->version == TLS_VERSION_1_0 || context->version == TLS_VERSION_1_1)
@@ -436,8 +414,8 @@ error_t tlsGenerateKeyBlock(TlsContext *context, size_t keyBlockLen)
    //TLS 1.2 currently selected?
    if(context->version == TLS_VERSION_1_2)
    {
-      //TLS 1.2 PRF uses SHA-256 or a stronger hash algorithm
-      //as the core function in its construction
+      //TLS 1.2 PRF uses SHA-256 or a stronger hash algorithm as the core
+      //function in its construction
       error = tls12Prf(context->cipherSuite.prfHashAlgo,
          context->masterSecret, TLS_MASTER_SECRET_SIZE, "key expansion",
          random, sizeof(random), context->keyBlock, keyBlockLen);

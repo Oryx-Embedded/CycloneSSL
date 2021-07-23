@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.0.4
+ * @version 2.1.0
  **/
 
 //Switch to the appropriate trace level
@@ -475,8 +475,8 @@ error_t tlsFormatServerHello(TlsContext *context,
    //Point to the first extension of the list
    p += sizeof(TlsExtensionList);
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
-   //SSL 3.0, TLS 1.0, TLS 1.1 or TLS 1.2 selected by the server?
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //TLS 1.0, TLS 1.1 or TLS 1.2 selected by the server?
    if(context->version <= TLS_VERSION_1_2)
    {
 #if (TLS_SNI_SUPPORT == ENABLED)
@@ -751,8 +751,8 @@ error_t tlsFormatServerKeyExchange(TlsContext *context,
       context->keyExchMethod == TLS_KEY_EXCH_ECDHE_RSA ||
       context->keyExchMethod == TLS_KEY_EXCH_ECDHE_ECDSA)
    {
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
-      //SSL 3.0, TLS 1.0 or TLS 1.1 currently selected?
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
+      //TLS 1.0 or TLS 1.1 currently selected?
       if(context->version <= TLS_VERSION_1_1)
       {
          //Sign server's key exchange parameters
@@ -812,7 +812,7 @@ error_t tlsFormatCertificateRequest(TlsContext *context,
    //Point to the beginning of the message
    p = (uint8_t *) message;
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //Version of TLS prior to TLS 1.3?
    if(context->version <= TLS_VERSION_1_2)
    {
@@ -1207,7 +1207,7 @@ error_t tlsParseClientHello(TlsContext *context,
    }
    else if(context->state == TLS_STATE_APPLICATION_DATA)
    {
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
       //Version of TLS prior to TLS 1.3?
       if(context->version <= TLS_VERSION_1_2)
       {
@@ -1438,8 +1438,8 @@ error_t tlsParseClientHello(TlsContext *context,
       return error;
 #endif
 
-#if (TLS_MAX_VERSION >= SSL_VERSION_3_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
-   //SSL 3.0, TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
    if(context->version <= TLS_VERSION_1_2)
    {
       //The server attempts to resume TLS session via session ID
