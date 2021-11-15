@@ -1788,7 +1788,7 @@ error_t tlsReadSubjectPublicKey(TlsContext *context,
       if(!error)
       {
          //Get the length of the prime modulus, in bits
-         k = mpiGetBitLength(&context->peerDsaPublicKey.p);
+         k = mpiGetBitLength(&context->peerDsaPublicKey.params.p);
 
          //Make sure the prime modulus is acceptable
          if(k < TLS_MIN_DSA_MODULUS_SIZE || k > TLS_MAX_DSA_MODULUS_SIZE)
