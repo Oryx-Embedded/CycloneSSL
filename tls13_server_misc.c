@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.0
+ * @version 2.1.2
  **/
 
 //Switch to the appropriate trace level
@@ -151,7 +151,12 @@ error_t tls13NegotiateCipherSuite(TlsContext *context, const void *clientHello,
       if(context->keyExchMethod == TLS13_KEY_EXCH_DHE ||
          context->keyExchMethod == TLS13_KEY_EXCH_ECDHE)
       {
-         //(EC)DHE key establishment is in use
+         //Check whether the client supports session resumption with a PSK
+         error = tls13ParsePskKeModesExtension(context,
+            extensions->pskKeModeList);
+         //Any error to report?
+         if(error)
+            return error;
       }
       else if(context->keyExchMethod == TLS13_KEY_EXCH_PSK ||
          context->keyExchMethod == TLS13_KEY_EXCH_PSK_DHE ||

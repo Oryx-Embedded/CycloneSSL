@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.0
+ * @version 2.1.2
  **/
 
 //Switch to the appropriate trace level
@@ -167,9 +167,13 @@ error_t tls13GenerateSignature(TlsContext *context, uint8_t *p,
          {
             //Pre-hash the content covered by the digital signature
             if(hashAlgo != NULL)
+            {
                error = hashAlgo->compute(buffer, n, context->clientVerifyData);
+            }
             else
+            {
                error = ERROR_UNSUPPORTED_SIGNATURE_ALGO;
+            }
          }
 
          //Check status code
@@ -234,9 +238,13 @@ error_t tls13GenerateSignature(TlsContext *context, uint8_t *p,
          {
             //Pre-hash the content covered by the digital signature
             if(hashAlgo != NULL)
+            {
                error = hashAlgo->compute(buffer, n, context->clientVerifyData);
+            }
             else
+            {
                error = ERROR_UNSUPPORTED_SIGNATURE_ALGO;
+            }
          }
 
          //Check status code

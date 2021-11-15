@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.0
+ * @version 2.1.2
  **/
 
 //Switch to the appropriate trace level
@@ -64,41 +64,51 @@ void tlsProcessError(TlsContext *context, error_t errorCode)
       //The timeout interval has elapsed
       case ERROR_TIMEOUT:
          break;
+
       //The read/write operation would have blocked
       case ERROR_WOULD_BLOCK:
          break;
+
       //Failed to allocate memory
       case ERROR_OUT_OF_MEMORY:
          break;
+
       //The read/write operation has failed
       case ERROR_WRITE_FAILED:
       case ERROR_READ_FAILED:
          context->state = TLS_STATE_CLOSED;
          break;
+
       //An inappropriate message was received
       case ERROR_UNEXPECTED_MESSAGE:
          tlsSendAlert(context, TLS_ALERT_LEVEL_FATAL, TLS_ALERT_UNEXPECTED_MESSAGE);
          break;
+
       //A record is received with an incorrect MAC
       case ERROR_BAD_RECORD_MAC:
          tlsSendAlert(context, TLS_ALERT_LEVEL_FATAL, TLS_ALERT_BAD_RECORD_MAC);
          break;
+
       //Invalid record length
       case ERROR_RECORD_OVERFLOW:
          tlsSendAlert(context, TLS_ALERT_LEVEL_FATAL, TLS_ALERT_RECORD_OVERFLOW);
          break;
+
       //Unable to negotiate an acceptable set of security parameters
       case ERROR_HANDSHAKE_FAILED:
          tlsSendAlert(context, TLS_ALERT_LEVEL_FATAL, TLS_ALERT_HANDSHAKE_FAILURE);
          break;
+
       //A certificate was corrupt
       case ERROR_BAD_CERTIFICATE:
          tlsSendAlert(context, TLS_ALERT_LEVEL_FATAL, TLS_ALERT_BAD_CERTIFICATE);
          break;
+
       //A certificate was of an unsupported type
       case ERROR_UNSUPPORTED_CERTIFICATE:
          tlsSendAlert(context, TLS_ALERT_LEVEL_FATAL, TLS_ALERT_UNSUPPORTED_CERTIFICATE);
          break;
+
       //A certificate has expired or is not currently valid
       case ERROR_CERTIFICATE_EXPIRED:
          tlsSendAlert(context, TLS_ALERT_LEVEL_FATAL, TLS_ALERT_CERTIFICATE_EXPIRED);
@@ -107,47 +117,58 @@ void tlsProcessError(TlsContext *context, error_t errorCode)
       case ERROR_UNKNOWN_CERTIFICATE:
          tlsSendAlert(context, TLS_ALERT_LEVEL_FATAL, TLS_ALERT_CERTIFICATE_UNKNOWN);
          break;
+
       //A field in the handshake was out of range or inconsistent with other fields
       case ERROR_ILLEGAL_PARAMETER:
          tlsSendAlert(context, TLS_ALERT_LEVEL_FATAL, TLS_ALERT_ILLEGAL_PARAMETER);
          break;
+
       //The certificate could not be matched with a known, trusted CA
       case ERROR_UNKNOWN_CA:
          tlsSendAlert(context, TLS_ALERT_LEVEL_FATAL, TLS_ALERT_UNKNOWN_CA);
          break;
+
       //A message could not be decoded because some field was incorrect
       case ERROR_DECODING_FAILED:
          tlsSendAlert(context, TLS_ALERT_LEVEL_FATAL, TLS_ALERT_DECODE_ERROR);
          break;
+
       //A handshake cryptographic operation failed
       case ERROR_DECRYPTION_FAILED:
       case ERROR_INVALID_SIGNATURE:
          tlsSendAlert(context, TLS_ALERT_LEVEL_FATAL, TLS_ALERT_DECRYPT_ERROR);
          break;
+
       //The protocol version the client has attempted to negotiate is not supported
       case ERROR_VERSION_NOT_SUPPORTED:
          tlsSendAlert(context, TLS_ALERT_LEVEL_FATAL, TLS_ALERT_PROTOCOL_VERSION);
          break;
+
       //Inappropriate fallback detected by the server
       case ERROR_INAPPROPRIATE_FALLBACK:
          tlsSendAlert(context, TLS_ALERT_LEVEL_FATAL, TLS_ALERT_INAPPROPRIATE_FALLBACK);
          break;
+
       //Handshake message not containing an extension that is mandatory
       case ERROR_MISSING_EXTENSION:
          tlsSendAlert(context, TLS_ALERT_LEVEL_FATAL, TLS_ALERT_MISSING_EXTENSION);
          break;
+
       //The ServerHello contains an extension not present in the ClientHello
       case ERROR_UNSUPPORTED_EXTENSION:
          tlsSendAlert(context, TLS_ALERT_LEVEL_FATAL, TLS_ALERT_UNSUPPORTED_EXTENSION);
          break;
+
       //A client certificate is desired but none was provided by the client
       case ERROR_CERTIFICATE_REQUIRED:
          tlsSendAlert(context, TLS_ALERT_LEVEL_FATAL, TLS_ALERT_CERTIFICATE_REQUIRED);
          break;
+
       //No application protocol supported by the server
       case ERROR_NO_APPLICATION_PROTOCOL:
          tlsSendAlert(context, TLS_ALERT_LEVEL_FATAL, TLS_ALERT_NO_APPLICATION_PROTOCOL);
          break;
+
       //Internal error
       default:
          tlsSendAlert(context, TLS_ALERT_LEVEL_FATAL, TLS_ALERT_INTERNAL_ERROR);
@@ -212,6 +233,43 @@ error_t tlsGenerateRandomValue(TlsContext *context, uint8_t *random)
       }
    }
 #endif
+
+   //Return status code
+   return error;
+}
+
+
+/**
+ * @brief Generate a random session identifier
+ * @param[in] context Pointer to the TLS context
+ * @param[out] length Desired length of the session ID
+ * @return Error code
+ **/
+
+error_t tlsGenerateSessionId(TlsContext *context, size_t length)
+{
+   error_t error;
+
+   //Verify that the pseudorandom number generator is properly configured
+   if(context->prngAlgo != NULL && context->prngContext != NULL)
+   {
+      //Generate a random value using a cryptographically-safe pseudorandom
+      //number generator
+      error = context->prngAlgo->read(context->prngContext, context->sessionId,
+         length);
+
+      //Check status code
+      if(!error)
+      {
+         //Save the length of the session identifier
+         context->sessionIdLen = length;
+      }
+   }
+   else
+   {
+      //Report an error
+      error = ERROR_NOT_CONFIGURED;
+   }
 
    //Return status code
    return error;
@@ -317,7 +375,9 @@ error_t tlsSelectCipherSuite(TlsContext *context, uint16_t identifier)
       //PRF with the SHA-256 is used for all cipher suites published prior
       //than TLS 1.2 when TLS 1.2 is negotiated
       if(context->cipherSuite.prfHashAlgo == NULL)
+      {
          context->cipherSuite.prfHashAlgo = SHA256_HASH_ALGO;
+      }
 
       //The length of the verify data depends on the TLS version currently used
       if(context->version <= TLS_VERSION_1_1)
@@ -378,7 +438,7 @@ error_t tlsSaveSessionId(const TlsContext *context,
 
 #if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
    //Extended master secret computation
-   session->extendedMasterSecret = context->extendedMasterSecretExtReceived;
+   session->extendedMasterSecret = context->emsExtReceived;
 #endif
 
 #if (TLS_SNI_SUPPORT == ENABLED)
@@ -453,7 +513,7 @@ error_t tlsSaveSessionTicket(const TlsContext *context,
 
 #if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
    //Extended master secret computation
-   session->extendedMasterSecret = context->extendedMasterSecretExtReceived;
+   session->extendedMasterSecret = context->emsExtReceived;
 #endif
 
    //Successful processing
@@ -502,7 +562,7 @@ error_t tlsRestoreSessionId(TlsContext *context,
 
 #if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
    //Extended master secret computation
-   context->extendedMasterSecretExtReceived = session->extendedMasterSecret;
+   context->emsExtReceived = session->extendedMasterSecret;
 #endif
 
    //Successful processing
@@ -566,7 +626,7 @@ error_t tlsRestoreSessionTicket(TlsContext *context,
 
 #if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
    //Extended master secret computation
-   context->extendedMasterSecretExtReceived = session->extendedMasterSecret;
+   context->emsExtReceived = session->extendedMasterSecret;
 #endif
 
    //Successful processing

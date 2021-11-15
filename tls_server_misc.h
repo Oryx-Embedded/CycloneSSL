@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.0
+ * @version 2.1.2
  **/
 
 #ifndef _TLS_SERVER_MISC_H
@@ -57,7 +57,11 @@ error_t tls12GenerateServerKeySignature(TlsContext *context,
 error_t tlsCheckSignalingCipherSuiteValues(TlsContext *context,
    const TlsCipherSuites *cipherSuites);
 
-error_t tlsResumeServerSession(TlsContext *context, const uint8_t *sessionId,
+error_t tlsResumeStatefulSession(TlsContext *context, const uint8_t *sessionId,
+   size_t sessionIdLen, const TlsCipherSuites *cipherSuites,
+   const TlsHelloExtensions *extensions);
+
+error_t tlsResumeStatelessSession(TlsContext *context, const uint8_t *sessionId,
    size_t sessionIdLen, const TlsCipherSuites *cipherSuites,
    const TlsHelloExtensions *extensions);
 

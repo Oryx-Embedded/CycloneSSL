@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.0
+ * @version 2.1.2
  **/
 
 //Switch to the appropriate trace level
@@ -140,7 +140,7 @@ error_t tls13FormatClientKeyShareExtension(TlsContext *context,
       //ECDHE parameters are encoded in the opaque key_exchange field of
       //the KeyShareEntry
       error = ecExport(&context->ecdhContext.params,
-         &context->ecdhContext.qa, keyShareEntry->keyExchange, &n);
+         &context->ecdhContext.qa.q, keyShareEntry->keyExchange, &n);
       //Any error to report?
       if(error)
          return error;
@@ -756,15 +756,21 @@ error_t tls13ParseServerPreSharedKeyExtension(TlsContext *context,
       //cost of losing forward secrecy for the application data
 #if (TLS13_PSK_KE_SUPPORT == ENABLED)
       if(context->keyExchMethod == TLS_KEY_EXCH_NONE)
+      {
          context->keyExchMethod = TLS13_KEY_EXCH_PSK;
+      }
 #endif
 #if (TLS13_PSK_DHE_KE_SUPPORT == ENABLED)
       if(context->keyExchMethod == TLS13_KEY_EXCH_DHE)
+      {
          context->keyExchMethod = TLS13_KEY_EXCH_PSK_DHE;
+      }
 #endif
 #if (TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
       if(context->keyExchMethod == TLS13_KEY_EXCH_ECDHE)
+      {
          context->keyExchMethod = TLS13_KEY_EXCH_PSK_ECDHE;
+      }
 #endif
    }
 #else

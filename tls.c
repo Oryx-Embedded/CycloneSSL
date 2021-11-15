@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.0
+ * @version 2.1.2
  **/
 
 //Switch to the appropriate trace level
@@ -145,7 +145,7 @@ TlsContext *tlsInit(void)
       //Initialize peer's EC domain parameters
       ecInitDomainParameters(&context->peerEcParams);
       //Initialize peer's EC public key
-      ecInit(&context->peerEcPublicKey);
+      ecInitPublicKey(&context->peerEcPublicKey);
 #endif
 
       //Maximum number of plaintext data the TX and RX buffers can hold
@@ -558,7 +558,8 @@ error_t tlsSetMaxFragmentLength(TlsContext *context, size_t maxFragLen)
 /**
  * @brief Specify the list of allowed cipher suites
  * @param[in] context Pointer to the TLS context
- * @param[in] cipherSuites List of allowed cipher suites (most preferred first)
+ * @param[in] cipherSuites List of allowed cipher suites (most preferred
+ *   first). This parameter is taken as reference
  * @param[in] length Number of cipher suites in the list
  * @return Error code
  **/
@@ -1144,9 +1145,11 @@ error_t tlsSetTrustedCaList(TlsContext *context,
 /**
  * @brief Import a certificate and the corresponding private key
  * @param[in] context Pointer to the TLS context
- * @param[in] certChain Certificate chain (PEM format)
+ * @param[in] certChain Certificate chain (PEM format). This parameter is
+ *   taken as reference
  * @param[in] certChainLen Total length of the certificate chain
- * @param[in] privateKey Private key (PEM format)
+ * @param[in] privateKey Private key (PEM format). This parameter is taken
+ *   as reference
  * @param[in] privateKeyLen Total length of the private key
  * @return Error code
  **/
@@ -2396,7 +2399,7 @@ void tlsFree(TlsContext *context)
       //Release peer's EC domain parameters
       ecFreeDomainParameters(&context->peerEcParams);
       //Release peer's EC public key
-      ecFree(&context->peerEcPublicKey);
+      ecFreePublicKey(&context->peerEcPublicKey);
 #endif
 
 #if (TLS_PSK_SUPPORT == ENABLED)

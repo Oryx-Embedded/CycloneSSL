@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.0
+ * @version 2.1.2
  **/
 
 //Switch to the appropriate trace level
@@ -322,7 +322,9 @@ error_t tlsDecryptCbcRecord(TlsContext *context,
 
    //TLS 1.1 and 1.2 use an explicit IV
    if(decryptionEngine->version >= TLS_VERSION_1_1)
+   {
       n += decryptionEngine->recordIvLen;
+   }
 
    //Malformed TLS record?
    if(length < n)

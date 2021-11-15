@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.0
+ * @version 2.1.2
  **/
 
 //Switch to the appropriate trace level
@@ -1749,17 +1749,42 @@ error_t tlsParseFinished(TlsContext *context,
       {
          //Abbreviated or full handshake?
          if(context->resume)
+         {
+            //Send a ChangeCipherSpec message to the server
             context->state = TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC;
+         }
          else
+         {
+            //The client and server can now exchange application-layer data
             context->state = TLS_STATE_APPLICATION_DATA;
+         }
       }
       else
       {
          //Abbreviated or full handshake?
          if(context->resume)
+         {
+            //The client and server can now exchange application-layer data
             context->state = TLS_STATE_APPLICATION_DATA;
+         }
          else
-            context->state = TLS_STATE_SERVER_CHANGE_CIPHER_SPEC;
+         {
+#if (TLS_TICKET_SUPPORT == ENABLED)
+            //The server uses the SessionTicket extension to indicate to
+            //the client that it will send a new session ticket using the
+            //NewSessionTicket handshake message
+            if(context->sessionTicketExtSent)
+            {
+               //Send a NewSessionTicket message to the client
+               context->state = TLS_STATE_NEW_SESSION_TICKET;
+            }
+            else
+#endif
+            {
+               //Send a ChangeCipherSpec message to the client
+               context->state = TLS_STATE_SERVER_CHANGE_CIPHER_SPEC;
+            }
+         }
       }
    }
    else

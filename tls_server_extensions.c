@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.0
+ * @version 2.1.2
  **/
 
 //Switch to the appropriate trace level
@@ -476,7 +476,7 @@ error_t tlsFormatServerEmsExtension(TlsContext *context,
 #if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
    //If the server receives a ClientHello without the ExtendedMasterSecret
    //extension, then it must not include the extension in the ServerHello
-   if(context->extendedMasterSecretExtReceived)
+   if(context->emsExtReceived)
    {
       TlsExtension *extension;
 
@@ -490,6 +490,52 @@ error_t tlsFormatServerEmsExtension(TlsContext *context,
 
       //Compute the length, in bytes, of the ExtendedMasterSecret extension
       n = sizeof(TlsExtension);
+   }
+#endif
+
+   //Total number of bytes that have been written
+   *written = n;
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
+ * @brief Format SessionTicket extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] p Output stream where to write the SessionTicket extension
+ * @param[out] written Total number of bytes that have been written
+ * @return Error code
+ **/
+
+error_t tlsFormatServerSessionTicketExtension(TlsContext *context,
+   uint8_t *p, size_t *written)
+{
+   size_t n = 0;
+
+#if (TLS_TICKET_SUPPORT == ENABLED)
+   //The server must not send this extension if it does not receive one in the
+   //ClientHello (refer to RFC 5077, section 3.2)
+   if(context->sessionTicketExtSent)
+   {
+      TlsExtension *extension;
+
+      //Add the SessionTicket extension
+      extension = (TlsExtension *) p;
+      //Type of the extension
+      extension->type = HTONS(TLS_EXT_SESSION_TICKET);
+
+      //The server uses a zero-length SessionTicket extension to indicate to the
+      //client that it will send a new session ticket using the NewSessionTicket
+      //handshake message
+      n = 0;
+
+      //Set the length of the extension
+      extension->length = htons(n);
+
+      //Compute the length, in bytes, of the SessionTicket extension
+      n += sizeof(TlsExtension);
    }
 #endif
 
@@ -1183,7 +1229,7 @@ error_t tlsParseClientEmsExtension(TlsContext *context,
    if(extendedMasterSecret != NULL)
    {
       //Use the extended master secret computation
-      context->extendedMasterSecretExtReceived = TRUE;
+      context->emsExtReceived = TRUE;
    }
    else
    {
@@ -1193,7 +1239,7 @@ error_t tlsParseClientEmsExtension(TlsContext *context,
          //If the original session used the ExtendedMasterSecret extension but
          //the new ClientHello does not contain it, the server must abort the
          //abbreviated handshake
-         if(context->extendedMasterSecretExtReceived)
+         if(context->emsExtReceived)
          {
             //Report an error
             error = ERROR_HANDSHAKE_FAILED;
@@ -1203,12 +1249,42 @@ error_t tlsParseClientEmsExtension(TlsContext *context,
       //If the client and server choose to continue a full handshake without
       //the extension, they must use the standard master secret derivation
       //for the new session
-      context->extendedMasterSecretExtReceived = FALSE;
+      context->emsExtReceived = FALSE;
    }
 #endif
 
    //Return status code
    return error;
+}
+
+
+/**
+ * @brief Parse SessionTicket extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] sessionTicket Pointer to the SessionTicket extension
+ * @return Error code
+ **/
+
+error_t tlsParseClientSessionTicketExtension(TlsContext *context,
+   const TlsExtension *sessionTicket)
+{
+#if (TLS_TICKET_SUPPORT == ENABLED)
+   //SessionTicket extension found?
+   if(sessionTicket != NULL)
+   {
+      //Check whether session ticket mechanism is enabled
+      if(context->sessionTicketEnabled &&
+         context->ticketEncryptCallback != NULL &&
+         context->ticketDecryptCallback != NULL)
+      {
+         //The ClientHello includes a SessionTicket extension
+         context->sessionTicketExtReceived = TRUE;
+      }
+   }
+#endif
+
+   //Return status code
+   return NO_ERROR;
 }
 
 

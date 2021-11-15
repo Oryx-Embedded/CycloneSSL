@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.0
+ * @version 2.1.2
  **/
 
 //Switch to the appropriate trace level
@@ -1354,12 +1354,12 @@ error_t tlsGenerateEcdsaSignature(TlsContext *context, const uint8_t *digest,
 #endif
    {
       EcDomainParameters params;
-      Mpi privateKey;
+      EcPrivateKey privateKey;
 
       //Initialize EC domain parameters
       ecInitDomainParameters(&params);
       //Initialize EC private key
-      mpiInit(&privateKey);
+      ecInitPrivateKey(&privateKey);
 
       //Decode the PEM structure that holds the EC domain parameters
       error = pemImportEcParameters(context->cert->privateKey,
@@ -1383,7 +1383,7 @@ error_t tlsGenerateEcdsaSignature(TlsContext *context, const uint8_t *digest,
 
       //Release previously allocated resources
       ecFreeDomainParameters(&params);
-      mpiFree(&privateKey);
+      ecFreePrivateKey(&privateKey);
    }
 
    //Check status code
@@ -1620,7 +1620,7 @@ error_t tlsVerifyEddsaSignature(TlsContext *context,
          uint8_t publicKey[ED25519_PUBLIC_KEY_LEN];
 
          //Get peer's public key
-         error = mpiExport(&context->peerEcPublicKey.x, publicKey,
+         error = mpiExport(&context->peerEcPublicKey.q.x, publicKey,
             ED25519_PUBLIC_KEY_LEN, MPI_FORMAT_LITTLE_ENDIAN);
 
          //Check status code
@@ -1649,7 +1649,7 @@ error_t tlsVerifyEddsaSignature(TlsContext *context,
          uint8_t publicKey[ED448_PUBLIC_KEY_LEN];
 
          //Get peer's public key
-         error = mpiExport(&context->peerEcPublicKey.x, publicKey,
+         error = mpiExport(&context->peerEcPublicKey.q.x, publicKey,
             ED448_PUBLIC_KEY_LEN, MPI_FORMAT_LITTLE_ENDIAN);
 
          //Check status code

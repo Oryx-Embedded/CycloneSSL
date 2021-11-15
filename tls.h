@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.0
+ * @version 2.1.2
  **/
 
 #ifndef _TLS_H
@@ -83,13 +83,13 @@ struct _TlsEncryptionEngine;
 #endif
 
 //Version string
-#define CYCLONE_SSL_VERSION_STRING "2.1.0"
+#define CYCLONE_SSL_VERSION_STRING "2.1.2"
 //Major version
 #define CYCLONE_SSL_MAJOR_VERSION 2
 //Minor version
 #define CYCLONE_SSL_MINOR_VERSION 1
 //Revision number
-#define CYCLONE_SSL_REV_NUMBER 0
+#define CYCLONE_SSL_REV_NUMBER 2
 
 //TLS version numbers
 #define SSL_VERSION_3_0 0x0300
@@ -1749,6 +1749,23 @@ typedef __start_packed struct
 } __end_packed TlsAlert;
 
 
+/**
+ * @brief Session state information
+ **/
+
+typedef __start_packed struct
+{
+   uint16_t version;            ///<Protocol version
+   uint16_t cipherSuite;        ///<Cipher suite identifier
+   uint8_t secret[48];          ///<Master secret
+   systime_t ticketTimestamp;   ///<Timestamp to manage ticket lifetime
+   uint32_t ticketLifetime;     ///<Lifetime of the ticket
+#if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
+   bool_t extendedMasterSecret; ///<Extended master secret computation
+#endif
+} __end_packed TlsPlaintextSessionState;
+
+
 //CodeWarrior or Win32 compiler?
 #if defined(__CWCC__) || defined(_WIN32)
    #pragma pack(pop)
@@ -2068,7 +2085,6 @@ struct _TlsContext
    TlsCertDesc *cert;                        ///<Pointer to the currently selected certificate
 
    TlsCache *cache;                          ///<TLS session cache
-
    uint8_t sessionId[32];                    ///<Session identifier
    size_t sessionIdLen;                      ///<Length of the session identifier
 
@@ -2157,6 +2173,7 @@ struct _TlsContext
    uint8_t *certRequestContext;              ///<Certificate request context
    size_t certRequestContextLen;             ///<Length of the certificate request context
    int_t selectedIdentity;                   ///<Selected PSK identity
+   bool_t pskKeModeSupported;                ///<PSK key establishment supported by the client
 
    uint8_t secret[TLS_MAX_HKDF_DIGEST_SIZE];
    uint8_t clientEarlyTrafficSecret[TLS_MAX_HKDF_DIGEST_SIZE];
@@ -2204,7 +2221,7 @@ struct _TlsContext
 
 #if (TLS_ECDSA_SIGN_SUPPORT == ENABLED || TLS_EDDSA_SIGN_SUPPORT == ENABLED)
    EcDomainParameters peerEcParams;          ///<Peer's EC domain parameters
-   EcPoint peerEcPublicKey;                  ///<Peer's EC public key
+   EcPublicKey peerEcPublicKey;              ///<Peer's EC public key
 #endif
 
 #if (TLS_PSK_SUPPORT == ENABLED)
@@ -2235,7 +2252,7 @@ struct _TlsContext
 #endif
 
 #if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
-   bool_t extendedMasterSecretExtReceived;   ///<The ExtendedMasterSecret extension has been received
+   bool_t emsExtReceived;                    ///<The ExtendedMasterSecret extension has been received
 #endif
 
 #if (TLS_RAW_PUBLIC_KEY_SUPPORT == ENABLED)
@@ -2249,6 +2266,7 @@ struct _TlsContext
 #if (TLS_TICKET_SUPPORT == ENABLED)
    bool_t sessionTicketEnabled;              ///<Session ticket mechanism enabled
    bool_t sessionTicketExtReceived;          ///<The SessionTicket extension has been received
+   bool_t sessionTicketExtSent;              ///<The SessionTicket extension has been sent
    TlsTicketEncryptCallback ticketEncryptCallback; ///<Ticket encryption callback function
    TlsTicketDecryptCallback ticketDecryptCallback; ///<Ticket decryption callback function
    void *ticketParam;                        ///<Opaque pointer passed to the ticket callbacks

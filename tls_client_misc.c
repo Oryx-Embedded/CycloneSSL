@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.0
+ * @version 2.1.2
  **/
 
 //Switch to the appropriate trace level
@@ -510,7 +510,7 @@ error_t tlsFormatClientKeyParams(TlsContext *context, uint8_t *p,
 
       //Encode the client's public key to an opaque vector
       error = tlsWriteEcPoint(&context->ecdhContext.params,
-         &context->ecdhContext.qa, p, &n);
+         &context->ecdhContext.qa.q, p, &n);
       //Any error to report?
       if(error)
          return error;
@@ -527,7 +527,7 @@ error_t tlsFormatClientKeyParams(TlsContext *context, uint8_t *p,
       (void) n;
 
       //The specified key exchange method is not supported
-      return ERROR_UNSUPPORTED_KEY_EXCH_METHOD;
+      return ERROR_UNSUPPORTED_KEY_EXCH_ALGO;
    }
 
    //Successful processing
@@ -767,7 +767,7 @@ error_t tlsParseServerKeyParams(TlsContext *context, const uint8_t *p,
       {
          //Read server's public key
          error = tlsReadEcPoint(&context->ecdhContext.params,
-            &context->ecdhContext.qb, p, length, &n);
+            &context->ecdhContext.qb.q, p, length, &n);
       }
 
       //Check status code
@@ -780,7 +780,7 @@ error_t tlsParseServerKeyParams(TlsContext *context, const uint8_t *p,
 
          //Verify peer's public key
          error = ecdhCheckPublicKey(&context->ecdhContext.params,
-            &context->ecdhContext.qb);
+            &context->ecdhContext.qb.q);
       }
 
       //Check status code
@@ -788,9 +788,9 @@ error_t tlsParseServerKeyParams(TlsContext *context, const uint8_t *p,
       {
          //Debug message
          TRACE_DEBUG("  Server public key X:\r\n");
-         TRACE_DEBUG_MPI("    ", &context->ecdhContext.qb.x);
+         TRACE_DEBUG_MPI("    ", &context->ecdhContext.qb.q.x);
          TRACE_DEBUG("  Server public key Y:\r\n");
-         TRACE_DEBUG_MPI("    ", &context->ecdhContext.qb.y);
+         TRACE_DEBUG_MPI("    ", &context->ecdhContext.qb.q.y);
       }
    }
    else
@@ -1435,7 +1435,7 @@ error_t tlsSelectClientVersion(TlsContext *context,
  * @return Error code
  **/
 
-error_t tlsResumeClientSession(TlsContext *context, const uint8_t *sessionId,
+error_t tlsResumeSession(TlsContext *context, const uint8_t *sessionId,
    size_t sessionIdLen, uint16_t cipherSuite)
 {
    error_t error;

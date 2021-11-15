@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.0
+ * @version 2.1.2
  **/
 
 //Switch to the appropriate trace level
@@ -758,7 +758,8 @@ error_t tls13GenerateClientAppTrafficKeys(TlsContext *context)
 #if (TLS_TICKET_SUPPORT == ENABLED)
    //Check whether session ticket mechanism is enabled
    if(context->entity == TLS_CONNECTION_END_SERVER &&
-      context->ticketEncryptCallback != NULL)
+      context->ticketEncryptCallback != NULL &&
+      context->pskKeModeSupported)
    {
       //At any time after the server has received the client Finished message,
       //it may send a NewSessionTicket message

@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.0
+ * @version 2.1.2
  **/
 
 //Switch to the appropriate trace level
@@ -253,9 +253,9 @@ error_t tlsFormatServerKeyParams(TlsContext *context,
          {
             //Debug message
             TRACE_DEBUG("  Server public key X:\r\n");
-            TRACE_DEBUG_MPI("    ", &context->ecdhContext.qa.x);
+            TRACE_DEBUG_MPI("    ", &context->ecdhContext.qa.q.x);
             TRACE_DEBUG("  Server public key Y:\r\n");
-            TRACE_DEBUG_MPI("    ", &context->ecdhContext.qa.y);
+            TRACE_DEBUG_MPI("    ", &context->ecdhContext.qa.q.y);
 
             //Set the type of the elliptic curve domain parameters
             *p = TLS_EC_CURVE_TYPE_NAMED_CURVE;
@@ -275,7 +275,7 @@ error_t tlsFormatServerKeyParams(TlsContext *context,
 
             //Write server's public key
             error = tlsWriteEcPoint(&context->ecdhContext.params,
-               &context->ecdhContext.qa, p, &n);
+               &context->ecdhContext.qa.q, p, &n);
          }
 
          //Check status code
@@ -907,17 +907,17 @@ error_t tlsCheckSignalingCipherSuiteValues(TlsContext *context,
  * @return Error code
  **/
 
-error_t tlsResumeServerSession(TlsContext *context, const uint8_t *sessionId,
+error_t tlsResumeStatefulSession(TlsContext *context, const uint8_t *sessionId,
    size_t sessionIdLen, const TlsCipherSuites *cipherSuites,
    const TlsHelloExtensions *extensions)
 {
    error_t error;
 
-#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //Initialize status code
    error = NO_ERROR;
 
-#if (TLS_SESSION_RESUME_SUPPORT == ENABLED)
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2 && \
+   TLS_SESSION_RESUME_SUPPORT == ENABLED)
    //Check whether session caching is supported
    if(context->cache != NULL)
    {
@@ -936,7 +936,9 @@ error_t tlsResumeServerSession(TlsContext *context, const uint8_t *sessionId,
          //to a server (for example, when resuming a session), it should
          //initiate the connection in that native protocol
          if(session->version != context->version)
+         {
             session = NULL;
+         }
       }
 
       //Matching session found?
@@ -950,13 +952,17 @@ error_t tlsResumeServerSession(TlsContext *context, const uint8_t *sessionId,
          {
             //Matching cipher suite?
             if(ntohs(cipherSuites->value[i]) == session->cipherSuite)
+            {
                break;
+            }
          }
 
          //If the cipher suite is not present in the list cipher suites offered
          //by the client, the server must not perform the abbreviated handshake
          if(i >= n)
+         {
             session = NULL;
+         }
       }
 
 #if (TLS_SNI_SUPPORT == ENABLED)
@@ -1000,7 +1006,9 @@ error_t tlsResumeServerSession(TlsContext *context, const uint8_t *sessionId,
             //extension but the new ClientHello contains the extension, then
             //the server must not perform the abbreviated handshake
             if(!session->extendedMasterSecret)
+            {
                session = NULL;
+            }
          }
       }
 #endif
@@ -1025,12 +1033,9 @@ error_t tlsResumeServerSession(TlsContext *context, const uint8_t *sessionId,
       {
          //Perform a full handshake
          context->resume = FALSE;
-         //Session ID is limited to 32 bytes
-         context->sessionIdLen = 32;
 
-         //Generate a new random ID
-         error = context->prngAlgo->read(context->prngContext,
-            context->sessionId, context->sessionIdLen);
+         //Generate a new random session ID
+         error = tlsGenerateSessionId(context, 32);
       }
    }
    else
@@ -1041,10 +1046,208 @@ error_t tlsResumeServerSession(TlsContext *context, const uint8_t *sessionId,
       //The session cannot be resumed
       context->sessionIdLen = 0;
    }
-#else
-   //Not implemented
-   error = ERROR_NOT_IMPLEMENTED;
+
+   //Return status code
+   return error;
+}
+
+
+/**
+ * @brief Resume TLS session via session ticket
+ * @param[in] context Pointer to the TLS context
+ * @param[in] sessionId Pointer to the session ID offered by the client
+ * @param[in] sessionIdLen Length of the session ID, in bytes
+ * @param[in] cipherSuites List of cipher suites offered by the client
+ * @param[in] extensions ClientHello extensions offered by the client
+ * @return Error code
+ **/
+
+error_t tlsResumeStatelessSession(TlsContext *context, const uint8_t *sessionId,
+   size_t sessionIdLen, const TlsCipherSuites *cipherSuites,
+   const TlsHelloExtensions *extensions)
+{
+   error_t error;
+
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2 && \
+   TLS_TICKET_SUPPORT == ENABLED)
+   //The client indicates that it supports the ticket mechanism by including
+   //a SessionTicket extension in the ClientHello message
+   if(context->sessionTicketExtReceived)
+   {
+      uint_t i;
+      uint_t n;
+      size_t length;
+      systime_t serverTicketAge;
+      TlsPlaintextSessionState *state;
+
+      //Retrieve the length of the ticket
+      length = ntohs(extensions->sessionTicket->length);
+
+      //Check the length of the ticket
+      if(length > 0 && length <= TLS_MAX_TICKET_SIZE)
+      {
+         //Allocate a buffer to store the decrypted state information
+         state = tlsAllocMem(length);
+
+         //Successful memory allocation?
+         if(state != NULL)
+         {
+            //Make sure a valid callback has been registered
+            if(context->ticketDecryptCallback != NULL)
+            {
+               //Decrypt the received ticket
+               error = context->ticketDecryptCallback(context,
+                  extensions->sessionTicket->value, length, (uint8_t *) state,
+                  &length, context->ticketParam);
+            }
+            else
+            {
+               //Report an error
+               error = ERROR_FAILURE;
+            }
+
+            //Valid ticket?
+            if(!error)
+            {
+               //Check the length of the decrypted ticket
+               if(length == sizeof(TlsPlaintextSessionState))
+               {
+                  //The ticket mechanism applies to TLS 1.0, TLS 1.1 and TLS 1.2
+                  if(state->version != context->version)
+                  {
+                     //The ticket is not valid
+                     error = ERROR_INVALID_TICKET;
+                  }
+
+                  //Compute the time since the ticket was issued
+                  serverTicketAge = osGetSystemTime() - state->ticketTimestamp;
+
+                  //Verify ticket's validity
+                  if(serverTicketAge >= (state->ticketLifetime * 1000))
+                  {
+                     //The ticket is not valid
+                     error = ERROR_INVALID_TICKET;
+                  }
+
+                  //Get the total number of cipher suites offered by the client
+                  n = ntohs(cipherSuites->length) / 2;
+
+                  //Loop through the list of cipher suite identifiers
+                  for(i = 0; i < n; i++)
+                  {
+                     //Matching cipher suite?
+                     if(ntohs(cipherSuites->value[i]) == state->cipherSuite)
+                     {
+                        break;
+                     }
+                  }
+
+                  //If the cipher suite is not present in the list cipher
+                  //suites offered by the client, the server must not perform
+                  //the abbreviated handshake
+                  if(i >= n)
+                  {
+                     //The ticket is not valid
+                     error = ERROR_INVALID_TICKET;
+                  }
+
+#if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
+                  //ExtendedMasterSecret extension found?
+                  if(extensions->extendedMasterSecret != NULL)
+                  {
+                     //If the original session did not use the ExtendedMasterSecret
+                     //extension but the new ClientHello contains the extension,
+                     //then the server must not perform the abbreviated handshake
+                     if(!state->extendedMasterSecret)
+                     {
+                        //The ticket is not valid
+                        error = ERROR_INVALID_TICKET;
+                     }
+                  }
 #endif
+               }
+               else
+               {
+                  //The ticket is malformed
+                  error = ERROR_INVALID_TICKET;
+               }
+            }
+
+            //Check status code
+            if(!error)
+            {
+               //The ticket mechanism may be used with any TLS ciphersuite
+               error = tlsSelectCipherSuite(context, state->cipherSuite);
+            }
+
+            //Check status code
+            if(!error)
+            {
+               //Restore master secret
+               osMemcpy(context->masterSecret, state->secret,
+                  TLS_MASTER_SECRET_SIZE);
+
+#if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
+               //Extended master secret computation
+               context->emsExtReceived = state->extendedMasterSecret;
+#endif
+            }
+
+            //Release state information
+            osMemset(state, 0, length);
+            tlsFreeMem(state);
+         }
+         else
+         {
+            //Failed to allocate memory
+            error = ERROR_OUT_OF_MEMORY;
+         }
+      }
+      else
+      {
+         //The extension will be empty if the client does not already possess
+         //a ticket for the server (refer to RFC 5077, section 3.1)
+         error = ERROR_INVALID_TICKET;
+      }
+
+      //Valid ticket?
+      if(!error)
+      {
+         //Perform abbreviated handshake
+         context->resume = TRUE;
+
+         //If the server accepts the ticket and the session ID is not empty,
+         //then it must respond with the same session ID present in the
+         //ClientHello. This allows the client to easily differentiate when
+         //the server is resuming a session from when it is falling back to
+         //a full handshake (refer to RFC 5077, section 3.4)
+         osMemcpy(context->sessionId, sessionId, sessionIdLen);
+         context->sessionIdLen = sessionIdLen;
+
+         //If the server successfully verifies the client's ticket, then it may
+         //renew the ticket by including a NewSessionTicket handshake message
+         //after the ServerHello
+         context->sessionTicketExtSent = FALSE;
+      }
+      else
+      {
+         //If a server is planning on issuing a session ticket to a client that
+         //does not present one, it should include an empty Session ID in the
+         //ServerHello
+         context->sessionIdLen = 0;
+
+         //The server uses a zero-length SessionTicket extension to indicate to the
+         //client that it will send a new session ticket using the NewSessionTicket
+         //handshake message
+         context->sessionTicketExtSent = TRUE;
+      }
+   }
+   else
+#endif
+   {
+      //No valid ticket received
+      error = ERROR_NO_TICKET;
+   }
 
    //Return status code
    return error;
@@ -1121,7 +1324,9 @@ error_t tlsNegotiateVersion(TlsContext *context, uint16_t clientVersion,
                //The legacy_version field must be set to 0x0303, which is the
                //version number for TLS 1.2
                if(clientVersion < TLS_VERSION_1_2)
+               {
                   error = ERROR_VERSION_NOT_SUPPORTED;
+               }
             }
          }
       }
@@ -1205,7 +1410,9 @@ error_t tlsNegotiateCipherSuite(TlsContext *context, const HashAlgo *hashAlgo,
                   {
                      //Make sure the selected cipher suite is compatible
                      if(context->cipherSuite.prfHashAlgo != hashAlgo)
+                     {
                         error = ERROR_HANDSHAKE_FAILED;
+                     }
                   }
 
                   //Check status code
@@ -1243,7 +1450,9 @@ error_t tlsNegotiateCipherSuite(TlsContext *context, const HashAlgo *hashAlgo,
             {
                //Make sure the selected cipher suite is compatible
                if(context->cipherSuite.prfHashAlgo != hashAlgo)
+               {
                   error = ERROR_HANDSHAKE_FAILED;
+               }
             }
 
             //Check status code
@@ -1565,7 +1774,9 @@ error_t tlsSelectCertificate(TlsContext *context,
       //Do not accept the specified cipher suite unless a suitable
       //certificate has been found
       if(context->cert == NULL)
+      {
          error = ERROR_NO_CERTIFICATE;
+      }
    }
 
    //Return status code
@@ -1840,7 +2051,7 @@ error_t tlsParseClientKeyParams(TlsContext *context,
 
       //Decode client's public key
       error = tlsReadEcPoint(&context->ecdhContext.params,
-         &context->ecdhContext.qb, p, length, &n);
+         &context->ecdhContext.qb.q, p, length, &n);
 
       //Check status code
       if(!error)
@@ -1851,7 +2062,7 @@ error_t tlsParseClientKeyParams(TlsContext *context,
          //Verify client's public key and make sure that it is on the same
          //elliptic curve as the server's ECDH key
          error = ecdhCheckPublicKey(&context->ecdhContext.params,
-            &context->ecdhContext.qb);
+            &context->ecdhContext.qb.q);
       }
 
       //Check status code
@@ -1887,7 +2098,7 @@ error_t tlsParseClientKeyParams(TlsContext *context,
    //Invalid key exchange method?
    {
       //The specified key exchange method is not supported
-      error = ERROR_UNSUPPORTED_KEY_EXCH_METHOD;
+      error = ERROR_UNSUPPORTED_KEY_EXCH_ALGO;
    }
 #else
    //Not implemented

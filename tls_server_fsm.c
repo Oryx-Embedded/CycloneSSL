@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.0
+ * @version 2.1.2
  **/
 
 //Switch to the appropriate trace level
@@ -122,6 +122,26 @@ error_t tlsPerformServerHandshake(TlsContext *context)
          error = tlsSendCertificateRequest(context);
          break;
 
+      //Sending NewSessionTicket message?
+      case TLS_STATE_NEW_SESSION_TICKET:
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+         //TLS 1.3 currently selected?
+         if(context->version == TLS_VERSION_1_3)
+         {
+            //At any time after the server has received the client Finished
+            //message, it may send a NewSessionTicket message
+            error = tls13SendNewSessionTicket(context);
+         }
+         else
+#endif
+         {
+            //The NewSessionTicket message is sent by the server during the TLS
+            //handshake before the ChangeCipherSpec message
+            error = tlsSendNewSessionTicket(context);
+         }
+
+         break;
+
       //Sending ChangeCipherSpec message?
       case TLS_STATE_SERVER_CHANGE_CIPHER_SPEC:
       case TLS_STATE_SERVER_CHANGE_CIPHER_SPEC_2:
@@ -208,13 +228,6 @@ error_t tlsPerformServerHandshake(TlsContext *context)
          error = tls13GenerateClientAppTrafficKeys(context);
          break;
 
-      //Sending NewSessionTicket message message?
-      case TLS_STATE_NEW_SESSION_TICKET:
-         //At any time after the server has received the client Finished
-         //message, it may send a NewSessionTicket message
-         error = tls13SendNewSessionTicket(context);
-         break;
-
       //Sending KeyUpdate message?
       case TLS_STATE_KEY_UPDATE:
          //The KeyUpdate handshake message is used to indicate that the sender
@@ -264,8 +277,20 @@ error_t tlsPerformServerHandshake(TlsContext *context)
       //Version of TLS prior to TLS 1.3?
       if(context->version <= TLS_VERSION_1_2)
       {
-         //Save current session in the session cache for further reuse
-         tlsSaveToCache(context);
+#if (TLS_TICKET_SUPPORT == ENABLED)
+         //Any ticket presented by the client?
+         if(context->sessionTicketExtReceived)
+         {
+            //If a ticket is presented by the client, the server must not
+            //attempt to use the Session ID in the ClientHello for stateful
+            //session resumption
+         }
+         else
+#endif
+         {
+            //Save current session in the session cache for further reuse
+            tlsSaveToCache(context);
+         }
       }
 #endif
    }

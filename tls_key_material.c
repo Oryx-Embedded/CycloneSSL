@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.0
+ * @version 2.1.2
  **/
 
 //Switch to the appropriate trace level
@@ -85,7 +85,7 @@ error_t tlsGenerateSessionKeys(TlsContext *context)
 #if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
       //If both the ClientHello and ServerHello contain the ExtendedMasterSecret
       //extension, the new session uses the extended master secret computation
-      if(context->extendedMasterSecretExtReceived)
+      if(context->emsExtReceived)
       {
          //Extended master secret computation
          error = tlsGenerateExtendedMasterSecret(context);
@@ -375,7 +375,7 @@ error_t tlsGeneratePskPremasterSecret(TlsContext *context)
    //Invalid key exchange method?
    {
       //The specified key exchange method is not supported
-      error = ERROR_UNSUPPORTED_KEY_EXCH_METHOD;
+      error = ERROR_UNSUPPORTED_KEY_EXCH_ALGO;
    }
 
    //Return status code

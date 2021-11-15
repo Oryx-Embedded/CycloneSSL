@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.0
+ * @version 2.1.2
  **/
 
 #ifndef _TLS_SERVER_H
@@ -44,6 +44,7 @@ error_t tlsSendServerHello(TlsContext *context);
 error_t tlsSendServerKeyExchange(TlsContext *context);
 error_t tlsSendCertificateRequest(TlsContext *context);
 error_t tlsSendServerHelloDone(TlsContext *context);
+error_t tlsSendNewSessionTicket(TlsContext *context);
 
 error_t tlsFormatServerHello(TlsContext *context,
    TlsServerHello *message, size_t *length);
@@ -56,6 +57,9 @@ error_t tlsFormatCertificateRequest(TlsContext *context,
 
 error_t tlsFormatServerHelloDone(TlsContext *context,
    TlsServerHelloDone *message, size_t *length);
+
+error_t tlsFormatNewSessionTicket(TlsContext *context,
+   TlsNewSessionTicket *message, size_t *length);
 
 error_t tlsParseClientHello(TlsContext *context,
    const TlsClientHello *message, size_t length);

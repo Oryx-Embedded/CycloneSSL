@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.0
+ * @version 2.1.2
  **/
 
 #ifndef _TLS_MISC_H
@@ -43,6 +43,7 @@ extern "C" {
 void tlsProcessError(TlsContext *context, error_t errorCode);
 
 error_t tlsGenerateRandomValue(TlsContext *context, uint8_t *random);
+error_t tlsGenerateSessionId(TlsContext *context, size_t length);
 
 error_t tlsSelectVersion(TlsContext *context, uint16_t version);
 error_t tlsSelectCipherSuite(TlsContext *context, uint16_t identifier);

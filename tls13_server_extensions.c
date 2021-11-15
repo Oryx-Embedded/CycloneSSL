@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.0
+ * @version 2.1.2
  **/
 
 //Switch to the appropriate trace level
@@ -178,7 +178,7 @@ error_t tls13FormatServerKeyShareExtension(TlsContext *context,
          //ECDHE parameters are encoded in the opaque key_exchange field of
          //the KeyShareEntry
          error = ecExport(&context->ecdhContext.params,
-            &context->ecdhContext.qa, keyShareEntry->keyExchange, &n);
+            &context->ecdhContext.qa.q, keyShareEntry->keyExchange, &n);
          //Any error to report?
          if(error)
             return error;
@@ -444,18 +444,26 @@ error_t tls13ParseClientKeyShareExtension(TlsContext *context,
          {
             //ECDHE key exchange mechanism provides forward secrecy
             if(context->keyExchMethod == TLS13_KEY_EXCH_PSK)
+            {
                context->keyExchMethod = TLS13_KEY_EXCH_PSK_ECDHE;
+            }
             else
+            {
                context->keyExchMethod = TLS13_KEY_EXCH_ECDHE;
+            }
          }
          //Finite field group?
          else if(tls13IsFfdheGroupSupported(context, context->namedGroup))
          {
             //DHE key exchange mechanism provides forward secrecy
             if(context->keyExchMethod == TLS13_KEY_EXCH_PSK)
+            {
                context->keyExchMethod = TLS13_KEY_EXCH_PSK_DHE;
+            }
             else
+            {
                context->keyExchMethod = TLS13_KEY_EXCH_DHE;
+            }
          }
          //Unknown group?
          else
@@ -491,6 +499,21 @@ error_t tls13ParsePskKeModesExtension(TlsContext *context,
 {
    error_t error;
    uint_t i;
+
+   //PskKeyExchangeModes extension found?
+   if(pskKeModeList != NULL)
+   {
+      //Check whether the client supports session resumption with a PSK
+      for(i = 0; i < pskKeModeList->length; i++)
+      {
+         //PSK key establishment supported?
+         if(pskKeModeList->value[i] == TLS_PSK_KEY_EXCH_MODE_PSK_KE ||
+            pskKeModeList->value[i] == TLS_PSK_KEY_EXCH_MODE_PSK_DHE_KE)
+         {
+            context->pskKeModeSupported = TRUE;
+         }
+      }
+   }
 
    //PSK key exchange method?
    if(context->keyExchMethod == TLS13_KEY_EXCH_PSK ||
@@ -716,7 +739,9 @@ error_t tls13ParseClientPreSharedKeyExtension(TlsContext *context,
 
       //Extra binders found?
       if(m != 0)
+      {
          return ERROR_ILLEGAL_PARAMETER;
+      }
    }
    else
 #endif
@@ -727,7 +752,9 @@ error_t tls13ParseClientPreSharedKeyExtension(TlsContext *context,
          //When responding to a HelloRetryRequest, the client must send the
          //same ClientHello without modification
          if(context->selectedIdentity >= 0)
+         {
             return ERROR_ILLEGAL_PARAMETER;
+         }
       }
 
       //The ClientHello message does not contain any PreSharedKey extension

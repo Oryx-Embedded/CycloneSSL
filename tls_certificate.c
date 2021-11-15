@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.0
+ * @version 2.1.2
  **/
 
 //Switch to the appropriate trace level
@@ -972,7 +972,9 @@ bool_t tlsIsCertificateAcceptable(TlsContext *context, const TlsCertDesc *cert,
          //the signing algorithm for the certificate must be the same as the
          //algorithm for the certificate key
          if(cert->signAlgo != TLS_SIGN_ALGO_ECDSA)
+         {
             acceptable = FALSE;
+         }
       }
 
       //Filter out certificates with unsupported type
@@ -1825,7 +1827,7 @@ error_t tlsReadSubjectPublicKey(TlsContext *context,
          if(!error)
          {
             //Retrieve the EC public key
-            error = ecImport(&context->peerEcParams, &context->peerEcPublicKey,
+            error = ecImport(&context->peerEcParams, &context->peerEcPublicKey.q,
                subjectPublicKeyInfo->ecPublicKey.q, subjectPublicKeyInfo->ecPublicKey.qLen);
          }
       }
@@ -1864,7 +1866,7 @@ error_t tlsReadSubjectPublicKey(TlsContext *context,
          if(!error)
          {
             //Retrieve the EC public key
-            error = ecImport(&context->peerEcParams, &context->peerEcPublicKey,
+            error = ecImport(&context->peerEcParams, &context->peerEcPublicKey.q,
                subjectPublicKeyInfo->ecPublicKey.q, subjectPublicKeyInfo->ecPublicKey.qLen);
          }
       }

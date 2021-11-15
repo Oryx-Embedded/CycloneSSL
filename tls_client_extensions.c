@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.0
+ * @version 2.1.2
  **/
 
 //Switch to the appropriate trace level
@@ -1332,12 +1332,12 @@ error_t tlsParseServerEmsExtension(TlsContext *context,
          //If the original session did not use the ExtendedMasterSecret
          //extension but the new ServerHello contains the extension, the
          //client must abort the handshake
-         if(!context->extendedMasterSecretExtReceived)
+         if(!context->emsExtReceived)
             return ERROR_HANDSHAKE_FAILED;
       }
 
       //A valid ExtendedMasterSecret extension has been received
-      context->extendedMasterSecretExtReceived = TRUE;
+      context->emsExtReceived = TRUE;
    }
    else
    {
@@ -1347,12 +1347,12 @@ error_t tlsParseServerEmsExtension(TlsContext *context,
          //If the original session used the ExtendedMasterSecret extension
          //but the new ServerHello does not contain the extension, the client
          //must abort the handshake
-         if(context->extendedMasterSecretExtReceived)
+         if(context->emsExtReceived)
             return ERROR_HANDSHAKE_FAILED;
       }
 
       //The ServerHello does not contain any ExtendedMasterSecret extension
-      context->extendedMasterSecretExtReceived = FALSE;
+      context->emsExtReceived = FALSE;
    }
 #endif
 
@@ -1472,7 +1472,7 @@ error_t tlsParseServerRenegoInfoExtension(TlsContext *context,
             //If the initial handshake did not use the ExtendedMasterSecret
             //extension but the new ServerHello contains the extension, the
             //client must abort the handshake
-            if(!context->extendedMasterSecretExtReceived)
+            if(!context->emsExtReceived)
                return ERROR_HANDSHAKE_FAILED;
          }
          else
@@ -1480,7 +1480,7 @@ error_t tlsParseServerRenegoInfoExtension(TlsContext *context,
             //If the initial handshake used the ExtendedMasterSecret extension
             //but the new ServerHello does not contain the extension, the
             //client must abort the handshake
-            if(context->extendedMasterSecretExtReceived)
+            if(context->emsExtReceived)
                return ERROR_HANDSHAKE_FAILED;
          }
 #endif

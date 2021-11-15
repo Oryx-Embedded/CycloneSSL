@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.0
+ * @version 2.1.2
  **/
 
 //Switch to the appropriate trace level
@@ -95,9 +95,13 @@ error_t tls13SendKeyUpdate(TlsContext *context)
       {
          //Check whether TLS operates as a client or a server
          if(context->entity == TLS_CONNECTION_END_CLIENT)
+         {
             appTrafficSecret = context->clientAppTrafficSecret;
+         }
          else
+         {
             appTrafficSecret = context->serverAppTrafficSecret;
+         }
 
          //Compute the next generation of application traffic secret
          error = tls13HkdfExpandLabel(hash, appTrafficSecret, hash->digestSize,

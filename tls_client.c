@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.0
+ * @version 2.1.2
  **/
 
 //Switch to the appropriate trace level
@@ -147,10 +147,7 @@ error_t tlsSendClientHello(TlsContext *context)
                //the ClientHello. This allows the client to easily differentiate
                //when the server is resuming a session from when it is falling
                //back to a full handshake
-               context->sessionIdLen = 32;
-
-               //Generate a random session identifier
-               error = tlsGenerateRandomValue(context, context->sessionId);
+               error = tlsGenerateSessionId(context, 32);
             }
 #endif
          }
@@ -174,12 +171,10 @@ error_t tlsSendClientHello(TlsContext *context)
             if(context->sessionIdLen == 0)
             {
                //A client not offering a pre-TLS 1.3 session must generate a
-               //new 32-byte value (refer to RFC 8446, section 4.1.2)
-               context->sessionIdLen = 32;
-
-               //This value need not be random but should be unpredictable to
-               //avoid implementations fixating on a specific value
-               error = tlsGenerateRandomValue(context, context->sessionId);
+               //new 32-byte value. This value need not be random but should
+               //be unpredictable to avoid implementations fixating on a
+               //specific value (refer to RFC 8446, section 4.1.2)
+               error = tlsGenerateSessionId(context, 32);
             }
 #endif
             //Check status code
@@ -1067,7 +1062,7 @@ error_t tlsParseServerHello(TlsContext *context,
       context->namedGroup = TLS_GROUP_NONE;
 
       //Check whether the server has decided to resume a previous session
-      error = tlsResumeClientSession(context, message->sessionId,
+      error = tlsResumeSession(context, message->sessionId,
          message->sessionIdLen, cipherSuite);
       //Any error to report?
       if(error)
