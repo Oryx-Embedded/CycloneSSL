@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2021 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2022 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.2
+ * @version 2.1.4
  **/
 
 //Switch to the appropriate trace level
@@ -587,7 +587,8 @@ error_t tlsSetCipherSuites(TlsContext *context, const uint16_t *cipherSuites,
 /**
  * @brief Specify the list of allowed ECDHE and FFDHE groups
  * @param[in] context Pointer to the TLS context
- * @param[in] groups List of named groups
+ * @param[in] groups List of named groups (most preferred first). This
+ *   parameter is taken as reference
  * @param[in] length Number of named groups in the list
  * @return Error code
  **/
@@ -641,7 +642,8 @@ error_t tlsSetPreferredGroup(TlsContext *context, uint16_t group)
 /**
  * @brief Import Diffie-Hellman parameters
  * @param[in] context Pointer to the TLS context
- * @param[in] params PEM structure that holds Diffie-Hellman parameters
+ * @param[in] params PEM structure that holds Diffie-Hellman parameters. This
+ *   parameter is taken as reference
  * @param[in] length Total length of the DER structure
  * @return Error code
  **/

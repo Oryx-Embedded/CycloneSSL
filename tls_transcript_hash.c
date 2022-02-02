@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2021 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2022 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.2
+ * @version 2.1.4
  **/
 
 //Switch to the appropriate trace level
@@ -366,9 +366,13 @@ error_t tlsComputeVerifyData(TlsContext *context, TlsConnectionEnd entity,
       {
          //Check whether the computation is performed at client or server side
          if(entity == TLS_CONNECTION_END_CLIENT)
+         {
             label = "client finished";
+         }
          else
+         {
             label = "server finished";
+         }
 
          //The verify data is always 12-byte long for TLS 1.0 and 1.1
          error = tlsPrf(context->masterSecret, TLS_MASTER_SECRET_SIZE,
@@ -406,9 +410,13 @@ error_t tlsComputeVerifyData(TlsContext *context, TlsConnectionEnd entity,
 
             //Check whether the computation is performed at client or server side
             if(entity == TLS_CONNECTION_END_CLIENT)
+            {
                label = "client finished";
+            }
             else
+            {
                label = "server finished";
+            }
 
             //Compute the verify data
             error = tls12Prf(hashAlgo, context->masterSecret, TLS_MASTER_SECRET_SIZE,
@@ -449,9 +457,13 @@ error_t tlsComputeVerifyData(TlsContext *context, TlsConnectionEnd entity,
       {
          //Check whether the computation is performed at client or server side
          if(entity == TLS_CONNECTION_END_CLIENT)
+         {
             baseKey = context->clientHsTrafficSecret;
+         }
          else
+         {
             baseKey = context->serverHsTrafficSecret;
+         }
 
          //The key used to compute the Finished message is computed from the
          //base key using HKDF

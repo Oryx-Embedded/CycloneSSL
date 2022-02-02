@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2021 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2022 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.2
+ * @version 2.1.4
  **/
 
 //Switch to the appropriate trace level
@@ -1762,11 +1762,17 @@ error_t tlsParseClientHello(TlsContext *context,
    {
       //Send a ServerHello or a HelloRetryRequest message to the client
       if(context->state == TLS_STATE_CLIENT_HELLO)
+      {
          context->state = TLS_STATE_SERVER_HELLO;
+      }
       else if(context->state == TLS_STATE_CLIENT_HELLO_2)
+      {
          context->state = TLS_STATE_SERVER_HELLO_2;
+      }
       else
+      {
          context->state = TLS_STATE_HELLO_RETRY_REQUEST;
+      }
    }
 
    //Successful processing
@@ -1896,11 +1902,16 @@ error_t tlsParseClientKeyExchange(TlsContext *context,
    if(error)
       return error;
 
-   //Update FSM state
+   //The client must send a CertificateVerify message when the Certificate
+   //message is non-empty
    if(context->peerCertType != TLS_CERT_NONE)
+   {
       context->state = TLS_STATE_CLIENT_CERTIFICATE_VERIFY;
+   }
    else
+   {
       context->state = TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC;
+   }
 
    //Successful processing
    return NO_ERROR;

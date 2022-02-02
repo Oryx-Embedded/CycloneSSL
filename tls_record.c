@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2021 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2022 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.2
+ * @version 2.1.4
  **/
 
 //Switch to the appropriate trace level
@@ -1019,23 +1019,30 @@ void tlsFormatNonce(TlsContext *context, TlsEncryptionEngine *encryptionEngine,
 
 /**
  * @brief Increment sequence number
- * @param[in,out] seqNum Sequence number to increment
+ * @param[in,out] seqNum Pointer to the 64-bit sequence number
  **/
 
 void tlsIncSequenceNumber(TlsSequenceNumber *seqNum)
 {
-   int_t i;
+   uint16_t temp;
 
    //Sequence numbers are stored MSB first
-   for(i = 7; i >= 0; i--)
-   {
-      //Increment the current byte
-      seqNum->b[i]++;
-
-      //Propagate the carry if necessary
-      if(seqNum->b[i] != 0)
-         break;
-   }
+   temp = seqNum->b[7] + 1;
+   seqNum->b[7] = temp & 0xFF;
+   temp = (temp >> 8) + seqNum->b[6];
+   seqNum->b[6] = temp & 0xFF;
+   temp = (temp >> 8) + seqNum->b[5];
+   seqNum->b[5] = temp & 0xFF;
+   temp = (temp >> 8) + seqNum->b[4];
+   seqNum->b[4] = temp & 0xFF;
+   temp = (temp >> 8) + seqNum->b[3];
+   seqNum->b[3] = temp & 0xFF;
+   temp = (temp >> 8) + seqNum->b[2];
+   seqNum->b[2] = temp & 0xFF;
+   temp = (temp >> 8) + seqNum->b[1];
+   seqNum->b[1] = temp & 0xFF;
+   temp = (temp >> 8) + seqNum->b[0];
+   seqNum->b[0] = temp & 0xFF;
 }
 
 #endif

@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2021 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2022 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.2
+ * @version 2.1.4
  **/
 
 //Switch to the appropriate trace level
@@ -137,9 +137,13 @@ error_t tlsSendCertificate(TlsContext *context)
       {
          //Check whether TLS operates as a client or a server
          if(context->entity == TLS_CONNECTION_END_CLIENT)
+         {
             context->state = TLS_STATE_CLIENT_KEY_EXCHANGE;
+         }
          else
+         {
             context->state = TLS_STATE_SERVER_KEY_EXCHANGE;
+         }
       }
       else
       {
@@ -149,9 +153,13 @@ error_t tlsSendCertificate(TlsContext *context)
             //Clients must send a CertificateVerify message whenever
             //authenticating via a certificate
             if(context->clientCertRequested)
+            {
                context->state = TLS_STATE_CLIENT_CERTIFICATE_VERIFY;
+            }
             else
+            {
                context->state = TLS_STATE_CLIENT_FINISHED;
+            }
          }
          else
          {
@@ -232,9 +240,13 @@ error_t tlsSendCertificateVerify(TlsContext *context)
       {
          //Send a Finished message to the peer
          if(context->entity == TLS_CONNECTION_END_CLIENT)
+         {
             context->state = TLS_STATE_CLIENT_FINISHED;
+         }
          else
+         {
             context->state = TLS_STATE_SERVER_FINISHED;
+         }
       }
    }
 
@@ -322,9 +334,13 @@ error_t tlsSendChangeCipherSpec(TlsContext *context)
          {
             //Send a Finished message to the peer
             if(context->entity == TLS_CONNECTION_END_CLIENT)
+            {
                context->state = TLS_STATE_CLIENT_FINISHED;
+            }
             else
+            {
                context->state = TLS_STATE_SERVER_FINISHED;
+            }
          }
       }
       else
@@ -1396,9 +1412,13 @@ error_t tlsParseCertificate(TlsContext *context,
             //The server does not send a ServerKeyExchange message when RSA
             //key exchange method is used
             if(context->keyExchMethod == TLS_KEY_EXCH_RSA)
+            {
                context->state = TLS_STATE_CERTIFICATE_REQUEST;
+            }
             else
+            {
                context->state = TLS_STATE_SERVER_KEY_EXCHANGE;
+            }
          }
          else
          {
@@ -1420,9 +1440,13 @@ error_t tlsParseCertificate(TlsContext *context,
             //The client must send a CertificateVerify message when the
             //Certificate message is non-empty
             if(context->peerCertType != TLS_CERT_NONE)
+            {
                context->state = TLS_STATE_CLIENT_CERTIFICATE_VERIFY;
+            }
             else
+            {
                context->state = TLS_STATE_CLIENT_FINISHED;
+            }
          }
       }
    }
@@ -1519,9 +1543,13 @@ error_t tlsParseCertificateVerify(TlsContext *context,
       {
          //Wait for a Finished message from the peer
          if(context->entity == TLS_CONNECTION_END_CLIENT)
+         {
             context->state = TLS_STATE_SERVER_FINISHED;
+         }
          else
+         {
             context->state = TLS_STATE_CLIENT_FINISHED;
+         }
       }
    }
 
@@ -1850,7 +1878,9 @@ error_t tlsParseAlert(TlsContext *context,
 
          //Close down the connection immediately
          if(context->state == TLS_STATE_APPLICATION_DATA)
+         {
             context->state = TLS_STATE_CLOSING;
+         }
       }
       else if(message->description == TLS_ALERT_USER_CANCELED)
       {
