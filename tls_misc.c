@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.6
+ * @version 2.1.8
  **/
 
 //Switch to the appropriate trace level
@@ -894,8 +894,7 @@ void tlsFreeEncryptionEngine(TlsEncryptionEngine *encryptionEngine)
    if(encryptionEngine->cipherContext != NULL)
    {
       //Erase cipher context
-      osMemset(encryptionEngine->cipherContext, 0,
-         encryptionEngine->cipherAlgo->contextSize);
+      encryptionEngine->cipherAlgo->deinit(encryptionEngine->cipherContext);
 
       //Release memory
       tlsFreeMem(encryptionEngine->cipherContext);
