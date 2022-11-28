@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.8
+ * @version 2.2.0
  **/
 
 //Switch to the appropriate trace level
@@ -284,8 +284,8 @@ error_t tlsFormatRawPublicKey(TlsContext *context, uint8_t *p,
  * @return Error code
  **/
 
-error_t tlsParseCertificateList(TlsContext *context, const uint8_t *p,
-   size_t length)
+__weak_func error_t tlsParseCertificateList(TlsContext *context,
+   const uint8_t *p, size_t length)
 {
    error_t error;
    error_t certValidResult;
@@ -337,7 +337,7 @@ error_t tlsParseCertificateList(TlsContext *context, const uint8_t *p,
       length -= 3;
 
       //Malformed Certificate message?
-      if(n > length)
+      if(n == 0 || n > length)
       {
          //Report an error
          error = ERROR_DECODING_FAILED;
@@ -356,7 +356,7 @@ error_t tlsParseCertificateList(TlsContext *context, const uint8_t *p,
       if(error)
       {
          //Report an error
-         error = ERROR_DECODING_FAILED;
+         error = ERROR_BAD_CERTIFICATE;
          break;
       }
 
@@ -482,7 +482,7 @@ error_t tlsParseCertificateList(TlsContext *context, const uint8_t *p,
          length -= 3;
 
          //Malformed Certificate message?
-         if(n > length)
+         if(n == 0 || n > length)
          {
             //Report an error
             error = ERROR_DECODING_FAILED;
@@ -501,7 +501,7 @@ error_t tlsParseCertificateList(TlsContext *context, const uint8_t *p,
          if(error)
          {
             //Report an error
-            error = ERROR_DECODING_FAILED;
+            error = ERROR_BAD_CERTIFICATE;
             break;
          }
 

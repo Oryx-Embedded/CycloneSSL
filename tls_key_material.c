@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.8
+ * @version 2.2.0
  **/
 
 //Switch to the appropriate trace level
@@ -141,7 +141,7 @@ error_t tlsGenerateSessionKeys(TlsContext *context)
  * @return Error code
  **/
 
-error_t tlsGenerateMasterSecret(TlsContext *context)
+__weak_func error_t tlsGenerateMasterSecret(TlsContext *context)
 {
    error_t error;
    uint8_t random[2 * TLS_RANDOM_SIZE];
@@ -390,7 +390,7 @@ error_t tlsGeneratePskPremasterSecret(TlsContext *context)
  * @return Error code
  **/
 
-error_t tlsGenerateKeyBlock(TlsContext *context, size_t keyBlockLen)
+__weak_func error_t tlsGenerateKeyBlock(TlsContext *context, size_t keyBlockLen)
 {
    error_t error;
    uint8_t random[2 * TLS_RANDOM_SIZE];

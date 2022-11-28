@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.8
+ * @version 2.2.0
  **/
 
 //Switch to the appropriate trace level
@@ -648,7 +648,7 @@ error_t tlsRestoreSessionTicket(TlsContext *context,
  * @return Error code
  **/
 
-error_t tlsInitEncryptionEngine(TlsContext *context,
+__weak_func error_t tlsInitEncryptionEngine(TlsContext *context,
    TlsEncryptionEngine *encryptionEngine, TlsConnectionEnd entity,
    const uint8_t *secret)
 {
@@ -1504,8 +1504,8 @@ size_t tlsComputeEncryptionOverhead(TlsEncryptionEngine *encryptionEngine,
          n += encryptionEngine->recordIvLen;
       }
 
-      //Padding is added to force the length of the plaintext to be an
-      //integral multiple of the cipher's block length
+      //Padding is added to force the length of the plaintext to be an integral
+      //multiple of the cipher's block length
       n += encryptionEngine->cipherAlgo->blockSize -
          ((payloadLen + n) % encryptionEngine->cipherAlgo->blockSize);
    }

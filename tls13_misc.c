@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.8
+ * @version 2.2.0
  **/
 
 //Switch to the appropriate trace level
@@ -389,27 +389,42 @@ error_t tls13GenerateSharedSecret(TlsContext *context, const uint8_t *keyShare,
    if(tls13IsFfdheGroupSupported(context, context->namedGroup))
    {
 #if (TLS_FFDHE_SUPPORT == ENABLED)
-      //Read client's public key (refer to RFC 8446, section 4.2.8.1)
-      error = mpiImport(&context->dhContext.yb, keyShare, length,
-         MPI_FORMAT_BIG_ENDIAN);
+      size_t n;
 
-      //Check status code
-      if(!error)
+      //Retrieve the length of the modulus
+      n = mpiGetByteLength(&context->dhContext.params.p);
+
+      //For a given Diffie-Hellman group, the padding results in all public
+      //keys having the same length (refer to RFC 8446, section 4.2.8.1)
+      if(length == n)
       {
-         //Verify peer's public key
-         error = dhCheckPublicKey(&context->dhContext.params,
-            &context->dhContext.yb);
+         //The Diffie-Hellman public value is encoded as a big-endian integer
+         error = mpiImport(&context->dhContext.yb, keyShare, length,
+            MPI_FORMAT_BIG_ENDIAN);
+
+         //Check status code
+         if(!error)
+         {
+            //Verify peer's public key
+            error = dhCheckPublicKey(&context->dhContext.params,
+               &context->dhContext.yb);
+         }
+
+         //Check status code
+         if(!error)
+         {
+            //The negotiated key (Z) is converted to a byte string by encoding
+            //in big-endian and left padded with zeros up to the size of the
+            //prime (refer to RFC 8446, section 7.4.1)
+            error = dhComputeSharedSecret(&context->dhContext,
+               context->premasterSecret, TLS_PREMASTER_SECRET_SIZE,
+               &context->premasterSecretLen);
+         }
       }
-
-      //Check status code
-      if(!error)
+      else
       {
-         //The negotiated key (Z) is converted to a byte string by encoding in
-         //big-endian and left padded with zeros up to the size of the prime
-         //(refer to RFC 8446, section 7.4.1)
-         error = dhComputeSharedSecret(&context->dhContext,
-            context->premasterSecret, TLS_PREMASTER_SECRET_SIZE,
-            &context->premasterSecretLen);
+         //The length of the public key is not valid
+         error = ERROR_ILLEGAL_PARAMETER;
       }
 #else
       //The specified FFDHE group is not supported

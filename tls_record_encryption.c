@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.8
+ * @version 2.2.0
  **/
 
 //Switch to the appropriate trace level
@@ -37,7 +37,7 @@
 #include "tls_record.h"
 #include "tls_record_encryption.h"
 #include "tls_misc.h"
-#include "cipher_mode/cbc.h"
+#include "cipher_modes/cbc.h"
 #include "aead/aead_algorithms.h"
 #include "debug.h"
 
@@ -130,7 +130,7 @@ error_t tlsEncryptRecord(TlsContext *context,
  * @return Error code
  **/
 
-error_t tlsEncryptAeadRecord(TlsContext *context,
+__weak_func error_t tlsEncryptAeadRecord(TlsContext *context,
    TlsEncryptionEngine *encryptionEngine, void *record)
 {
 #if (TLS_CCM_CIPHER_SUPPORT == ENABLED || TLS_CCM_8_CIPHER_SUPPORT == ENABLED || \
@@ -139,8 +139,8 @@ error_t tlsEncryptAeadRecord(TlsContext *context,
    size_t length;
    size_t aadLen;
    size_t nonceLen;
-   uint8_t *tag;
    uint8_t *data;
+   uint8_t *tag;
    uint8_t aad[13];
    uint8_t nonce[12];
 
@@ -267,7 +267,7 @@ error_t tlsEncryptAeadRecord(TlsContext *context,
  * @return Error code
  **/
 
-error_t tlsEncryptCbcRecord(TlsContext *context,
+__weak_func error_t tlsEncryptCbcRecord(TlsContext *context,
    TlsEncryptionEngine *encryptionEngine, void *record)
 {
 #if (TLS_CBC_CIPHER_SUPPORT == ENABLED)
@@ -312,10 +312,12 @@ error_t tlsEncryptCbcRecord(TlsContext *context,
    //Get the actual amount of bytes in the last block
    paddingLen = (length + 1) % cipherAlgo->blockSize;
 
-   //Padding is added to force the length of the plaintext to be an
-   //integral multiple of the cipher's block length
+   //Padding is added to force the length of the plaintext to be an integral
+   //multiple of the cipher's block length
    if(paddingLen > 0)
+   {
       paddingLen = cipherAlgo->blockSize - paddingLen;
+   }
 
    //Write padding bytes
    for(i = 0; i <= paddingLen; i++)
@@ -486,8 +488,9 @@ error_t tlsAppendMessageAuthCode(TlsContext *context,
  * @return Error code
  **/
 
-error_t tlsComputeMac(TlsContext *context, TlsEncryptionEngine *encryptionEngine,
-   void *record, const uint8_t *data, size_t dataLen, uint8_t *mac)
+__weak_func error_t tlsComputeMac(TlsContext *context,
+   TlsEncryptionEngine *encryptionEngine, const void *record,
+   const uint8_t *data, size_t dataLen, uint8_t *mac)
 {
    HmacContext *hmacContext;
 

@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.8
+ * @version 2.2.0
  **/
 
 //Switch to the appropriate trace level
@@ -38,7 +38,7 @@
 #include "tls_record_decryption.h"
 #include "tls_record_encryption.h"
 #include "tls_misc.h"
-#include "cipher_mode/cbc.h"
+#include "cipher_modes/cbc.h"
 #include "aead/aead_algorithms.h"
 #include "debug.h"
 
@@ -124,18 +124,18 @@ error_t tlsDecryptRecord(TlsContext *context,
  * @return Error code
  **/
 
-error_t tlsDecryptAeadRecord(TlsContext *context,
+__weak_func error_t tlsDecryptAeadRecord(TlsContext *context,
    TlsEncryptionEngine *decryptionEngine, void *record)
 {
 #if (TLS_CCM_CIPHER_SUPPORT == ENABLED || TLS_CCM_8_CIPHER_SUPPORT == ENABLED || \
    TLS_GCM_CIPHER_SUPPORT == ENABLED || TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
    error_t error;
    size_t length;
+   size_t aadLen;
+   size_t nonceLen;
    uint8_t *data;
    uint8_t *ciphertext;
    uint8_t *tag;
-   size_t aadLen;
-   size_t nonceLen;
    uint8_t aad[13];
    uint8_t nonce[12];
 
@@ -286,7 +286,7 @@ error_t tlsDecryptAeadRecord(TlsContext *context,
  * @return Error code
  **/
 
-error_t tlsDecryptCbcRecord(TlsContext *context,
+__weak_func error_t tlsDecryptCbcRecord(TlsContext *context,
    TlsEncryptionEngine *decryptionEngine, void *record)
 {
 #if (TLS_CBC_CIPHER_SUPPORT == ENABLED)
@@ -630,7 +630,7 @@ uint32_t tlsVerifyPadding(const uint8_t *data, size_t dataLen,
  * @return The function returns 0 if the MAC verification is successful, else 1
  **/
 
-uint32_t tlsVerifyMac(TlsContext *context,
+__weak_func uint32_t tlsVerifyMac(TlsContext *context,
    TlsEncryptionEngine *decryptionEngine, const void *record,
    const uint8_t *data, size_t dataLen, size_t maxDataLen, const uint8_t *mac)
 {

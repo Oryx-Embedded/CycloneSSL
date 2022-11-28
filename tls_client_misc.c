@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.8
+ * @version 2.2.0
  **/
 
 //Switch to the appropriate trace level
@@ -363,7 +363,7 @@ error_t tlsFormatPskIdentity(TlsContext *context, uint8_t *p,
  * @return Error code
  **/
 
-error_t tlsFormatClientKeyParams(TlsContext *context, uint8_t *p,
+__weak_func error_t tlsFormatClientKeyParams(TlsContext *context, uint8_t *p,
    size_t *written)
 {
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
@@ -375,10 +375,6 @@ error_t tlsFormatClientKeyParams(TlsContext *context, uint8_t *p,
    if(context->keyExchMethod == TLS_KEY_EXCH_RSA ||
       context->keyExchMethod == TLS_KEY_EXCH_RSA_PSK)
    {
-      //Sanity check
-      if(TLS_PREMASTER_SECRET_SIZE < 48)
-         return ERROR_BUFFER_OVERFLOW;
-
       //If RSA is being used for key agreement and authentication, the
       //client generates a 48-byte premaster secret
       context->premasterSecretLen = 48;
@@ -1011,7 +1007,7 @@ error_t tlsVerifyServerKeySignature(TlsContext *context,
  * @return Error code
  **/
 
-error_t tls12VerifyServerKeySignature(TlsContext *context,
+__weak_func error_t tls12VerifyServerKeySignature(TlsContext *context,
    const Tls12DigitalSignature *signature, size_t length,
    const uint8_t *params, size_t paramsLen, size_t *consumed)
 {

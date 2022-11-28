@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.8
+ * @version 2.2.0
  **/
 
 #ifndef _TLS_H
@@ -83,13 +83,13 @@ struct _TlsEncryptionEngine;
 #endif
 
 //Version string
-#define CYCLONE_SSL_VERSION_STRING "2.1.8"
+#define CYCLONE_SSL_VERSION_STRING "2.2.0"
 //Major version
 #define CYCLONE_SSL_MAJOR_VERSION 2
 //Minor version
-#define CYCLONE_SSL_MINOR_VERSION 1
+#define CYCLONE_SSL_MINOR_VERSION 2
 //Revision number
-#define CYCLONE_SSL_REV_NUMBER 8
+#define CYCLONE_SSL_REV_NUMBER 0
 
 //TLS version numbers
 #define SSL_VERSION_3_0 0x0300
@@ -749,6 +749,13 @@ struct _TlsEncryptionEngine;
    #error TLS_MAX_DSA_MODULUS_SIZE parameter is not valid
 #endif
 
+//Master secret size
+#ifndef TLS_MASTER_SECRET_SIZE
+   #define TLS_MASTER_SECRET_SIZE 48
+#elif (TLS_MASTER_SECRET_SIZE < 48)
+   #error TLS_MASTER_SECRET_SIZE parameter is not valid
+#endif
+
 //Maximum size for premaster secret
 #ifndef TLS_PREMASTER_SECRET_SIZE
    #define TLS_PREMASTER_SECRET_SIZE (TLS_MAX_DH_MODULUS_SIZE / 8)
@@ -758,30 +765,40 @@ struct _TlsEncryptionEngine;
 
 //Maximum number of consecutive warning alerts
 #ifndef TLS_MAX_WARNING_ALERTS
-   #define TLS_MAX_WARNING_ALERTS 0
+   #define TLS_MAX_WARNING_ALERTS 5
 #elif (TLS_MAX_WARNING_ALERTS < 0)
    #error TLS_MAX_WARNING_ALERTS parameter is not valid
 #endif
 
 //Maximum number of consecutive empty records
 #ifndef TLS_MAX_EMPTY_RECORDS
-   #define TLS_MAX_EMPTY_RECORDS 0
+   #define TLS_MAX_EMPTY_RECORDS 10
 #elif (TLS_MAX_EMPTY_RECORDS < 0)
    #error TLS_MAX_EMPTY_RECORDS parameter is not valid
 #endif
 
 //Maximum number of consecutive ChangeCipherSpec messages
 #ifndef TLS_MAX_CHANGE_CIPHER_SPEC_MESSAGES
-   #define TLS_MAX_CHANGE_CIPHER_SPEC_MESSAGES 0
+   #define TLS_MAX_CHANGE_CIPHER_SPEC_MESSAGES 5
 #elif (TLS_MAX_CHANGE_CIPHER_SPEC_MESSAGES < 0)
    #error TLS_MAX_CHANGE_CIPHER_SPEC_MESSAGES parameter is not valid
 #endif
 
 //Maximum number of consecutive KeyUpdate messages
 #ifndef TLS_MAX_KEY_UPDATE_MESSAGES
-   #define TLS_MAX_KEY_UPDATE_MESSAGES 0
+   #define TLS_MAX_KEY_UPDATE_MESSAGES 5
 #elif (TLS_MAX_KEY_UPDATE_MESSAGES < 0)
    #error TLS_MAX_KEY_UPDATE_MESSAGES parameter is not valid
+#endif
+
+//Application specific context (TLS context)
+#ifndef TLS_PRIVATE_CONTEXT
+   #define TLS_PRIVATE_CONTEXT
+#endif
+
+//Application specific context (encryption engine)
+#ifndef TLS_PRIVATE_ENCRYPTION_ENGINE
+   #define TLS_PRIVATE_ENCRYPTION_ENGINE
 #endif
 
 //Allocate memory block
@@ -864,8 +881,6 @@ struct _TlsEncryptionEngine;
 #define TLS_MAX_RECORD_OVERHEAD 512
 //Size of client and server random values
 #define TLS_RANDOM_SIZE 32
-//Master secret size
-#define TLS_MASTER_SECRET_SIZE 48
 
 //C++ guard
 #ifdef __cplusplus
@@ -2061,6 +2076,7 @@ struct _TlsEncryptionEngine
 #endif
 #if (TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)
    size_t recordSizeLimit;        ///<Maximum size of record in octets
+   TLS_PRIVATE_ENCRYPTION_ENGINE  ///<Application specific context
 #endif
 };
 
@@ -2353,6 +2369,8 @@ struct _TlsContext
    bool_t replayDetectionEnabled;           ///<Anti-replay mechanism enabled
    uint32_t replayWindow[(DTLS_REPLAY_WINDOW_SIZE + 31) / 32];
 #endif
+
+   TLS_PRIVATE_CONTEXT                       ///<Application specific context
 };
 
 

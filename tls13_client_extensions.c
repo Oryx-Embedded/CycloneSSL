@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.8
+ * @version 2.2.0
  **/
 
 //Switch to the appropriate trace level
@@ -165,7 +165,9 @@ error_t tls13FormatClientKeyShareExtension(TlsContext *context,
       n = mpiGetByteLength(&context->dhContext.params.p);
 
       //Diffie-Hellman parameters are encoded in the opaque key_exchange field
-      //of the KeyShareEntry
+      //of the KeyShareEntry. The opaque value contains the Diffie-Hellman
+      //public value for the specified group encoded as a big-endian integer
+      //and padded to the left with zeros to the size of p in bytes
       error = mpiExport(&context->dhContext.ya,
          keyShareEntry->keyExchange, n, MPI_FORMAT_BIG_ENDIAN);
       //Any error to report?

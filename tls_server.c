@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.8
+ * @version 2.2.0
  **/
 
 //Switch to the appropriate trace level
@@ -514,8 +514,7 @@ error_t tlsFormatServerHello(TlsContext *context,
    //Adjust the length of the message
    *length += message->sessionIdLen;
 
-   //The cipher_suite field contains the single cipher suite selected by
-   //the server
+   //The cipher_suite field contains the cipher suite selected by the server
    STORE16BE(context->cipherSuite.identifier, p);
 
    //Advance data pointer
@@ -1502,7 +1501,7 @@ error_t tlsParseClientHello(TlsContext *context,
 
 #if (TLS_SECURE_RENEGOTIATION_SUPPORT == ENABLED)
    //Parse RenegotiationInfo extension
-   error = tlsParseClientRenegoInfoExtension(context, extensions.renegoInfo);
+   error = tlsParseClientRenegoInfoExtension(context, &extensions);
    //Any error to report?
    if(error)
       return error;
@@ -1710,7 +1709,9 @@ error_t tlsParseClientHello(TlsContext *context,
    //MaxFragmentLength that appears in a ClientHello if both extensions
    //appear (refer to RFC 8449, section 5)
    if(extensions.maxFragLen != NULL && extensions.recordSizeLimit != NULL)
+   {
       extensions.maxFragLen = NULL;
+   }
 #endif
 
 #if (TLS_MAX_FRAG_LEN_SUPPORT == ENABLED)

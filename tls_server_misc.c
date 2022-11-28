@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.8
+ * @version 2.2.0
  **/
 
 //Switch to the appropriate trace level
@@ -1142,9 +1142,9 @@ error_t tlsResumeStatelessSession(TlsContext *context, const uint8_t *sessionId,
                      }
                   }
 
-                  //If the cipher suite is not present in the list cipher
-                  //suites offered by the client, the server must not perform
-                  //the abbreviated handshake
+                  //If the cipher suite is not present in the list cipher suites
+                  //offered by the client, the server must not perform the
+                  //abbreviated handshake
                   if(i >= n)
                   {
                      //The ticket is not valid

@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.8
+ * @version 2.2.0
  **/
 
 #ifndef _TLS_RECORD_ENCRYPTION_H
@@ -56,7 +56,7 @@ error_t tlsAppendMessageAuthCode(TlsContext *context,
    TlsEncryptionEngine *decryptionEngine, void *record);
 
 error_t tlsComputeMac(TlsContext *context, TlsEncryptionEngine *encryptionEngine,
-   void *record, const uint8_t *data, size_t dataLen, uint8_t *mac);
+   const void *record, const uint8_t *data, size_t dataLen, uint8_t *mac);
 
 //C++ guard
 #ifdef __cplusplus

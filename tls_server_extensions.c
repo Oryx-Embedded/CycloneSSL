@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.8
+ * @version 2.2.0
  **/
 
 //Switch to the appropriate trace level
@@ -1291,12 +1291,12 @@ error_t tlsParseClientSessionTicketExtension(TlsContext *context,
 /**
  * @brief Parse RenegotiationInfo extension
  * @param[in] context Pointer to the TLS context
- * @param[in] renegoInfo Pointer to the RenegotiationInfo extension
+ * @param[in] extensions ClientHello extensions offered by the client
  * @return Error code
  **/
 
 error_t tlsParseClientRenegoInfoExtension(TlsContext *context,
-   const TlsRenegoInfo *renegoInfo)
+   const TlsHelloExtensions *extensions)
 {
    error_t error;
 
@@ -1305,7 +1305,7 @@ error_t tlsParseClientRenegoInfoExtension(TlsContext *context,
 
 #if (TLS_SECURE_RENEGOTIATION_SUPPORT == ENABLED)
    //RenegotiationInfo extension found?
-   if(renegoInfo != NULL)
+   if(extensions->renegoInfo != NULL)
    {
       //Initial handshake?
       if(context->clientVerifyDataLen == 0)
@@ -1315,7 +1315,7 @@ error_t tlsParseClientRenegoInfoExtension(TlsContext *context,
 
          //The server must then verify that the length of the
          //renegotiated_connection field is zero
-         if(renegoInfo->length != 0)
+         if(extensions->renegoInfo->length != 0)
          {
             //If it is not, the server must abort the handshake
             error = ERROR_HANDSHAKE_FAILED;
@@ -1325,22 +1325,46 @@ error_t tlsParseClientRenegoInfoExtension(TlsContext *context,
       else
       {
          //Check the length of the renegotiated_connection field
-         if(renegoInfo->length != context->clientVerifyDataLen)
+         if(extensions->renegoInfo->length != context->clientVerifyDataLen)
          {
             //The server must abort the handshake
             error = ERROR_HANDSHAKE_FAILED;
          }
          else
          {
-            //Verify that the value of the renegotiated_connection field
-            //is equal to the saved client_verify_data value
-            if(osMemcmp(renegoInfo->value, context->clientVerifyData,
-               context->clientVerifyDataLen))
+            //Verify that the value of the renegotiated_connection field is
+            //equal to the saved client_verify_data value
+            if(osMemcmp(extensions->renegoInfo->value,
+               context->clientVerifyData, context->clientVerifyDataLen))
             {
                //If it is not, the server must abort the handshake
                error = ERROR_HANDSHAKE_FAILED;
             }
          }
+
+#if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
+         //ExtendedMasterSecret extension found?
+         if(extensions->extendedMasterSecret != NULL)
+         {
+            //If the initial handshake did not use the ExtendedMasterSecret
+            //extension but the new ClientHello contains the extension, the
+            //server must abort the handshake
+            if(!context->emsExtReceived)
+            {
+               error = ERROR_HANDSHAKE_FAILED;
+            }
+         }
+         else
+         {
+            //If the initial handshake used the ExtendedMasterSecret extension
+            //but the new ClientHello does not contain the extension, the
+            //server must abort the handshake
+            if(context->emsExtReceived)
+            {
+               error = ERROR_HANDSHAKE_FAILED;
+            }
+         }
+#endif
       }
    }
    else

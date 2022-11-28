@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.1.8
+ * @version 2.2.0
  **/
 
 //Switch to the appropriate trace level
@@ -292,6 +292,7 @@ error_t tls13FormatHelloRetryRequest(TlsContext *context,
 
    //The cipher_suite field contains the cipher suite selected by the server
    STORE16BE(context->cipherSuite.identifier, p);
+
    //Advance data pointer
    p += sizeof(uint16_t);
    //Adjust the length of the message
@@ -299,6 +300,7 @@ error_t tls13FormatHelloRetryRequest(TlsContext *context,
 
    //The legacy_compression_method field must have the value 0
    *p = TLS_COMPRESSION_METHOD_NULL;
+
    //Advance data pointer
    p += sizeof(uint8_t);
    //Adjust the length of the message
