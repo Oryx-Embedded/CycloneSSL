@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2022 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2023 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.0
+ * @version 2.2.2
  **/
 
 #ifndef _TLS_H
@@ -83,13 +83,13 @@ struct _TlsEncryptionEngine;
 #endif
 
 //Version string
-#define CYCLONE_SSL_VERSION_STRING "2.2.0"
+#define CYCLONE_SSL_VERSION_STRING "2.2.2"
 //Major version
 #define CYCLONE_SSL_MAJOR_VERSION 2
 //Minor version
 #define CYCLONE_SSL_MINOR_VERSION 2
 //Revision number
-#define CYCLONE_SSL_REV_NUMBER 0
+#define CYCLONE_SSL_REV_NUMBER 2
 
 //TLS version numbers
 #define SSL_VERSION_3_0 0x0300
@@ -208,6 +208,13 @@ struct _TlsEncryptionEngine;
    #define TLS_CLIENT_HELLO_PADDING_SUPPORT ENABLED
 #elif (TLS_CLIENT_HELLO_PADDING_SUPPORT != ENABLED && TLS_CLIENT_HELLO_PADDING_SUPPORT != DISABLED)
    #error TLS_CLIENT_HELLO_PADDING_SUPPORT parameter is not valid
+#endif
+
+//Certificate Authorities extension
+#ifndef TLS_CERT_AUTHORITIES_SUPPORT
+   #define TLS_CERT_AUTHORITIES_SUPPORT DISABLED
+#elif (TLS_CERT_AUTHORITIES_SUPPORT != ENABLED && TLS_CERT_AUTHORITIES_SUPPORT != DISABLED)
+   #error TLS_CERT_AUTHORITIES_SUPPORT parameter is not valid
 #endif
 
 //Signature Algorithms Certificate extension
@@ -700,11 +707,18 @@ struct _TlsEncryptionEngine;
    #error TLS_KEY_LOG_SUPPORT parameter is not valid
 #endif
 
-//Maximum acceptable length for server names
+//Maximum length of server name
 #ifndef TLS_MAX_SERVER_NAME_LEN
    #define TLS_MAX_SERVER_NAME_LEN 255
 #elif (TLS_MAX_SERVER_NAME_LEN < 1)
    #error TLS_MAX_SERVER_NAME_LEN parameter is not valid
+#endif
+
+//Maximum length of password
+#ifndef TLS_MAX_PASSWORD_LEN
+   #define TLS_MAX_PASSWORD_LEN 32
+#elif (TLS_MAX_PASSWORD_LEN < 0)
+   #error TLS_MAX_PASSWORD_LEN parameter is not valid
 #endif
 
 //Minimum acceptable size for Diffie-Hellman prime modulus
@@ -1793,13 +1807,13 @@ typedef __start_packed struct
 
 typedef __start_packed struct
 {
-   uint16_t version;            ///<Protocol version
-   uint16_t cipherSuite;        ///<Cipher suite identifier
-   uint8_t secret[48];          ///<Master secret
-   systime_t ticketTimestamp;   ///<Timestamp to manage ticket lifetime
-   uint32_t ticketLifetime;     ///<Lifetime of the ticket
+   uint16_t version;                       ///<Protocol version
+   uint16_t cipherSuite;                   ///<Cipher suite identifier
+   uint8_t secret[TLS_MASTER_SECRET_SIZE]; ///<Master secret
+   systime_t ticketTimestamp;              ///<Timestamp to manage ticket lifetime
+   uint32_t ticketLifetime;                ///<Lifetime of the ticket
 #if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
-   bool_t extendedMasterSecret; ///<Extended master secret computation
+   bool_t extendedMasterSecret;            ///<Extended master secret computation
 #endif
 } __end_packed TlsPlaintextSessionState;
 
@@ -1941,27 +1955,27 @@ typedef struct
 
 typedef struct
 {
-   uint16_t version;            ///<TLS protocol version
-   uint16_t cipherSuite;        ///<Cipher suite identifier
-   systime_t timestamp;         ///<Time stamp to manage entry lifetime
-   uint8_t secret[48];          ///<Master secret (TLS 1.2) or ticket PSK (TLS 1.3)
+   uint16_t version;                       ///<TLS protocol version
+   uint16_t cipherSuite;                   ///<Cipher suite identifier
+   systime_t timestamp;                    ///<Time stamp to manage entry lifetime
+   uint8_t secret[TLS_MASTER_SECRET_SIZE]; ///<Master secret (TLS 1.2) or ticket PSK (TLS 1.3)
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
-   uint8_t sessionId[32];       ///<Session identifier
-   size_t sessionIdLen;         ///<Length of the session identifier
-   bool_t extendedMasterSecret; ///<Extended master secret computation
+   uint8_t sessionId[32];                  ///<Session identifier
+   size_t sessionIdLen;                    ///<Length of the session identifier
+   bool_t extendedMasterSecret;            ///<Extended master secret computation
 #endif
-   uint8_t *ticket;             ///<Session ticket
-   size_t ticketLen;            ///<Length of the session ticket
+   uint8_t *ticket;                        ///<Session ticket
+   size_t ticketLen;                       ///<Length of the session ticket
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
-   systime_t ticketTimestamp;   ///<Timestamp to manage ticket lifetime
-   uint32_t ticketLifetime;     ///<Lifetime of the ticket
-   uint32_t ticketAgeAdd;       ///<Random value used to obscure the age of the ticket
-   TlsHashAlgo ticketHashAlgo;  ///<Hash algorithm associated with the ticket
-   char_t *ticketAlpn;          ///<ALPN protocol associated with the ticket
-   uint32_t maxEarlyDataSize;   ///<Maximum amount of 0-RTT data that the client is allowed to send
+   systime_t ticketTimestamp;              ///<Timestamp to manage ticket lifetime
+   uint32_t ticketLifetime;                ///<Lifetime of the ticket
+   uint32_t ticketAgeAdd;                  ///<Random value used to obscure the age of the ticket
+   TlsHashAlgo ticketHashAlgo;             ///<Hash algorithm associated with the ticket
+   char_t *ticketAlpn;                     ///<ALPN protocol associated with the ticket
+   uint32_t maxEarlyDataSize;              ///<Maximum amount of 0-RTT data that the client is allowed to send
 #endif
 #if (TLS_SNI_SUPPORT == ENABLED)
-   char_t *serverName;          ///<ServerName extension
+   char_t *serverName;                     ///<ServerName extension
 #endif
 } TlsSessionState;
 
@@ -1984,14 +1998,15 @@ typedef struct
 
 typedef struct
 {
-   const char_t *certChain;   ///<End entity certificate chain (PEM format)
-   size_t certChainLen;       ///<Length of the certificate chain
-   const char_t *privateKey;  ///<Private key (PEM format)
-   size_t privateKeyLen;      ///<Length of the private key
-   TlsCertificateType type;   ///<End entity certificate type
-   TlsSignatureAlgo signAlgo; ///<Signature algorithm used to sign the end entity certificate
-   TlsHashAlgo hashAlgo;      ///<Hash algorithm used to sign the end entity certificate
-   TlsNamedGroup namedCurve;  ///<Named curve used to generate the EC public key
+   const char_t *certChain;                   ///<End entity certificate chain (PEM format)
+   size_t certChainLen;                       ///<Length of the certificate chain
+   const char_t *privateKey;                  ///<Private key (PEM format)
+   size_t privateKeyLen;                      ///<Length of the private key
+   char_t password[TLS_MAX_PASSWORD_LEN + 1]; ///<Password used to decrypt the private key
+   TlsCertificateType type;                   ///<End entity certificate type
+   TlsSignatureAlgo signAlgo;                 ///<Signature algorithm used to sign the end entity certificate
+   TlsHashAlgo hashAlgo;                      ///<Hash algorithm used to sign the end entity certificate
+   TlsNamedGroup namedCurve;                  ///<Named curve used to generate the EC public key
 } TlsCertDesc;
 
 
@@ -2034,6 +2049,7 @@ typedef struct
 #endif
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
    const Tls13Cookie *cookie;                           ///<Cookie extension
+   const TlsCertAuthorities *certAuthorities;           ///<CertificateAuthorities extension
    const Tls13KeyShareList *keyShareList;               ///<KeyShare extension (ClientHello)
    const TlsExtension *selectedGroup;                   ///<KeyShare extension (HelloRetryRequest)
    const Tls13KeyShareEntry *serverShare;               ///<KeyShare extension (ServerHello)
@@ -2117,8 +2133,8 @@ struct _TlsContext
 
    TlsCertDesc certs[TLS_MAX_CERTIFICATES];  ///<End entity certificates (PEM format)
    uint_t numCerts;                          ///<Number of certificates available
-   const char_t *trustedCaList;              ///<List of trusted CA (PEM format)
-   size_t trustedCaListLen;                  ///<Number of trusted CA in the list
+   const char_t *trustedCaList;              ///<Trusted CA list (PEM format)
+   size_t trustedCaListLen;                  ///<Total length of the trusted CA list
    TlsCertVerifyCallback certVerifyCallback; ///<Certificate verification callback function
    void *certVerifyParam;                    ///<Opaque pointer passed to the certificate verification callback
    TlsCertDesc *cert;                        ///<Pointer to the currently selected certificate
@@ -2439,11 +2455,15 @@ error_t tlsSetPskCallback(TlsContext *context, TlsPskCallback pskCallback);
 error_t tlsSetRpkVerifyCallback(TlsContext *context,
    TlsRpkVerifyCallback rpkVerifyCallback);
 
-error_t tlsSetTrustedCaList(TlsContext *context,
-   const char_t *trustedCaList, size_t length);
+error_t tlsSetTrustedCaList(TlsContext *context, const char_t *trustedCaList,
+   size_t length);
 
 error_t tlsAddCertificate(TlsContext *context, const char_t *certChain,
    size_t certChainLen, const char_t *privateKey, size_t privateKeyLen);
+
+error_t tlsLoadCertificate(TlsContext *context, uint_t index,
+   const char_t *certChain, size_t certChainLen, const char_t *privateKey,
+   size_t privateKeyLen, const char_t *password);
 
 error_t tlsSetCertificateVerifyCallback(TlsContext *context,
    TlsCertVerifyCallback certVerifyCallback, void *param);

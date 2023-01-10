@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2022 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2023 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.0
+ * @version 2.2.2
  **/
 
 //Switch to the appropriate trace level
@@ -450,6 +450,26 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
 
          //The Cookie extension is valid
          extensions->cookie = cookie;
+      }
+      else if(type == TLS_EXT_CERTIFICATE_AUTHORITIES)
+      {
+         const TlsCertAuthorities *certAuthorities;
+
+         //Point to the CertificateAuthorities extension
+         certAuthorities = (TlsCertAuthorities *) extension->value;
+
+         //Malformed extension?
+         if(n < sizeof(TlsCertAuthorities))
+            return ERROR_DECODING_FAILED;
+         if(n != (sizeof(TlsCertAuthorities) + ntohs(certAuthorities->length)))
+            return ERROR_DECODING_FAILED;
+
+         //Check the length of the list
+         if(ntohs(certAuthorities->length) < 3)
+            return ERROR_DECODING_FAILED;
+
+         //The CertificateAuthorities extension is valid
+         extensions->certAuthorities = certAuthorities;
       }
       else if(type == TLS_EXT_KEY_SHARE)
       {
@@ -879,6 +899,17 @@ error_t tlsCheckHelloExtensions(TlsMessageType msgType, uint16_t version,
          //The extension can only appear in CH and HRR messages
          if(msgType != TLS_TYPE_CLIENT_HELLO &&
             msgType != TLS_TYPE_HELLO_RETRY_REQUEST)
+         {
+            error = ERROR_ILLEGAL_PARAMETER;
+         }
+      }
+
+      //CertificateAuthorities extension found?
+      if(extensions->certAuthorities != NULL)
+      {
+         //The extension can only appear in CH and CR messages
+         if(msgType != TLS_TYPE_CLIENT_HELLO &&
+            msgType != TLS_TYPE_CERTIFICATE_REQUEST)
          {
             error = ERROR_ILLEGAL_PARAMETER;
          }

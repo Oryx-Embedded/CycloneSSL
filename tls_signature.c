@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2022 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2023 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.0
+ * @version 2.2.2
  **/
 
 //Switch to the appropriate trace level
@@ -414,7 +414,7 @@ error_t tlsGenerateSignature(TlsContext *context, uint8_t *p,
       {
          //Decode the PEM structure that holds the RSA private key
          error = pemImportRsaPrivateKey(context->cert->privateKey,
-            context->cert->privateKeyLen, &privateKey);
+            context->cert->privateKeyLen, context->cert->password, &privateKey);
       }
 
       //Check status code
@@ -669,7 +669,7 @@ error_t tls12GenerateSignature(TlsContext *context, uint8_t *p,
 
          //Decode the PEM structure that holds the RSA private key
          error = pemImportRsaPrivateKey(context->cert->privateKey,
-            context->cert->privateKeyLen, &privateKey);
+            context->cert->privateKeyLen, context->cert->password, &privateKey);
 
          //Check status code
          if(!error)
@@ -704,7 +704,7 @@ error_t tls12GenerateSignature(TlsContext *context, uint8_t *p,
 
          //Decode the PEM structure that holds the RSA private key
          error = pemImportRsaPrivateKey(context->cert->privateKey,
-            context->cert->privateKeyLen, &privateKey);
+            context->cert->privateKeyLen, context->cert->password, &privateKey);
 
          //Check status code
          if(!error)
@@ -1244,7 +1244,7 @@ error_t tlsGenerateDsaSignature(TlsContext *context, const uint8_t *digest,
 
    //Decode the PEM structure that holds the DSA private key
    error = pemImportDsaPrivateKey(context->cert->privateKey,
-      context->cert->privateKeyLen, &privateKey);
+      context->cert->privateKeyLen, context->cert->password, &privateKey);
 
    //Check status code
    if(!error)
@@ -1370,7 +1370,7 @@ error_t tlsGenerateEcdsaSignature(TlsContext *context, const uint8_t *digest,
       {
          //Decode the PEM structure that holds the EC private key
          error = pemImportEcPrivateKey(context->cert->privateKey,
-            context->cert->privateKeyLen, &privateKey);
+            context->cert->privateKeyLen, context->cert->password, &privateKey);
       }
 
       //Check status code
@@ -1501,7 +1501,7 @@ error_t tlsGenerateEddsaSignature(TlsContext *context,
 
       //Decode the PEM structure that holds the EdDSA private key
       error = pemImportEddsaPrivateKey(context->cert->privateKey,
-         context->cert->privateKeyLen, &privateKey);
+         context->cert->privateKeyLen, context->cert->password, &privateKey);
 
       //Check the length of the EdDSA private key
       if(mpiGetByteLength(&privateKey.d) == ED25519_PRIVATE_KEY_LEN)
@@ -1545,7 +1545,7 @@ error_t tlsGenerateEddsaSignature(TlsContext *context,
 
       //Decode the PEM structure that holds the EdDSA private key
       error = pemImportEddsaPrivateKey(context->cert->privateKey,
-         context->cert->privateKeyLen, &privateKey);
+         context->cert->privateKeyLen, context->cert->password, &privateKey);
 
       //Check the length of the EdDSA private key
       if(mpiGetByteLength(&privateKey.d) == ED448_PRIVATE_KEY_LEN)

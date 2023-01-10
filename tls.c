@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2022 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2023 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.0
+ * @version 2.2.2
  **/
 
 //Switch to the appropriate trace level
@@ -1124,8 +1124,8 @@ error_t tlsSetRpkVerifyCallback(TlsContext *context,
  * @return Error code
  **/
 
-error_t tlsSetTrustedCaList(TlsContext *context,
-   const char_t *trustedCaList, size_t length)
+error_t tlsSetTrustedCaList(TlsContext *context, const char_t *trustedCaList,
+   size_t length)
 {
    //Invalid TLS context?
    if(context == NULL)
@@ -1145,7 +1145,7 @@ error_t tlsSetTrustedCaList(TlsContext *context,
 
 
 /**
- * @brief Import a certificate and the corresponding private key
+ * @brief Add a certificate and the corresponding private key (deprecated)
  * @param[in] context Pointer to the TLS context
  * @param[in] certChain Certificate chain (PEM format). This parameter is
  *   taken as reference
@@ -1160,16 +1160,66 @@ error_t tlsAddCertificate(TlsContext *context, const char_t *certChain,
    size_t certChainLen, const char_t *privateKey, size_t privateKeyLen)
 {
    error_t error;
+
+   //Make sure the TLS context is valid
+   if(context == NULL)
+      return ERROR_INVALID_PARAMETER;
+
+   //Make sure there is enough room to add the certificate
+   if(context->numCerts >= TLS_MAX_CERTIFICATES)
+      return ERROR_OUT_OF_RESOURCES;
+
+   //Load entity's certificate
+   error = tlsLoadCertificate(context, context->numCerts, certChain,
+      certChainLen, privateKey, privateKeyLen, NULL);
+
+   //Check status code
+   if(!error)
+   {
+      //Update the number of certificates
+      context->numCerts++;
+   }
+
+   //Return status code
+   return error;
+}
+
+
+/**
+ * @brief Load entity's certificate
+ * @param[in] context Pointer to the TLS context
+ * @param[in] index Zero-based index identifying a slot
+ * @param[in] certChain Certificate chain (PEM format). This parameter is
+ *   taken as reference
+ * @param[in] certChainLen Length of the certificate chain
+ * @param[in] privateKey Private key (PEM format). This parameter is taken
+ *   as reference
+ * @param[in] privateKeyLen Length of the private key
+ * @param[in] password NULL-terminated string containing the password. This
+ *   parameter is required if the private key is encrypted
+ * @return Error code
+ **/
+
+error_t tlsLoadCertificate(TlsContext *context, uint_t index,
+   const char_t *certChain, size_t certChainLen, const char_t *privateKey,
+   size_t privateKeyLen, const char_t *password)
+{
+   error_t error;
    uint8_t *derCert;
    size_t derCertLen;
    X509CertificateInfo *certInfo;
+   TlsCertDesc *cert;
    TlsCertificateType certType;
    TlsSignatureAlgo certSignAlgo;
    TlsHashAlgo certHashAlgo;
    TlsNamedGroup namedCurve;
 
-   //Invalid TLS context?
+   //Make sure the TLS context is valid
    if(context == NULL)
+      return ERROR_INVALID_PARAMETER;
+
+   //The implementation limits the number of certificates that can be loaded
+   if(index >= TLS_MAX_CERTIFICATES)
       return ERROR_INVALID_PARAMETER;
 
    //Check whether the certificate chain is valid
@@ -1180,9 +1230,9 @@ error_t tlsAddCertificate(TlsContext *context, const char_t *certChain,
    if(privateKey == NULL && privateKeyLen != 0)
       return ERROR_INVALID_PARAMETER;
 
-   //Make sure there is enough room to add the certificate
-   if(context->numCerts >= TLS_MAX_CERTIFICATES)
-      return ERROR_OUT_OF_RESOURCES;
+   //The password if required only for encrypted private keys
+   if(password != NULL && osStrlen(password) > TLS_MAX_PASSWORD_LEN)
+      return ERROR_INVALID_PASSWORD;
 
    //Initialize variables
    derCert = NULL;
@@ -1240,11 +1290,11 @@ error_t tlsAddCertificate(TlsContext *context, const char_t *certChain,
       //End of exception handling block
    } while(0);
 
-   //Valid certificate?
+   //Check status code
    if(!error)
    {
       //Point to the structure that describes the certificate
-      TlsCertDesc *cert = &context->certs[context->numCerts];
+      cert = &context->certs[index];
 
       //Save the certificate chain and the corresponding private key
       cert->certChain = certChain;
@@ -1256,8 +1306,15 @@ error_t tlsAddCertificate(TlsContext *context, const char_t *certChain,
       cert->hashAlgo = certHashAlgo;
       cert->namedCurve = namedCurve;
 
-      //Update the number of certificates
-      context->numCerts++;
+      //The password if required only for encrypted private keys
+      if(password != NULL)
+      {
+         osStrcpy(cert->password, password);
+      }
+      else
+      {
+         osStrcpy(cert->password, "");
+      }
    }
 
    //Release previously allocated memory

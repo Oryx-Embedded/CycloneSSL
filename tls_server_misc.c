@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2022 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2023 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.0
+ * @version 2.2.2
  **/
 
 //Switch to the appropriate trace level
@@ -401,7 +401,7 @@ error_t tlsGenerateServerKeySignature(TlsContext *context,
       {
          //Decode the PEM structure that holds the RSA private key
          error = pemImportRsaPrivateKey(context->cert->privateKey,
-            context->cert->privateKeyLen, &privateKey);
+            context->cert->privateKeyLen, context->cert->password, &privateKey);
       }
 
       //Check status code
@@ -615,7 +615,8 @@ error_t tls12GenerateServerKeySignature(TlsContext *context,
 
                //Decode the PEM structure that holds the RSA private key
                error = pemImportRsaPrivateKey(context->cert->privateKey,
-                  context->cert->privateKeyLen, &privateKey);
+                  context->cert->privateKeyLen, context->cert->password,
+                  &privateKey);
 
                //Check status code
                if(!error)
@@ -650,7 +651,8 @@ error_t tls12GenerateServerKeySignature(TlsContext *context,
 
                //Decode the PEM structure that holds the RSA private key
                error = pemImportRsaPrivateKey(context->cert->privateKey,
-                  context->cert->privateKeyLen, &privateKey);
+                  context->cert->privateKeyLen, context->cert->password,
+                  &privateKey);
 
                //Check status code
                if(!error)
@@ -1649,9 +1651,12 @@ error_t tlsSelectCertificate(TlsContext *context,
 {
    error_t error;
    uint_t i;
+   uint_t j;
    uint_t n;
    bool_t acceptable;
    uint8_t certTypes[2];
+   const TlsCertAuthorities *certAuthorities;
+   const TlsSignHashAlgos *supportedCertSignAlgos;
 
    //Initialize status code
    error = NO_ERROR;
@@ -1713,6 +1718,9 @@ error_t tlsSelectCertificate(TlsContext *context,
          //DH_anon and ECDH_anon key exchange methods do not require any
          //certificate
       }
+
+      //The CertificateAuthorities extension is not supported
+      certAuthorities = NULL;
    }
    else
 #endif
@@ -1728,6 +1736,11 @@ error_t tlsSelectCertificate(TlsContext *context,
          certTypes[n++] = TLS_CERT_RSA_SIGN;
          certTypes[n++] = TLS_CERT_ECDSA_SIGN;
       }
+
+      //The CertificateAuthorities extension is used to indicate the CAs which
+      //an endpoint supports and which should be used by the receiving endpoint
+      //to guide certificate selection
+      certAuthorities = extensions->certAuthorities;
    }
    else
 #endif
@@ -1737,41 +1750,61 @@ error_t tlsSelectCertificate(TlsContext *context,
       error = ERROR_INVALID_VERSION;
    }
 
+   //If no SignatureAlgorithmsCert extension is present, then the
+   //SignatureAlgorithms extension also applies to signatures appearing
+   //in certificates (RFC 8446, section 4.2.3)
+   if(extensions->certSignAlgoList != NULL)
+   {
+      supportedCertSignAlgos = extensions->certSignAlgoList;
+   }
+   else
+   {
+      supportedCertSignAlgos = extensions->signAlgoList;
+   }
+
    //Check whether a certificate is required
    if(n > 0)
    {
       //Reset currently selected certificate
       context->cert = NULL;
 
-      //Loop through the list of available certificates
-      for(i = 0; i < context->numCerts && context->cert == NULL; i++)
+      //Select the most appropriate certificate (2-pass process)
+      for(i = 0; i < 2 && context->cert == NULL; i++)
       {
-         //Check whether the current certificate is acceptable
-         acceptable = tlsIsCertificateAcceptable(context, &context->certs[i],
-            certTypes, n, extensions->signAlgoList, extensions->certSignAlgoList,
-            extensions->supportedGroupList, NULL);
-
-         //The certificate must be appropriate for the negotiated cipher
-         //suite and any negotiated extensions
-         if(acceptable)
+         //Loop through the list of available certificates
+         for(j = 0; j < TLS_MAX_CERTIFICATES && context->cert == NULL; j++)
          {
-            //The hash algorithm to be used when generating signatures must
-            //be one of those present in the SignatureAlgorithms extension
-            error = tlsSelectSignatureScheme(context, &context->certs[i],
-               extensions->signAlgoList);
+            //Check whether the current certificate is suitable
+            acceptable = tlsIsCertificateAcceptable(context, &context->certs[j],
+               certTypes, n, extensions->signAlgoList, supportedCertSignAlgos,
+               extensions->supportedGroupList, certAuthorities);
 
-            //Check status code
-            if(!error)
+            //The certificate must be appropriate for the negotiated cipher
+            //suite and any negotiated extensions
+            if(acceptable)
             {
-               //If all the requirements were met, the certificate can be
-               //used in conjunction with the selected cipher suite
-               context->cert = &context->certs[i];
+               //The hash algorithm to be used when generating signatures must
+               //be one of those present in the SignatureAlgorithms extension
+               error = tlsSelectSignatureScheme(context, &context->certs[j],
+                  extensions->signAlgoList);
+
+               //Check status code
+               if(!error)
+               {
+                  //If all the requirements were met, the certificate can be
+                  //used in conjunction with the selected cipher suite
+                  context->cert = &context->certs[j];
+               }
             }
          }
+
+         //The second pass relaxes the constraints
+         supportedCertSignAlgos = NULL;
+         certAuthorities = NULL;
       }
 
-      //Do not accept the specified cipher suite unless a suitable
-      //certificate has been found
+      //Do not accept the specified cipher suite unless a suitable certificate
+      //has been found
       if(context->cert == NULL)
       {
          error = ERROR_NO_CERTIFICATE;
@@ -1938,7 +1971,7 @@ error_t tlsParseClientKeyParams(TlsContext *context,
 
       //Decode the PEM structure that holds the RSA private key
       error = pemImportRsaPrivateKey(context->cert->privateKey,
-         context->cert->privateKeyLen, &privateKey);
+         context->cert->privateKeyLen, context->cert->password, &privateKey);
 
       //Check status code
       if(!error)

@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2022 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2023 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.0
+ * @version 2.2.2
  **/
 
 //Switch to the appropriate trace level
@@ -47,7 +47,9 @@
 #include "tls_misc.h"
 #include "tls13_signature.h"
 #include "dtls_record.h"
+#include "pkix/pem_import.h"
 #include "pkix/x509_common.h"
+#include "pkix/x509_cert_parse.h"
 #include "debug.h"
 
 //Check TLS library configuration
@@ -824,7 +826,7 @@ error_t tlsFormatAlert(TlsContext *context, uint8_t level,
  * @return Error code
  **/
 
-error_t tlsFormatSignatureAlgorithmsExtension(TlsContext *context,
+error_t tlsFormatSignAlgosExtension(TlsContext *context,
    uint_t cipherSuiteTypes, uint8_t *p, size_t *written)
 {
    size_t n = 0;
@@ -1030,7 +1032,7 @@ error_t tlsFormatSignatureAlgorithmsExtension(TlsContext *context,
  * @return Error code
  **/
 
-error_t tlsFormatSignatureAlgorithmsCertExtension(TlsContext *context,
+error_t tlsFormatSignAlgosCertExtension(TlsContext *context,
    uint8_t *p, size_t *written)
 {
    size_t n = 0;
@@ -1249,6 +1251,190 @@ error_t tlsFormatSignatureAlgorithmsCertExtension(TlsContext *context,
 
    //Successful processing
    return NO_ERROR;
+}
+
+
+/**
+ * @brief Format CertificateAuthorities extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] p Output stream where to write the CertificateAuthorities extension
+ * @param[out] written Total number of bytes that have been written
+ * @return Error code
+ **/
+
+error_t tlsFormatCertAuthoritiesExtension(TlsContext *context,
+   uint8_t *p, size_t *written)
+{
+   error_t error;
+   size_t n;
+   TlsExtension *extension;
+
+   //Add the CertificateAuthorities extension
+   extension = (TlsExtension *) p;
+   //Type of the extension
+   extension->type = HTONS(TLS_EXT_CERTIFICATE_AUTHORITIES);
+
+   //The CertificateAuthorities extension is used to indicate the certificate
+   //authorities (CAs) which an endpoint supports and which should be used by
+   //the receiving endpoint to guide certificate selection
+   error = tlsFormatCertAuthorities(context, extension->value, &n);
+
+   //Check status code
+   if(!error)
+   {
+      //The list must contains at least one distinguished name
+      if(n > sizeof(TlsCertAuthorities))
+      {
+         //Fix the length of the extension
+         extension->length = htons(n);
+
+         //Compute the length, in bytes, of the CertificateAuthorities extension
+         n += sizeof(TlsExtension);
+      }
+      else
+      {
+         //The list of distinguished names is empty
+         n = 0;
+      }
+
+      //Total number of bytes that have been written
+      *written = n;
+   }
+
+   //Return status code
+   return error;
+}
+
+
+/**
+ * @brief Format the list of distinguished names of acceptable CAs
+ * @param[in] context Pointer to the TLS context
+ * @param[in] p Output stream where to write the list of distinguished names
+ * @param[out] written Total number of bytes that have been written
+ * @return Error code
+ **/
+
+error_t tlsFormatCertAuthorities(TlsContext *context, uint8_t *p,
+   size_t *written)
+{
+   error_t error;
+   size_t n;
+   size_t pemCertLen;
+   const char_t *trustedCaList;
+   size_t trustedCaListLen;
+   uint8_t *derCert;
+   size_t derCertLen;
+   X509CertificateInfo *certInfo;
+   TlsCertAuthorities *certAuthorities;
+
+   //Initialize status code
+   error = NO_ERROR;
+
+   //The list contains the distinguished names of acceptable certificate
+   //authorities, represented in DER-encoded format
+   certAuthorities = (TlsCertAuthorities *) p;
+
+   //Point to the first certificate authority
+   p = certAuthorities->value;
+   //Length of the list in bytes
+   n = 0;
+
+   //Point to the first trusted CA certificate
+   trustedCaList = context->trustedCaList;
+   //Get the total length, in bytes, of the trusted CA list
+   trustedCaListLen = context->trustedCaListLen;
+
+   //Allocate a memory buffer to store X.509 certificate info
+   certInfo = tlsAllocMem(sizeof(X509CertificateInfo));
+
+   //Successful memory allocation?
+   if(certInfo != NULL)
+   {
+      //Loop through the list of trusted CA certificates
+      while(trustedCaListLen > 0 && error == NO_ERROR)
+      {
+         //The first pass calculates the length of the DER-encoded certificate
+         error = pemImportCertificate(trustedCaList, trustedCaListLen, NULL,
+            &derCertLen, &pemCertLen);
+
+         //Check status code
+         if(!error)
+         {
+            //Allocate a memory buffer to hold the DER-encoded certificate
+            derCert = tlsAllocMem(derCertLen);
+
+            //Successful memory allocation?
+            if(derCert != NULL)
+            {
+               //The second pass decodes the PEM certificate
+               error = pemImportCertificate(trustedCaList, trustedCaListLen,
+                  derCert, &derCertLen, NULL);
+
+               //Check status code
+               if(!error)
+               {
+                  //Parse X.509 certificate
+                  error = x509ParseCertificate(derCert, derCertLen, certInfo);
+               }
+
+               //Valid CA certificate?
+               if(!error)
+               {
+                  //Each distinguished name is preceded by a 2-byte length field
+                  STORE16BE(certInfo->tbsCert.subject.rawDataLen, p);
+
+                  //The distinguished name shall be DER-encoded
+                  osMemcpy(p + 2, certInfo->tbsCert.subject.rawData,
+                     certInfo->tbsCert.subject.rawDataLen);
+
+                  //Advance write pointer
+                  p += certInfo->tbsCert.subject.rawDataLen + 2;
+                  n += certInfo->tbsCert.subject.rawDataLen + 2;
+               }
+               else
+               {
+                  //Discard current CA certificate
+                  error = NO_ERROR;
+               }
+
+               //Free previously allocated memory
+               tlsFreeMem(derCert);
+            }
+            else
+            {
+               //Failed to allocate memory
+               error = ERROR_OUT_OF_MEMORY;
+            }
+
+            //Advance read pointer
+            trustedCaList += pemCertLen;
+            trustedCaListLen -= pemCertLen;
+         }
+         else
+         {
+            //End of file detected
+            trustedCaListLen = 0;
+            error = NO_ERROR;
+         }
+      }
+
+      //Fix the length of the list
+      certAuthorities->length = htons(n);
+
+      //Free previously allocated memory
+      tlsFreeMem(certInfo);
+   }
+   else
+   {
+      //Failed to allocate memory
+      error = ERROR_OUT_OF_MEMORY;
+   }
+
+   //Total number of bytes that have been written
+   *written = sizeof(TlsCertAuthorities) + n;
+
+   //Return status code
+   return error;
 }
 
 

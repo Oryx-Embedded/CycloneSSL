@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2022 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2023 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.0
+ * @version 2.2.2
  **/
 
 #ifndef _TLS_COMMON_H
@@ -61,11 +61,17 @@ error_t tlsFormatFinished(TlsContext *context,
 error_t tlsFormatAlert(TlsContext *context, uint8_t level,
    uint8_t description, TlsAlert *message, size_t *length);
 
-error_t tlsFormatSignatureAlgorithmsExtension(TlsContext *context,
+error_t tlsFormatSignAlgosExtension(TlsContext *context,
    uint_t cipherSuiteTypes, uint8_t *p, size_t *written);
 
-error_t tlsFormatSignatureAlgorithmsCertExtension(TlsContext *context,
+error_t tlsFormatSignAlgosCertExtension(TlsContext *context,
    uint8_t *p, size_t *written);
+
+error_t tlsFormatCertAuthoritiesExtension(TlsContext *context,
+   uint8_t *p, size_t *written);
+
+error_t tlsFormatCertAuthorities(TlsContext *context, uint8_t *p,
+   size_t *written);
 
 error_t tlsParseCertificate(TlsContext *context,
    const TlsCertificate *message, size_t length);

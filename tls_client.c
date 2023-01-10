@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2022 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2023 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.0
+ * @version 2.2.2
  **/
 
 //Switch to the appropriate trace level
@@ -488,8 +488,7 @@ error_t tlsFormatClientHello(TlsContext *context,
    p += n;
 
    //Include the SignatureAlgorithms extension only if TLS 1.2 is supported
-   error = tlsFormatSignatureAlgorithmsExtension(context, cipherSuiteTypes,
-      p, &n);
+   error = tlsFormatSignAlgosExtension(context, cipherSuiteTypes, p, &n);
    //Any error to report?
    if(error)
       return error;
@@ -502,7 +501,7 @@ error_t tlsFormatClientHello(TlsContext *context,
 #if (TLS_SIGN_ALGOS_CERT_SUPPORT == ENABLED)
    //The SignatureAlgorithmsCert extension allows a client to indicate which
    //signature algorithms it can validate in X.509 certificates
-   error = tlsFormatSignatureAlgorithmsCertExtension(context, p, &n);
+   error = tlsFormatSignAlgosCertExtension(context, p, &n);
    //Any error to report?
    if(error)
       return error;
@@ -655,6 +654,21 @@ error_t tlsFormatClientHello(TlsContext *context,
       extensionList->length += (uint16_t) n;
       //Point to the next field
       p += n;
+
+#if (TLS_CERT_AUTHORITIES_SUPPORT == ENABLED)
+      //The CertificateAuthorities extension is used to indicate the CAs which
+      //an endpoint supports and which should be used by the receiving endpoint
+      //to guide certificate selection
+      error = tlsFormatCertAuthoritiesExtension(context, p, &n);
+      //Any error to report?
+      if(error)
+         return error;
+
+      //Fix the length of the extension list
+      extensionList->length += (uint16_t) n;
+      //Point to the next field
+      p += n;
+#endif
 
 #if (TLS_CLIENT_HELLO_PADDING_SUPPORT == ENABLED)
       //The first pass calculates the length of the PreSharedKey extension
@@ -1636,7 +1650,6 @@ error_t tlsParseCertificateRequest(TlsContext *context,
       //Unused parameters
       certTypes = NULL;
       certTypesLen = 0;
-      certAuthorities = NULL;
 
       //Malformed CertificateRequest message?
       if(length < sizeof(Tls13CertRequestContext))
@@ -1698,6 +1711,11 @@ error_t tlsParseCertificateRequest(TlsContext *context,
       {
          supportedCertSignAlgos = extensions.signAlgoList;
       }
+
+      //The CertificateAuthorities extension is used to indicate the CAs which
+      //an endpoint supports and which should be used by the receiving endpoint
+      //to guide certificate selection
+      certAuthorities = extensions.certAuthorities;
    }
    else
 #endif
@@ -1715,7 +1733,7 @@ error_t tlsParseCertificateRequest(TlsContext *context,
    for(i = 0; i < 2 && !acceptable; i++)
    {
       //Loop through the list of available certificates
-      for(j = 0; j < context->numCerts && !acceptable; j++)
+      for(j = 0; j < TLS_MAX_CERTIFICATES && !acceptable; j++)
       {
          //Check whether the current certificate is suitable
          acceptable = tlsIsCertificateAcceptable(context, &context->certs[j],
