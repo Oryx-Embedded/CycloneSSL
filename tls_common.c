@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.2
+ * @version 2.2.4
  **/
 
 //Switch to the appropriate trace level
@@ -140,11 +140,11 @@ error_t tlsSendCertificate(TlsContext *context)
          //Check whether TLS operates as a client or a server
          if(context->entity == TLS_CONNECTION_END_CLIENT)
          {
-            context->state = TLS_STATE_CLIENT_KEY_EXCHANGE;
+            tlsChangeState(context, TLS_STATE_CLIENT_KEY_EXCHANGE);
          }
          else
          {
-            context->state = TLS_STATE_SERVER_KEY_EXCHANGE;
+            tlsChangeState(context, TLS_STATE_SERVER_KEY_EXCHANGE);
          }
       }
       else
@@ -156,18 +156,18 @@ error_t tlsSendCertificate(TlsContext *context)
             //authenticating via a certificate
             if(context->clientCertRequested)
             {
-               context->state = TLS_STATE_CLIENT_CERTIFICATE_VERIFY;
+               tlsChangeState(context, TLS_STATE_CLIENT_CERTIFICATE_VERIFY);
             }
             else
             {
-               context->state = TLS_STATE_CLIENT_FINISHED;
+               tlsChangeState(context, TLS_STATE_CLIENT_FINISHED);
             }
          }
          else
          {
             //Servers must send a CertificateVerify message whenever
             //authenticating via a certificate
-            context->state = TLS_STATE_SERVER_CERTIFICATE_VERIFY;
+            tlsChangeState(context, TLS_STATE_SERVER_CERTIFICATE_VERIFY);
          }
       }
    }
@@ -236,18 +236,18 @@ error_t tlsSendCertificateVerify(TlsContext *context)
       if(context->version <= TLS_VERSION_1_2)
       {
          //Send a ChangeCipherSpec message to the server
-         context->state = TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC;
+         tlsChangeState(context, TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC);
       }
       else
       {
          //Send a Finished message to the peer
          if(context->entity == TLS_CONNECTION_END_CLIENT)
          {
-            context->state = TLS_STATE_CLIENT_FINISHED;
+            tlsChangeState(context, TLS_STATE_CLIENT_FINISHED);
          }
          else
          {
-            context->state = TLS_STATE_SERVER_FINISHED;
+            tlsChangeState(context, TLS_STATE_SERVER_FINISHED);
          }
       }
    }
@@ -337,11 +337,11 @@ error_t tlsSendChangeCipherSpec(TlsContext *context)
             //Send a Finished message to the peer
             if(context->entity == TLS_CONNECTION_END_CLIENT)
             {
-               context->state = TLS_STATE_CLIENT_FINISHED;
+               tlsChangeState(context, TLS_STATE_CLIENT_FINISHED);
             }
             else
             {
-               context->state = TLS_STATE_SERVER_FINISHED;
+               tlsChangeState(context, TLS_STATE_SERVER_FINISHED);
             }
          }
       }
@@ -354,13 +354,13 @@ error_t tlsSendChangeCipherSpec(TlsContext *context)
             context->state == TLS_STATE_SERVER_CHANGE_CIPHER_SPEC_2)
          {
             //The client can send its second flight
-            context->state = TLS_STATE_CLIENT_HELLO_2;
+            tlsChangeState(context, TLS_STATE_CLIENT_HELLO_2);
          }
          else if(context->state == TLS_STATE_SERVER_CHANGE_CIPHER_SPEC ||
             context->state == TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC_2)
          {
             //All handshake messages after the ServerHello are now encrypted
-            context->state = TLS_STATE_HANDSHAKE_TRAFFIC_KEYS;
+            tlsChangeState(context, TLS_STATE_HANDSHAKE_TRAFFIC_KEYS);
          }
          else
 #endif
@@ -446,7 +446,7 @@ error_t tlsSendFinished(TlsContext *context)
             if(context->resume)
             {
                //The client and server can now exchange application-layer data
-               context->state = TLS_STATE_APPLICATION_DATA;
+               tlsChangeState(context, TLS_STATE_APPLICATION_DATA);
             }
             else
             {
@@ -457,13 +457,13 @@ error_t tlsSendFinished(TlsContext *context)
                if(context->sessionTicketExtReceived)
                {
                   //Wait for a NewSessionTicket message from the server
-                  context->state = TLS_STATE_NEW_SESSION_TICKET;
+                  tlsChangeState(context, TLS_STATE_NEW_SESSION_TICKET);
                }
                else
 #endif
                {
                   //Wait for a ChangeCipherSpec message from the server
-                  context->state = TLS_STATE_SERVER_CHANGE_CIPHER_SPEC;
+                  tlsChangeState(context, TLS_STATE_SERVER_CHANGE_CIPHER_SPEC);
                }
             }
          }
@@ -473,12 +473,12 @@ error_t tlsSendFinished(TlsContext *context)
             if(context->resume)
             {
                //Wait for a ChangeCipherSpec message from the client
-               context->state = TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC;
+               tlsChangeState(context, TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC);
             }
             else
             {
                //The client and server can now exchange application-layer data
-               context->state = TLS_STATE_APPLICATION_DATA;
+               tlsChangeState(context, TLS_STATE_APPLICATION_DATA);
             }
          }
       }
@@ -488,12 +488,12 @@ error_t tlsSendFinished(TlsContext *context)
          if(context->entity == TLS_CONNECTION_END_CLIENT)
          {
             //Compute client application traffic keys
-            context->state = TLS_STATE_CLIENT_APP_TRAFFIC_KEYS;
+            tlsChangeState(context, TLS_STATE_CLIENT_APP_TRAFFIC_KEYS);
          }
          else
          {
             //Compute server application traffic keys
-            context->state = TLS_STATE_SERVER_APP_TRAFFIC_KEYS;
+            tlsChangeState(context, TLS_STATE_SERVER_APP_TRAFFIC_KEYS);
          }
       }
    }
@@ -559,7 +559,7 @@ error_t tlsSendAlert(TlsContext *context, uint8_t level, uint8_t description)
          context->closeNotifySent = TRUE;
 
          //Update FSM state
-         context->state = TLS_STATE_CLOSING;
+         tlsChangeState(context, TLS_STATE_CLOSING);
       }
    }
    else if(level == TLS_ALERT_LEVEL_FATAL)
@@ -581,7 +581,7 @@ error_t tlsSendAlert(TlsContext *context, uint8_t level, uint8_t description)
       context->sessionIdLen = 0;
 
       //Update FSM state
-      context->state = TLS_STATE_CLOSING;
+      tlsChangeState(context, TLS_STATE_CLOSING);
    }
 
    //Return status code
@@ -1599,17 +1599,17 @@ error_t tlsParseCertificate(TlsContext *context,
             //key exchange method is used
             if(context->keyExchMethod == TLS_KEY_EXCH_RSA)
             {
-               context->state = TLS_STATE_CERTIFICATE_REQUEST;
+               tlsChangeState(context, TLS_STATE_CERTIFICATE_REQUEST);
             }
             else
             {
-               context->state = TLS_STATE_SERVER_KEY_EXCHANGE;
+               tlsChangeState(context, TLS_STATE_SERVER_KEY_EXCHANGE);
             }
          }
          else
          {
             //Wait for a ClientKeyExchange message from the client
-            context->state = TLS_STATE_CLIENT_KEY_EXCHANGE;
+            tlsChangeState(context, TLS_STATE_CLIENT_KEY_EXCHANGE);
          }
       }
       else
@@ -1619,7 +1619,7 @@ error_t tlsParseCertificate(TlsContext *context,
          {
             //The server must send a CertificateVerify message immediately
             //after the Certificate message
-            context->state = TLS_STATE_SERVER_CERTIFICATE_VERIFY;
+            tlsChangeState(context, TLS_STATE_SERVER_CERTIFICATE_VERIFY);
          }
          else
          {
@@ -1627,11 +1627,11 @@ error_t tlsParseCertificate(TlsContext *context,
             //Certificate message is non-empty
             if(context->peerCertType != TLS_CERT_NONE)
             {
-               context->state = TLS_STATE_CLIENT_CERTIFICATE_VERIFY;
+               tlsChangeState(context, TLS_STATE_CLIENT_CERTIFICATE_VERIFY);
             }
             else
             {
-               context->state = TLS_STATE_CLIENT_FINISHED;
+               tlsChangeState(context, TLS_STATE_CLIENT_FINISHED);
             }
          }
       }
@@ -1723,18 +1723,18 @@ error_t tlsParseCertificateVerify(TlsContext *context,
       if(context->version <= TLS_VERSION_1_2)
       {
          //Wait for a ChangeCipherSpec message from the client
-         context->state = TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC;
+         tlsChangeState(context, TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC);
       }
       else
       {
          //Wait for a Finished message from the peer
          if(context->entity == TLS_CONNECTION_END_CLIENT)
          {
-            context->state = TLS_STATE_SERVER_FINISHED;
+            tlsChangeState(context, TLS_STATE_SERVER_FINISHED);
          }
          else
          {
-            context->state = TLS_STATE_CLIENT_FINISHED;
+            tlsChangeState(context, TLS_STATE_CLIENT_FINISHED);
          }
       }
    }
@@ -1800,7 +1800,7 @@ error_t tlsParseChangeCipherSpec(TlsContext *context,
             return error;
 
          //Wait for a Finished message from the server
-         context->state = TLS_STATE_SERVER_FINISHED;
+         tlsChangeState(context, TLS_STATE_SERVER_FINISHED);
       }
       else
       {
@@ -1812,7 +1812,7 @@ error_t tlsParseChangeCipherSpec(TlsContext *context,
             return error;
 
          //Wait for a Finished message from the client
-         context->state = TLS_STATE_CLIENT_FINISHED;
+         tlsChangeState(context, TLS_STATE_CLIENT_FINISHED);
       }
 
 #if (DTLS_SUPPORT == ENABLED)
@@ -1965,12 +1965,12 @@ error_t tlsParseFinished(TlsContext *context,
          if(context->resume)
          {
             //Send a ChangeCipherSpec message to the server
-            context->state = TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC;
+            tlsChangeState(context, TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC);
          }
          else
          {
             //The client and server can now exchange application-layer data
-            context->state = TLS_STATE_APPLICATION_DATA;
+            tlsChangeState(context, TLS_STATE_APPLICATION_DATA);
          }
       }
       else
@@ -1979,7 +1979,7 @@ error_t tlsParseFinished(TlsContext *context,
          if(context->resume)
          {
             //The client and server can now exchange application-layer data
-            context->state = TLS_STATE_APPLICATION_DATA;
+            tlsChangeState(context, TLS_STATE_APPLICATION_DATA);
          }
          else
          {
@@ -1990,13 +1990,13 @@ error_t tlsParseFinished(TlsContext *context,
             if(context->sessionTicketExtSent)
             {
                //Send a NewSessionTicket message to the client
-               context->state = TLS_STATE_NEW_SESSION_TICKET;
+               tlsChangeState(context, TLS_STATE_NEW_SESSION_TICKET);
             }
             else
 #endif
             {
                //Send a ChangeCipherSpec message to the client
-               context->state = TLS_STATE_SERVER_CHANGE_CIPHER_SPEC;
+               tlsChangeState(context, TLS_STATE_SERVER_CHANGE_CIPHER_SPEC);
             }
          }
       }
@@ -2007,12 +2007,12 @@ error_t tlsParseFinished(TlsContext *context,
       if(context->entity == TLS_CONNECTION_END_CLIENT)
       {
          //Compute server application traffic keys
-         context->state = TLS_STATE_SERVER_APP_TRAFFIC_KEYS;
+         tlsChangeState(context, TLS_STATE_SERVER_APP_TRAFFIC_KEYS);
       }
       else
       {
          //Compute client application traffic keys
-         context->state = TLS_STATE_CLIENT_APP_TRAFFIC_KEYS;
+         tlsChangeState(context, TLS_STATE_CLIENT_APP_TRAFFIC_KEYS);
       }
    }
 
@@ -2065,7 +2065,7 @@ error_t tlsParseAlert(TlsContext *context,
          //Close down the connection immediately
          if(context->state == TLS_STATE_APPLICATION_DATA)
          {
-            context->state = TLS_STATE_CLOSING;
+            tlsChangeState(context, TLS_STATE_CLOSING);
          }
       }
       else if(message->description == TLS_ALERT_USER_CANCELED)
@@ -2102,7 +2102,7 @@ error_t tlsParseAlert(TlsContext *context,
 
       //Alert messages with a level of fatal result in the immediate
       //termination of the connection
-      context->state = TLS_STATE_CLOSED;
+      tlsChangeState(context, TLS_STATE_CLOSED);
    }
    else
    {

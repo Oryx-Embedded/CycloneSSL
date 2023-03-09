@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.2
+ * @version 2.2.4
  **/
 
 //Switch to the appropriate trace level
@@ -44,6 +44,26 @@
 
 //Check TLS library configuration
 #if (TLS_SUPPORT == ENABLED)
+
+
+/**
+ * @brief Update TLS state
+ * @param[in] context Pointer to the TLS context
+ * @param[in] newState New state to switch to
+ **/
+
+void tlsChangeState(TlsContext *context, TlsState newState)
+{
+   //Switch to the new state
+   context->state = newState;
+
+   //Any registered callback?
+   if(context->stateChangeCallback != NULL)
+   {
+      //Invoke user callback function
+      context->stateChangeCallback(context, newState);
+   }
+}
 
 
 /**
@@ -76,7 +96,7 @@ void tlsProcessError(TlsContext *context, error_t errorCode)
       //The read/write operation has failed
       case ERROR_WRITE_FAILED:
       case ERROR_READ_FAILED:
-         context->state = TLS_STATE_CLOSED;
+         tlsChangeState(context, TLS_STATE_CLOSED);
          break;
 
       //An inappropriate message was received

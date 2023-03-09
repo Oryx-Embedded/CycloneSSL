@@ -1,6 +1,6 @@
 /**
  * @file tls_certificate.c
- * @brief Certificate handling
+ * @brief X.509 certificate handling
  *
  * @section License
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.2
+ * @version 2.2.4
  **/
 
 //Switch to the appropriate trace level
@@ -379,13 +379,10 @@ __weak_func error_t tlsParseCertificateList(TlsContext *context,
       if(context->entity == TLS_CONNECTION_END_CLIENT)
       {
          TlsCertificateType certType;
-         TlsSignatureAlgo certSignAlgo;
-         TlsHashAlgo certHashAlgo;
          TlsNamedGroup namedCurve;
 
          //Retrieve the type of the X.509 certificate
-         error = tlsGetCertificateType(certInfo, &certType, &certSignAlgo,
-            &certHashAlgo, &namedCurve);
+         error = tlsGetCertificateType(certInfo, &certType, &namedCurve);
          //Unsupported certificate?
          if(error)
             break;
@@ -1427,26 +1424,19 @@ error_t tlsValidateCertificate(TlsContext *context,
  * @brief Retrieve the certificate type
  * @param[in] certInfo X.509 certificate
  * @param[out] certType Certificate type
- * @param[out] certSignAlgo Signature algorithm that has been used to sign the certificate
- * @param[out] certHashAlgo Hash algorithm that has been used to sign the certificate
  * @param[out] namedCurve Elliptic curve (only for ECDSA certificates)
  * @return Error code
  **/
 
 error_t tlsGetCertificateType(const X509CertificateInfo *certInfo,
-   TlsCertificateType *certType, TlsSignatureAlgo *certSignAlgo,
-   TlsHashAlgo *certHashAlgo, TlsNamedGroup *namedCurve)
+   TlsCertificateType *certType, TlsNamedGroup *namedCurve)
 {
    size_t oidLen;
    const uint8_t *oid;
 
    //Check parameters
-   if(certInfo == NULL || certType == NULL || certSignAlgo == NULL ||
-      certHashAlgo == NULL || namedCurve == NULL)
-   {
-      //Report an error
+   if(certInfo == NULL || certType == NULL || namedCurve == NULL)
       return ERROR_INVALID_PARAMETER;
-   }
 
    //Point to the public key identifier
    oid = certInfo->tbsCert.subjectPublicKeyInfo.oid;
@@ -1527,56 +1517,75 @@ error_t tlsGetCertificateType(const X509CertificateInfo *certInfo,
       return ERROR_BAD_CERTIFICATE;
    }
 
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
+ * @brief Retrieve the signature algorithm used to sign the certificate
+ * @param[in] certInfo X.509 certificate
+ * @param[out] signAlgo Signature algorithm
+ * @param[out] hashAlgo Hash algorithm
+ * @return Error code
+ **/
+
+error_t tlsGetCertificateSignAlgo(const X509CertificateInfo *certInfo,
+   TlsSignatureAlgo *signAlgo, TlsHashAlgo *hashAlgo)
+{
+   size_t oidLen;
+   const uint8_t *oid;
+
+   //Check parameters
+   if(certInfo == NULL || signAlgo == NULL || hashAlgo == NULL)
+      return ERROR_INVALID_PARAMETER;
+
    //Point to the signature algorithm
    oid = certInfo->signatureAlgo.oid;
    oidLen = certInfo->signatureAlgo.oidLen;
 
-   //Retrieve the signature algorithm that has been used to sign the certificate
-   if(oid == NULL || oidLen == 0)
-   {
-      //Invalid certificate
-      return ERROR_BAD_CERTIFICATE;
-   }
-#if (TLS_RSA_SIGN_SUPPORT == ENABLED || TLS_RSA_PSS_SIGN_SUPPORT == ENABLED)
-   else if(!oidComp(oid, oidLen, MD5_WITH_RSA_ENCRYPTION_OID,
+#if (RSA_SUPPORT == ENABLED)
+   //RSA signature algorithm?
+   if(!oidComp(oid, oidLen, MD5_WITH_RSA_ENCRYPTION_OID,
       sizeof(MD5_WITH_RSA_ENCRYPTION_OID)))
    {
       //MD5 with RSA signature algorithm
-      *certSignAlgo = TLS_SIGN_ALGO_RSA;
-      *certHashAlgo = TLS_HASH_ALGO_MD5;
+      *signAlgo = TLS_SIGN_ALGO_RSA;
+      *hashAlgo = TLS_HASH_ALGO_MD5;
    }
    else if(!oidComp(oid, oidLen, SHA1_WITH_RSA_ENCRYPTION_OID,
       sizeof(SHA1_WITH_RSA_ENCRYPTION_OID)))
    {
       //SHA-1 with RSA signature algorithm
-      *certSignAlgo = TLS_SIGN_ALGO_RSA;
-      *certHashAlgo = TLS_HASH_ALGO_SHA1;
+      *signAlgo = TLS_SIGN_ALGO_RSA;
+      *hashAlgo = TLS_HASH_ALGO_SHA1;
    }
    else if(!oidComp(oid, oidLen, SHA256_WITH_RSA_ENCRYPTION_OID,
       sizeof(SHA256_WITH_RSA_ENCRYPTION_OID)))
    {
       //SHA-256 with RSA signature algorithm
-      *certSignAlgo = TLS_SIGN_ALGO_RSA;
-      *certHashAlgo = TLS_HASH_ALGO_SHA256;
+      *signAlgo = TLS_SIGN_ALGO_RSA;
+      *hashAlgo = TLS_HASH_ALGO_SHA256;
    }
    else if(!oidComp(oid, oidLen, SHA384_WITH_RSA_ENCRYPTION_OID,
       sizeof(SHA384_WITH_RSA_ENCRYPTION_OID)))
    {
       //SHA-384 with RSA signature algorithm
-      *certSignAlgo = TLS_SIGN_ALGO_RSA;
-      *certHashAlgo = TLS_HASH_ALGO_SHA384;
+      *signAlgo = TLS_SIGN_ALGO_RSA;
+      *hashAlgo = TLS_HASH_ALGO_SHA384;
    }
    else if(!oidComp(oid, oidLen, SHA512_WITH_RSA_ENCRYPTION_OID,
       sizeof(SHA512_WITH_RSA_ENCRYPTION_OID)))
    {
       //SHA-512 with RSA signature algorithm
-      *certSignAlgo = TLS_SIGN_ALGO_RSA;
-      *certHashAlgo = TLS_HASH_ALGO_SHA512;
+      *signAlgo = TLS_SIGN_ALGO_RSA;
+      *hashAlgo = TLS_HASH_ALGO_SHA512;
    }
+   else
 #endif
-#if (TLS_RSA_PSS_SIGN_SUPPORT == ENABLED && X509_RSA_PSS_SUPPORT == ENABLED)
-   else if(!oidComp(oid, oidLen, RSASSA_PSS_OID,
-      sizeof(RSASSA_PSS_OID)))
+#if (RSA_PSS_SUPPORT == ENABLED)
+   //RSA-PSS signature algorithm?
+   if(!oidComp(oid, oidLen, RSASSA_PSS_OID, sizeof(RSASSA_PSS_OID)))
    {
       size_t hashAlgoLen;
       const uint8_t *hashAlgo;
@@ -1585,33 +1594,33 @@ error_t tlsGetCertificateType(const X509CertificateInfo *certInfo,
       hashAlgo = certInfo->signatureAlgo.rsaPssParams.hashAlgo;
       hashAlgoLen = certInfo->signatureAlgo.rsaPssParams.hashAlgoLen;
 
-#if (TLS_SHA256_SUPPORT == ENABLED)
+#if (SHA256_SUPPORT == ENABLED)
       //SHA-256 hash algorithm identifier?
       if(!oidComp(hashAlgo, hashAlgoLen, SHA256_OID, sizeof(SHA256_OID)))
       {
          //RSA-PSS with SHA-256 signature algorithm
-         *certSignAlgo = TLS_SIGN_ALGO_RSA_PSS_PSS_SHA256;
-         *certHashAlgo = TLS_HASH_ALGO_INTRINSIC;
+         *signAlgo = TLS_SIGN_ALGO_RSA_PSS_PSS_SHA256;
+         *hashAlgo = TLS_HASH_ALGO_INTRINSIC;
       }
       else
 #endif
-#if (TLS_SHA384_SUPPORT == ENABLED)
+#if (SHA384_SUPPORT == ENABLED)
       //SHA-384 hash algorithm identifier?
       if(!oidComp(hashAlgo, hashAlgoLen, SHA384_OID, sizeof(SHA384_OID)))
       {
          //RSA-PSS with SHA-384 signature algorithm
-         *certSignAlgo = TLS_SIGN_ALGO_RSA_PSS_PSS_SHA384;
-         *certHashAlgo = TLS_HASH_ALGO_INTRINSIC;
+         *signAlgo = TLS_SIGN_ALGO_RSA_PSS_PSS_SHA384;
+         *hashAlgo = TLS_HASH_ALGO_INTRINSIC;
       }
       else
 #endif
-#if (TLS_SHA512_SUPPORT == ENABLED)
+#if (SHA512_SUPPORT == ENABLED)
       //SHA-512 hash algorithm identifier?
       if(!oidComp(hashAlgo, hashAlgoLen, SHA512_OID, sizeof(SHA512_OID)))
       {
          //RSA-PSS with SHA-512 signature algorithm
-         *certSignAlgo = TLS_SIGN_ALGO_RSA_PSS_PSS_SHA512;
-         *certHashAlgo = TLS_HASH_ALGO_INTRINSIC;
+         *signAlgo = TLS_SIGN_ALGO_RSA_PSS_PSS_SHA512;
+         *hashAlgo = TLS_HASH_ALGO_INTRINSIC;
       }
       else
 #endif
@@ -1621,88 +1630,99 @@ error_t tlsGetCertificateType(const X509CertificateInfo *certInfo,
          return ERROR_BAD_CERTIFICATE;
       }
    }
+   else
 #endif
-#if (TLS_DSA_SIGN_SUPPORT == ENABLED)
-   else if(!oidComp(oid, oidLen, DSA_WITH_SHA1_OID,
+#if (DSA_SUPPORT == ENABLED)
+   //DSA signature algorithm?
+   if(!oidComp(oid, oidLen, DSA_WITH_SHA1_OID,
       sizeof(DSA_WITH_SHA1_OID)))
    {
       //DSA with SHA-1 signature algorithm
-      *certSignAlgo = TLS_SIGN_ALGO_DSA;
-      *certHashAlgo = TLS_HASH_ALGO_SHA1;
+      *signAlgo = TLS_SIGN_ALGO_DSA;
+      *hashAlgo = TLS_HASH_ALGO_SHA1;
    }
    else if(!oidComp(oid, oidLen, DSA_WITH_SHA224_OID,
       sizeof(DSA_WITH_SHA224_OID)))
    {
       //DSA with SHA-224 signature algorithm
-      *certSignAlgo = TLS_SIGN_ALGO_DSA;
-      *certHashAlgo = TLS_HASH_ALGO_SHA224;
+      *signAlgo = TLS_SIGN_ALGO_DSA;
+      *hashAlgo = TLS_HASH_ALGO_SHA224;
    }
    else if(!oidComp(oid, oidLen, DSA_WITH_SHA256_OID,
       sizeof(DSA_WITH_SHA256_OID)))
    {
       //DSA with SHA-256 signature algorithm
-      *certSignAlgo = TLS_SIGN_ALGO_DSA;
-      *certHashAlgo = TLS_HASH_ALGO_SHA256;
+      *signAlgo = TLS_SIGN_ALGO_DSA;
+      *hashAlgo = TLS_HASH_ALGO_SHA256;
    }
+   else
 #endif
-#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED)
-   else if(!oidComp(oid, oidLen, ECDSA_WITH_SHA1_OID,
+#if (ECDSA_SUPPORT == ENABLED)
+   //ECDSA signature algorithm?
+   if(!oidComp(oid, oidLen, ECDSA_WITH_SHA1_OID,
       sizeof(ECDSA_WITH_SHA1_OID)))
    {
       //ECDSA with SHA-1 signature algorithm
-      *certSignAlgo = TLS_SIGN_ALGO_ECDSA;
-      *certHashAlgo = TLS_HASH_ALGO_SHA1;
+      *signAlgo = TLS_SIGN_ALGO_ECDSA;
+      *hashAlgo = TLS_HASH_ALGO_SHA1;
    }
    else if(!oidComp(oid, oidLen, ECDSA_WITH_SHA224_OID,
       sizeof(ECDSA_WITH_SHA224_OID)))
    {
       //ECDSA with SHA-224 signature algorithm
-      *certSignAlgo = TLS_SIGN_ALGO_ECDSA;
-      *certHashAlgo = TLS_HASH_ALGO_SHA224;
+      *signAlgo = TLS_SIGN_ALGO_ECDSA;
+      *hashAlgo = TLS_HASH_ALGO_SHA224;
    }
    else if(!oidComp(oid, oidLen, ECDSA_WITH_SHA256_OID,
       sizeof(ECDSA_WITH_SHA256_OID)))
    {
       //ECDSA with SHA-256 signature algorithm
-      *certSignAlgo = TLS_SIGN_ALGO_ECDSA;
-      *certHashAlgo = TLS_HASH_ALGO_SHA256;
+      *signAlgo = TLS_SIGN_ALGO_ECDSA;
+      *hashAlgo = TLS_HASH_ALGO_SHA256;
    }
    else if(!oidComp(oid, oidLen, ECDSA_WITH_SHA384_OID,
       sizeof(ECDSA_WITH_SHA384_OID)))
    {
       //ECDSA with SHA-384 signature algorithm
-      *certSignAlgo = TLS_SIGN_ALGO_ECDSA;
-      *certHashAlgo = TLS_HASH_ALGO_SHA384;
+      *signAlgo = TLS_SIGN_ALGO_ECDSA;
+      *hashAlgo = TLS_HASH_ALGO_SHA384;
    }
    else if(!oidComp(oid, oidLen, ECDSA_WITH_SHA512_OID,
       sizeof(ECDSA_WITH_SHA512_OID)))
    {
       //ECDSA with SHA-512 signature algorithm
-      *certSignAlgo = TLS_SIGN_ALGO_ECDSA;
-      *certHashAlgo = TLS_HASH_ALGO_SHA512;
+      *signAlgo = TLS_SIGN_ALGO_ECDSA;
+      *hashAlgo = TLS_HASH_ALGO_SHA512;
    }
+   else
 #endif
-#if (TLS_EDDSA_SIGN_SUPPORT == ENABLED)
-   else if(!oidComp(oid, oidLen, ED25519_OID, sizeof(ED25519_OID)))
+#if (ED25519_SUPPORT == ENABLED)
+   //Ed25519 signature algorithm?
+   if(!oidComp(oid, oidLen, ED25519_OID, sizeof(ED25519_OID)))
    {
       //Ed25519 signature algorithm
-      *certSignAlgo = TLS_SIGN_ALGO_ED25519;
-      *certHashAlgo = TLS_HASH_ALGO_INTRINSIC;
+      *signAlgo = TLS_SIGN_ALGO_ED25519;
+      *hashAlgo = TLS_HASH_ALGO_INTRINSIC;
    }
-   else if(!oidComp(oid, oidLen, ED448_OID, sizeof(ED448_OID)))
+   else
+#endif
+#if (ED448_SUPPORT == ENABLED)
+   //Ed448 signature algorithm?
+   if(!oidComp(oid, oidLen, ED448_OID, sizeof(ED448_OID)))
    {
       //Ed448 signature algorithm
-      *certSignAlgo = TLS_SIGN_ALGO_ED448;
-      *certHashAlgo = TLS_HASH_ALGO_INTRINSIC;
+      *signAlgo = TLS_SIGN_ALGO_ED448;
+      *hashAlgo = TLS_HASH_ALGO_INTRINSIC;
    }
-#endif
    else
+#endif
+   //Unknown signature algorithm?
    {
       //The signature algorithm is not supported
       return ERROR_BAD_CERTIFICATE;
    }
 
-   //X.509 certificate successfully parsed
+   //Successful processing
    return NO_ERROR;
 }
 

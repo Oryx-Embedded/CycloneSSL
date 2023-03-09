@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.2
+ * @version 2.2.4
  **/
 
 //Switch to the appropriate trace level
@@ -270,13 +270,13 @@ error_t tls13SendEarlyData(TlsContext *context, const void *data,
          {
             //In middlebox compatibility mode, the client sends a dummy
             //ChangeCipherSpec record immediately before its second flight
-            context->state = TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC;
+            tlsChangeState(context, TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC);
          }
          else
 #endif
          {
             //The client can send its second flight
-            context->state = TLS_STATE_CLIENT_HELLO_2;
+            tlsChangeState(context, TLS_STATE_CLIENT_HELLO_2);
          }
       }
       else if(context->state == TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC)

@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.2
+ * @version 2.2.4
  **/
 
 //Switch to the appropriate trace level
@@ -39,6 +39,7 @@
 #include "tls_common.h"
 #include "tls_transcript_hash.h"
 #include "tls_record.h"
+#include "tls_misc.h"
 #include "tls13_server_misc.h"
 #include "dtls_record.h"
 #include "debug.h"
@@ -94,7 +95,7 @@ error_t tlsInitHandshake(TlsContext *context)
 
    //The client initiates the TLS handshake by sending a ClientHello message
    //to the server
-   context->state = TLS_STATE_CLIENT_HELLO;
+   tlsChangeState(context, TLS_STATE_CLIENT_HELLO);
 
    //Successful processing
    return NO_ERROR;

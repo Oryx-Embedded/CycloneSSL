@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.2
+ * @version 2.2.4
  **/
 
 #ifndef _TLS_MISC_H
@@ -40,6 +40,7 @@ extern "C" {
 #endif
 
 //TLS related functions
+void tlsChangeState(TlsContext *context, TlsState newState);
 void tlsProcessError(TlsContext *context, error_t errorCode);
 
 error_t tlsGenerateRandomValue(TlsContext *context, uint8_t *random);

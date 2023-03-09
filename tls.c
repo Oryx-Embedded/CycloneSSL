@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.2
+ * @version 2.2.4
  **/
 
 //Switch to the appropriate trace level
@@ -186,7 +186,7 @@ TlsContext *tlsInit(void)
 
 
 /**
- * @brief Retrieve current state
+ * @brief Retrieve current TLS state
  * @param[in] context Pointer to the TLS context
  * @return Current TLS state
  **/
@@ -197,12 +197,38 @@ TlsState tlsGetState(TlsContext *context)
 
    //Valid TLS context?
    if(context != NULL)
+   {
       state = context->state;
+   }
    else
+   {
       state = TLS_STATE_INIT;
+   }
 
    //Return current state
    return state;
+}
+
+
+/**
+ * @brief Register TLS state change callback
+ * @param[in] context Pointer to the TLS context
+ * @param[in] stateChangeCallback TLS state change callback
+ * @return Error code
+ **/
+
+error_t tlsSetStateChangeCallback(TlsContext *context,
+   TlsStateChangeCallback stateChangeCallback)
+{
+   //Check parameters
+   if(context == NULL || stateChangeCallback == NULL)
+      return ERROR_INVALID_PARAMETER;
+
+   //Save TLS state change callback
+   context->stateChangeCallback = stateChangeCallback;
+
+   //Successful processing
+   return NO_ERROR;
 }
 
 
@@ -1210,9 +1236,9 @@ error_t tlsLoadCertificate(TlsContext *context, uint_t index,
    X509CertificateInfo *certInfo;
    TlsCertDesc *cert;
    TlsCertificateType certType;
+   TlsNamedGroup namedCurve;
    TlsSignatureAlgo certSignAlgo;
    TlsHashAlgo certHashAlgo;
-   TlsNamedGroup namedCurve;
 
    //Make sure the TLS context is valid
    if(context == NULL)
@@ -1234,61 +1260,72 @@ error_t tlsLoadCertificate(TlsContext *context, uint_t index,
    if(password != NULL && osStrlen(password) > TLS_MAX_PASSWORD_LEN)
       return ERROR_INVALID_PASSWORD;
 
-   //Initialize variables
-   derCert = NULL;
-   certInfo = NULL;
+   //The first pass calculates the length of the DER-encoded certificate
+   error = pemImportCertificate(certChain, certChainLen, NULL, &derCertLen,
+      NULL);
 
-   //Start of exception handling block
-   do
+   //Check status code
+   if(!error)
    {
-      //The first pass calculates the length of the DER-encoded certificate
-      error = pemImportCertificate(certChain, certChainLen, NULL, &derCertLen,
-         NULL);
-      //Any error to report?
-      if(error)
-         break;
-
       //Allocate a memory buffer to hold the DER-encoded certificate
       derCert = tlsAllocMem(derCertLen);
-      //Failed to allocate memory?
-      if(derCert == NULL)
+
+      //Successful memory allocation?
+      if(derCert != NULL)
       {
-         error = ERROR_OUT_OF_MEMORY;
-         break;
+         //The second pass decodes the PEM certificate
+         error = pemImportCertificate(certChain, certChainLen, derCert,
+            &derCertLen, NULL);
+
+         //Check status code
+         if(!error)
+         {
+            //Allocate a memory buffer to store X.509 certificate info
+            certInfo = tlsAllocMem(sizeof(X509CertificateInfo));
+
+            //Successful memory allocation?
+            if(certInfo != NULL)
+            {
+               //Parse X.509 certificate
+               error = x509ParseCertificateEx(derCert, derCertLen, certInfo,
+                  TRUE);
+
+               //Check status code
+               if(!error)
+               {
+                  //Retrieve the type of the X.509 certificate
+                  error = tlsGetCertificateType(certInfo, &certType,
+                     &namedCurve);
+               }
+
+               //Check status code
+               if(!error)
+               {
+                  //Retrieve the signature algorithm that has been used to sign
+                  //the certificate
+                  error = tlsGetCertificateSignAlgo(certInfo, &certSignAlgo,
+                     &certHashAlgo);
+               }
+
+               //Release previously allocated memory
+               tlsFreeMem(certInfo);
+            }
+            else
+            {
+               //Failed to allocate memory
+               error = ERROR_OUT_OF_MEMORY;
+            }
+         }
+
+         //Release previously allocated memory
+         tlsFreeMem(derCert);
       }
-
-      //The second pass decodes the PEM certificate
-      error = pemImportCertificate(certChain, certChainLen, derCert,
-         &derCertLen, NULL);
-      //Any error to report?
-      if(error)
-         break;
-
-      //Allocate a memory buffer to store X.509 certificate info
-      certInfo = tlsAllocMem(sizeof(X509CertificateInfo));
-      //Failed to allocate memory?
-      if(certInfo == NULL)
+      else
       {
+         //Failed to allocate memory
          error = ERROR_OUT_OF_MEMORY;
-         break;
       }
-
-      //Parse X.509 certificate
-      error = x509ParseCertificateEx(derCert, derCertLen, certInfo, TRUE);
-      //Failed to parse the X.509 certificate?
-      if(error)
-         break;
-
-      //Retrieve the signature algorithm that has been used to sign the
-      //certificate
-      error = tlsGetCertificateType(certInfo, &certType, &certSignAlgo,
-         &certHashAlgo, &namedCurve);
-      //The specified signature algorithm is not supported?
-      if(error)
-         break;
-
-      //End of exception handling block
-   } while(0);
+   }
 
    //Check status code
    if(!error)
@@ -1316,10 +1353,6 @@ error_t tlsLoadCertificate(TlsContext *context, uint_t index,
          osStrcpy(cert->password, "");
       }
    }
-
-   //Release previously allocated memory
-   tlsFreeMem(derCert);
-   tlsFreeMem(certInfo);
 
    //Return status code
    return error;
@@ -1714,7 +1747,7 @@ error_t tlsConnect(TlsContext *context)
       //Save current sequence number
       context->earlyDataSeqNum = context->encryptionEngine.seqNum;
       //Wait for a ServerHello message
-      context->state = TLS_STATE_SERVER_HELLO_3;
+      tlsChangeState(context, TLS_STATE_SERVER_HELLO_3);
    }
 #endif
 
@@ -2277,7 +2310,7 @@ error_t tlsShutdownEx(TlsContext *context, bool_t waitForCloseNotify)
          if(!error)
          {
             //Either party may initiate a close by sending a close_notify alert
-            context->state = TLS_STATE_CLOSING;
+            tlsChangeState(context, TLS_STATE_CLOSING);
          }
       }
       else if(context->state == TLS_STATE_CLOSING)
@@ -2298,7 +2331,7 @@ error_t tlsShutdownEx(TlsContext *context, bool_t waitForCloseNotify)
             if(context->fatalAlertSent || context->fatalAlertReceived)
             {
                //Close the connection immediately
-               context->state = TLS_STATE_CLOSED;
+               tlsChangeState(context, TLS_STATE_CLOSED);
             }
             else if(!context->closeNotifySent)
             {
@@ -2359,7 +2392,7 @@ error_t tlsShutdownEx(TlsContext *context, bool_t waitForCloseNotify)
             else
             {
                //The connection is closed
-               context->state = TLS_STATE_CLOSED;
+               tlsChangeState(context, TLS_STATE_CLOSED);
             }
          }
       }

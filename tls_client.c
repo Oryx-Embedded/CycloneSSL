@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.2
+ * @version 2.2.4
  **/
 
 //Switch to the appropriate trace level
@@ -232,12 +232,12 @@ error_t tlsSendClientHello(TlsContext *context)
       if(context->state == TLS_STATE_CLIENT_HELLO)
       {
          //Wait for a ServerHello or HelloRetryRequest message
-         context->state = TLS_STATE_SERVER_HELLO;
+         tlsChangeState(context, TLS_STATE_SERVER_HELLO);
       }
       else
       {
          //Wait for a ServerHello message
-         context->state = TLS_STATE_SERVER_HELLO_2;
+         tlsChangeState(context, TLS_STATE_SERVER_HELLO_2);
       }
    }
 
@@ -292,7 +292,7 @@ error_t tlsSendClientKeyExchange(TlsContext *context)
       if(!error)
       {
          //Send a CertificateVerify message to the server
-         context->state = TLS_STATE_CLIENT_CERTIFICATE_VERIFY;
+         tlsChangeState(context, TLS_STATE_CLIENT_CERTIFICATE_VERIFY);
       }
    }
 
@@ -897,7 +897,7 @@ error_t tlsParseHelloRequest(TlsContext *context,
 #endif
          //HelloRequest is a simple notification that the client should begin
          //the negotiation process anew
-         context->state = TLS_STATE_CLIENT_HELLO;
+         tlsChangeState(context, TLS_STATE_CLIENT_HELLO);
 
          //Continue processing
          error = NO_ERROR;
@@ -1203,14 +1203,14 @@ error_t tlsParseServerHello(TlsContext *context,
          if(context->sessionTicketExtReceived)
          {
             //Wait for a NewSessionTicket message from the server
-            context->state = TLS_STATE_NEW_SESSION_TICKET;
+            tlsChangeState(context, TLS_STATE_NEW_SESSION_TICKET);
          }
          else
 #endif
          {
             //At this point, both client and server must send ChangeCipherSpec
             //messages and proceed directly to Finished messages
-            context->state = TLS_STATE_SERVER_CHANGE_CIPHER_SPEC;
+            tlsChangeState(context, TLS_STATE_SERVER_CHANGE_CIPHER_SPEC);
          }
       }
       else
@@ -1224,12 +1224,12 @@ error_t tlsParseServerHello(TlsContext *context,
             context->keyExchMethod == TLS_KEY_EXCH_ECDHE_PSK)
          {
             //The Certificate message is omitted from the server's response
-            context->state = TLS_STATE_SERVER_KEY_EXCHANGE;
+            tlsChangeState(context, TLS_STATE_SERVER_KEY_EXCHANGE);
          }
          else
          {
             //The server is required to send a Certificate message
-            context->state = TLS_STATE_SERVER_CERTIFICATE;
+            tlsChangeState(context, TLS_STATE_SERVER_CERTIFICATE);
          }
       }
    }
@@ -1302,13 +1302,13 @@ error_t tlsParseServerHello(TlsContext *context,
       {
          //In middlebox compatibility mode, the client sends a dummy
          //ChangeCipherSpec record immediately before its second flight
-         context->state = TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC_2;
+         tlsChangeState(context, TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC_2);
       }
       else
 #endif
       {
          //All handshake messages after the ServerHello are now encrypted
-         context->state = TLS_STATE_HANDSHAKE_TRAFFIC_KEYS;
+         tlsChangeState(context, TLS_STATE_HANDSHAKE_TRAFFIC_KEYS);
       }
    }
    else
@@ -1467,13 +1467,13 @@ error_t tlsParseServerKeyExchange(TlsContext *context,
       context->keyExchMethod == TLS_KEY_EXCH_ECDHE_PSK)
    {
       //An anonymous server cannot request client authentication
-      context->state = TLS_STATE_SERVER_HELLO_DONE;
+      tlsChangeState(context, TLS_STATE_SERVER_HELLO_DONE);
    }
    else
    {
       //A non-anonymous server can optionally request a certificate from
       //the client, if appropriate for the selected cipher suite
-      context->state = TLS_STATE_CERTIFICATE_REQUEST;
+      tlsChangeState(context, TLS_STATE_CERTIFICATE_REQUEST);
    }
 
    //Successful processing
@@ -1772,12 +1772,12 @@ error_t tlsParseCertificateRequest(TlsContext *context,
    if(context->version <= TLS_VERSION_1_2)
    {
       //Wait for a ServerHelloDone message
-      context->state = TLS_STATE_SERVER_HELLO_DONE;
+      tlsChangeState(context, TLS_STATE_SERVER_HELLO_DONE);
    }
    else
    {
       //Wait for a Certificate message
-      context->state = TLS_STATE_SERVER_CERTIFICATE;
+      tlsChangeState(context, TLS_STATE_SERVER_CERTIFICATE);
    }
 
    //Successful processing
@@ -1865,7 +1865,7 @@ error_t tlsParseServerHelloDone(TlsContext *context,
       return ERROR_UNEXPECTED_MESSAGE;
 
    //The client must send a Certificate message if the server requests it
-   context->state = TLS_STATE_CLIENT_CERTIFICATE;
+   tlsChangeState(context, TLS_STATE_CLIENT_CERTIFICATE);
 
    //Successful processing
    return NO_ERROR;
@@ -1958,7 +1958,7 @@ error_t tlsParseNewSessionTicket(TlsContext *context,
 
    //The NewSessionTicket message is sent by the server during the TLS handshake
    //before the ChangeCipherSpec message
-   context->state = TLS_STATE_SERVER_CHANGE_CIPHER_SPEC;
+   tlsChangeState(context, TLS_STATE_SERVER_CHANGE_CIPHER_SPEC);
 
    //Successful processing
    return NO_ERROR;

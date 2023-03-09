@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.2
+ * @version 2.2.4
  **/
 
 //Switch to the appropriate trace level
@@ -34,9 +34,9 @@
 //Dependencies
 #include <string.h>
 #include "tls.h"
-#include "tls_misc.h"
 #include "tls_key_material.h"
 #include "tls_transcript_hash.h"
+#include "tls_misc.h"
 #include "tls13_key_material.h"
 #include "tls13_ticket.h"
 #include "kdf/hkdf.h"
@@ -317,7 +317,7 @@ error_t tls13GenerateEarlyTrafficKeys(TlsContext *context)
 
    //When a PSK is used and early data is allowed for that PSK, the client can
    //send application data in its first flight of messages
-   context->state = TLS_STATE_EARLY_DATA;
+   tlsChangeState(context, TLS_STATE_EARLY_DATA);
 
    //Successful processing
    return NO_ERROR;
@@ -526,7 +526,7 @@ error_t tls13GenerateHandshakeTrafficKeys(TlsContext *context)
 
    //In all handshakes, the server must send the EncryptedExtensions message
    //immediately after the ServerHello message
-   context->state = TLS_STATE_ENCRYPTED_EXTENSIONS;
+   tlsChangeState(context, TLS_STATE_ENCRYPTED_EXTENSIONS);
 
    //Successful processing
    return NO_ERROR;
@@ -685,7 +685,7 @@ error_t tls13GenerateServerAppTrafficKeys(TlsContext *context)
       {
          //If the server sent an EarlyData extension, the client must send an
          //EndOfEarlyData message after receiving the server Finished
-         context->state = TLS_STATE_END_OF_EARLY_DATA;
+         tlsChangeState(context, TLS_STATE_END_OF_EARLY_DATA);
       }
       else
       {
@@ -695,12 +695,12 @@ error_t tls13GenerateServerAppTrafficKeys(TlsContext *context)
             context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE)
          {
             //Send a Finished message to the server
-            context->state = TLS_STATE_CLIENT_FINISHED;
+            tlsChangeState(context, TLS_STATE_CLIENT_FINISHED);
          }
          else
          {
             //Send a Certificate message if the server requests it
-            context->state = TLS_STATE_CLIENT_CERTIFICATE;
+            tlsChangeState(context, TLS_STATE_CLIENT_CERTIFICATE);
          }
       }
    }
@@ -712,18 +712,18 @@ error_t tls13GenerateServerAppTrafficKeys(TlsContext *context)
          context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE)
       {
          //Wait for a Finished message from the client
-         context->state = TLS_STATE_CLIENT_FINISHED;
+         tlsChangeState(context, TLS_STATE_CLIENT_FINISHED);
       }
       else
       {
          //The client must send a Certificate message if the server requests it
          if(context->clientAuthMode != TLS_CLIENT_AUTH_NONE)
          {
-            context->state = TLS_STATE_CLIENT_CERTIFICATE;
+            tlsChangeState(context, TLS_STATE_CLIENT_CERTIFICATE);
          }
          else
          {
-            context->state = TLS_STATE_CLIENT_FINISHED;
+            tlsChangeState(context, TLS_STATE_CLIENT_FINISHED);
          }
       }
    }
@@ -825,14 +825,14 @@ error_t tls13GenerateClientAppTrafficKeys(TlsContext *context)
    {
       //At any time after the server has received the client Finished message,
       //it may send a NewSessionTicket message
-      context->state = TLS_STATE_NEW_SESSION_TICKET;
+      tlsChangeState(context, TLS_STATE_NEW_SESSION_TICKET);
    }
    else
 #endif
    {
       //At this point, the handshake is complete, and the client and server
       //can exchange application-layer data
-      context->state = TLS_STATE_APPLICATION_DATA;
+      tlsChangeState(context, TLS_STATE_APPLICATION_DATA);
    }
 
    //Successful processing

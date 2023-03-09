@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.2
+ * @version 2.2.4
  **/
 
 //Switch to the appropriate trace level
@@ -105,7 +105,7 @@ error_t tls13SendEndOfEarlyData(TlsContext *context)
       if(!error)
       {
          //Send a Finished message to the server
-         context->state = TLS_STATE_CLIENT_FINISHED;
+         tlsChangeState(context, TLS_STATE_CLIENT_FINISHED);
       }
    }
 
@@ -390,13 +390,13 @@ error_t tls13ParseHelloRetryRequest(TlsContext *context,
    {
       //In middlebox compatibility mode, the client sends a dummy
       //ChangeCipherSpec record immediately before its second flight
-      context->state = TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC;
+      tlsChangeState(context, TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC);
    }
    else
 #endif
    {
       //The client can send its second flight
-      context->state = TLS_STATE_CLIENT_HELLO_2;
+      tlsChangeState(context, TLS_STATE_CLIENT_HELLO_2);
    }
 
    //Successful processing
@@ -570,12 +570,12 @@ error_t tls13ParseEncryptedExtensions(TlsContext *context,
    {
       //As the server is authenticating via a PSK, it does not send a
       //Certificate or a CertificateVerify message
-      context->state = TLS_STATE_SERVER_FINISHED;
+      tlsChangeState(context, TLS_STATE_SERVER_FINISHED);
    }
    else
    {
       //A server can optionally request a certificate from the client
-      context->state = TLS_STATE_CERTIFICATE_REQUEST;
+      tlsChangeState(context, TLS_STATE_CERTIFICATE_REQUEST);
    }
 
    //Successful processing

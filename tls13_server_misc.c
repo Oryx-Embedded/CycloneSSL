@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.2
+ * @version 2.2.4
  **/
 
 //Switch to the appropriate trace level
@@ -143,7 +143,7 @@ error_t tls13NegotiateCipherSuite(TlsContext *context, const void *clientHello,
          return error;
 
       //The server corrects the mismatch with a HelloRetryRequest
-      context->state = TLS_STATE_HELLO_RETRY_REQUEST;
+      tlsChangeState(context, TLS_STATE_HELLO_RETRY_REQUEST);
    }
    else
    {

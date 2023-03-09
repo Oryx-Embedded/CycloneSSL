@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.2
+ * @version 2.2.4
  **/
 
 //Switch to the appropriate trace level
@@ -110,13 +110,13 @@ error_t tls13SendHelloRetryRequest(TlsContext *context)
          //ChangeCipherSpec record immediately after its first handshake
          //message. This may either be after a ServerHello or a
          //HelloRetryRequest
-         context->state = TLS_STATE_SERVER_CHANGE_CIPHER_SPEC_2;
+         tlsChangeState(context, TLS_STATE_SERVER_CHANGE_CIPHER_SPEC_2);
       }
       else
 #endif
       {
          //Wait for the second updated ClientHello
-         context->state = TLS_STATE_CLIENT_HELLO_2;
+         tlsChangeState(context, TLS_STATE_CLIENT_HELLO_2);
       }
    }
 
@@ -170,12 +170,12 @@ error_t tls13SendEncryptedExtensions(TlsContext *context)
       {
          //As the server is authenticating via a PSK, it does not send a
          //Certificate or a CertificateVerify message
-         context->state = TLS_STATE_SERVER_FINISHED;
+         tlsChangeState(context, TLS_STATE_SERVER_FINISHED);
       }
       else
       {
          //A server can optionally request a certificate from the client
-         context->state = TLS_STATE_CERTIFICATE_REQUEST;
+         tlsChangeState(context, TLS_STATE_CERTIFICATE_REQUEST);
       }
    }
 
@@ -230,7 +230,7 @@ error_t tls13SendNewSessionTicket(TlsContext *context)
    else
    {
       //The client and server can now exchange application-layer data
-      context->state = TLS_STATE_APPLICATION_DATA;
+      tlsChangeState(context, TLS_STATE_APPLICATION_DATA);
    }
 
    //Return status code

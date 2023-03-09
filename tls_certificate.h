@@ -1,6 +1,6 @@
 /**
  * @file tls_certificate.h
- * @brief Certificate handling
+ * @brief X.509 certificate handling
  *
  * @section License
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.2
+ * @version 2.2.4
  **/
 
 #ifndef _TLS_CERTIFICATE_H
@@ -63,8 +63,10 @@ error_t tlsValidateCertificate(TlsContext *context,
    const char_t *subjectName);
 
 error_t tlsGetCertificateType(const X509CertificateInfo *certInfo,
-   TlsCertificateType *certType, TlsSignatureAlgo *certSignAlgo,
-   TlsHashAlgo *certHashAlgo, TlsNamedGroup *namedCurve);
+   TlsCertificateType *certType, TlsNamedGroup *namedCurve);
+
+error_t tlsGetCertificateSignAlgo(const X509CertificateInfo *certInfo,
+   TlsSignatureAlgo *signAlgo, TlsHashAlgo *hashAlgo);
 
 error_t tlsReadSubjectPublicKey(TlsContext *context,
    const X509SubjectPublicKeyInfo *subjectPublicKeyInfo);

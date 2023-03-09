@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.2
+ * @version 2.2.4
  **/
 
 //Switch to the appropriate trace level
@@ -132,7 +132,7 @@ error_t tls13SendKeyUpdate(TlsContext *context)
    {
       //After sending a KeyUpdate message, the sender shall send all its
       //traffic using the next generation of keys
-      context->state = TLS_STATE_APPLICATION_DATA;
+      tlsChangeState(context, TLS_STATE_APPLICATION_DATA);
    }
 
    //Return status code
@@ -276,7 +276,7 @@ error_t tls13ParseKeyUpdate(TlsContext *context, const Tls13KeyUpdate *message,
          //If the request_update field is set to update_requested then the
          //receiver must send a KeyUpdate of its own with request_update set to
          //update_not_requested prior to sending its next application data
-         context->state = TLS_STATE_KEY_UPDATE;
+         tlsChangeState(context, TLS_STATE_KEY_UPDATE);
       }
    }
 

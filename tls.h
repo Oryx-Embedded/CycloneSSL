@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.2
+ * @version 2.2.4
  **/
 
 #ifndef _TLS_H
@@ -83,13 +83,13 @@ struct _TlsEncryptionEngine;
 #endif
 
 //Version string
-#define CYCLONE_SSL_VERSION_STRING "2.2.2"
+#define CYCLONE_SSL_VERSION_STRING "2.2.4"
 //Major version
 #define CYCLONE_SSL_MAJOR_VERSION 2
 //Minor version
 #define CYCLONE_SSL_MINOR_VERSION 2
 //Revision number
-#define CYCLONE_SSL_REV_NUMBER 2
+#define CYCLONE_SSL_REV_NUMBER 4
 
 //TLS version numbers
 #define SSL_VERSION_3_0 0x0300
@@ -1254,6 +1254,7 @@ typedef enum
    TLS_EXT_EXTERNAL_ID_HASH          = 55,
    TLS_EXT_EXTERNAL_SESSION_ID       = 56,
    TLS_EXT_QUIC_TRANSPORT_PARAMETERS = 57,
+   TLS_EXT_TICKET_REQUEST            = 58,
    TLS_EXT_DNSSEC_CHAIN              = 59,
    TLS_EXT_RENEGOTIATION_INFO        = 65281
 } TlsExtensionType;
@@ -1832,6 +1833,13 @@ typedef void *TlsSocketHandle;
 
 
 /**
+ * @brief TLS state change callback
+ **/
+
+typedef void (*TlsStateChangeCallback)(TlsContext *context, TlsState state);
+
+
+/**
  * @brief Socket send callback function
  **/
 
@@ -2109,6 +2117,8 @@ struct _TlsContext
    TlsState state;                           ///<TLS handshake finite state machine
    TlsTransportProtocol transportProtocol;   ///<Transport protocol (stream or datagram)
    TlsConnectionEnd entity;                  ///<Client or server operation
+
+   TlsStateChangeCallback stateChangeCallback; ///<TLS state change callback function
 
    TlsSocketHandle socketHandle;             ///<Socket handle
    TlsSocketSendCallback socketSendCallback;       ///<Socket send callback function
@@ -2393,6 +2403,9 @@ struct _TlsContext
 //TLS application programming interface (API)
 TlsContext *tlsInit(void);
 TlsState tlsGetState(TlsContext *context);
+
+error_t tlsSetStateChangeCallback(TlsContext *context,
+   TlsStateChangeCallback stateChangeCallback);
 
 error_t tlsSetSocketCallbacks(TlsContext *context,
    TlsSocketSendCallback socketSendCallback,

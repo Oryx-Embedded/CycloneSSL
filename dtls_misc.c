@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.2
+ * @version 2.2.4
  **/
 
 //Switch to the appropriate trace level
@@ -37,6 +37,7 @@
 #include "tls.h"
 #include "tls_handshake.h"
 #include "tls_common.h"
+#include "tls_misc.h"
 #include "dtls_misc.h"
 #include "debug.h"
 
@@ -219,7 +220,7 @@ error_t dtlsVerifyCookie(TlsContext *context, const DtlsCookie *cookie,
          if(!error)
          {
             //Send a HelloVerifyRequest message to the DTLS client
-            context->state = TLS_STATE_HELLO_VERIFY_REQUEST;
+            tlsChangeState(context, TLS_STATE_HELLO_VERIFY_REQUEST);
          }
       }
    }
@@ -273,7 +274,7 @@ error_t dtlsSendHelloVerifyRequest(TlsContext *context)
    if(error == NO_ERROR || error == ERROR_WOULD_BLOCK || error == ERROR_TIMEOUT)
    {
       //The client must retransmit the ClientHello with the cookie added
-      context->state = TLS_STATE_CLIENT_HELLO;
+      tlsChangeState(context, TLS_STATE_CLIENT_HELLO);
    }
 
    //Return status code
@@ -379,7 +380,7 @@ error_t dtlsParseHelloVerifyRequest(TlsContext *context,
       context->cookieLen = message->cookieLength;
 
       //The client sends a second ClientHello message
-      context->state = TLS_STATE_CLIENT_HELLO;
+      tlsChangeState(context, TLS_STATE_CLIENT_HELLO);
 
       //Successful processing
       return NO_ERROR;
