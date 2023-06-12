@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.4
+ * @version 2.3.0
  **/
 
 #ifndef _TLS13_SIGNATURE_H
@@ -40,8 +40,26 @@ extern "C" {
 error_t tls13GenerateSignature(TlsContext *context, uint8_t *p,
    size_t *length);
 
+error_t tls13GenerateRsaPssSignature(TlsContext *context, const uint8_t *message,
+   size_t length, Tls13DigitalSignature *signature);
+
+error_t tls13GenerateEcdsaSignature(TlsContext *context, const uint8_t *message,
+   size_t length, Tls13DigitalSignature *signature);
+
+error_t tls13GenerateEddsaSignature(TlsContext *context, const uint8_t *message,
+   size_t length, Tls13DigitalSignature *signature);
+
 error_t tls13VerifySignature(TlsContext *context, const uint8_t *p,
    size_t length);
+
+error_t tls13VerifyRsaPssSignature(TlsContext *context, const uint8_t *message,
+   size_t length, const Tls13DigitalSignature *signature);
+
+error_t tls13VerifyEcdsaSignature(TlsContext *context, const uint8_t *message,
+   size_t length, const Tls13DigitalSignature *signature);
+
+error_t tls13VerifyEddsaSignature(TlsContext *context, const uint8_t *message,
+   size_t length, const Tls13DigitalSignature *signature);
 
 //C++ guard
 #ifdef __cplusplus

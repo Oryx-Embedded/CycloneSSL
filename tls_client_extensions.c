@@ -25,14 +25,13 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.4
+ * @version 2.3.0
  **/
 
 //Switch to the appropriate trace level
 #define TRACE_LEVEL TLS_TRACE_LEVEL
 
 //Dependencies
-#include <string.h>
 #include "tls.h"
 #include "tls_cipher_suites.h"
 #include "tls_client_extensions.h"
@@ -456,7 +455,7 @@ error_t tlsFormatSupportedGroupsExtension(TlsContext *context,
    //If the client supports and wants ECDHE and FFDHE key exchanges, it must
    //use a single SupportedGroups extension to include all supported groups
    //(both ECDHE and FFDHE groups)
-   if(n != 0)
+   if(n > 0)
    {
       //Compute the length, in bytes, of the list
       n *= 2;

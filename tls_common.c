@@ -25,14 +25,13 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.4
+ * @version 2.3.0
  **/
 
 //Switch to the appropriate trace level
 #define TRACE_LEVEL TLS_TRACE_LEVEL
 
 //Dependencies
-#include <string.h>
 #include "tls.h"
 #include "tls_cipher_suites.h"
 #include "tls_handshake.h"
@@ -1324,7 +1323,7 @@ error_t tlsFormatCertAuthorities(TlsContext *context, uint8_t *p,
    size_t trustedCaListLen;
    uint8_t *derCert;
    size_t derCertLen;
-   X509CertificateInfo *certInfo;
+   X509CertInfo *certInfo;
    TlsCertAuthorities *certAuthorities;
 
    //Initialize status code
@@ -1345,7 +1344,7 @@ error_t tlsFormatCertAuthorities(TlsContext *context, uint8_t *p,
    trustedCaListLen = context->trustedCaListLen;
 
    //Allocate a memory buffer to store X.509 certificate info
-   certInfo = tlsAllocMem(sizeof(X509CertificateInfo));
+   certInfo = tlsAllocMem(sizeof(X509CertInfo));
 
    //Successful memory allocation?
    if(certInfo != NULL)
@@ -1381,15 +1380,15 @@ error_t tlsFormatCertAuthorities(TlsContext *context, uint8_t *p,
                if(!error)
                {
                   //Each distinguished name is preceded by a 2-byte length field
-                  STORE16BE(certInfo->tbsCert.subject.rawDataLen, p);
+                  STORE16BE(certInfo->tbsCert.subject.raw.length, p);
 
                   //The distinguished name shall be DER-encoded
-                  osMemcpy(p + 2, certInfo->tbsCert.subject.rawData,
-                     certInfo->tbsCert.subject.rawDataLen);
+                  osMemcpy(p + 2, certInfo->tbsCert.subject.raw.value,
+                     certInfo->tbsCert.subject.raw.length);
 
                   //Advance write pointer
-                  p += certInfo->tbsCert.subject.rawDataLen + 2;
-                  n += certInfo->tbsCert.subject.rawDataLen + 2;
+                  p += certInfo->tbsCert.subject.raw.length + 2;
+                  n += certInfo->tbsCert.subject.raw.length + 2;
                }
                else
                {

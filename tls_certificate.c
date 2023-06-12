@@ -25,15 +25,13 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.4
+ * @version 2.3.0
  **/
 
 //Switch to the appropriate trace level
 #define TRACE_LEVEL TLS_TRACE_LEVEL
 
 //Dependencies
-#include <string.h>
-#include <ctype.h>
 #include "tls.h"
 #include "tls_certificate.h"
 #include "tls_misc.h"
@@ -175,7 +173,7 @@ error_t tlsFormatRawPublicKey(TlsContext *context, uint8_t *p,
       size_t n;
       uint8_t *derCert;
       size_t derCertLen;
-      X509CertificateInfo *certInfo;
+      X509CertInfo *certInfo;
 
       //Initialize variables
       derCert = NULL;
@@ -208,7 +206,7 @@ error_t tlsFormatRawPublicKey(TlsContext *context, uint8_t *p,
             break;
 
          //Allocate a memory buffer to store X.509 certificate info
-         certInfo = tlsAllocMem(sizeof(X509CertificateInfo));
+         certInfo = tlsAllocMem(sizeof(X509CertInfo));
          //Failed to allocate memory?
          if(certInfo == NULL)
          {
@@ -223,7 +221,7 @@ error_t tlsFormatRawPublicKey(TlsContext *context, uint8_t *p,
             break;
 
          //Retrieve the length of the raw public key
-         n = certInfo->tbsCert.subjectPublicKeyInfo.rawDataLen;
+         n = certInfo->tbsCert.subjectPublicKeyInfo.raw.length;
 
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
          //TLS 1.3 currently selected?
@@ -232,7 +230,7 @@ error_t tlsFormatRawPublicKey(TlsContext *context, uint8_t *p,
             //The raw public key is preceded by a 3-byte length field
             STORE24BE(n, p);
             //Copy the raw public key
-            osMemcpy(p + 3, certInfo->tbsCert.subjectPublicKeyInfo.rawData, n);
+            osMemcpy(p + 3, certInfo->tbsCert.subjectPublicKeyInfo.raw.value, n);
 
             //Advance data pointer
             p += n + 3;
@@ -254,7 +252,7 @@ error_t tlsFormatRawPublicKey(TlsContext *context, uint8_t *p,
 #endif
          {
             //Copy the raw public key
-            osMemcpy(p, certInfo->tbsCert.subjectPublicKeyInfo.rawData, n);
+            osMemcpy(p, certInfo->tbsCert.subjectPublicKeyInfo.raw.value, n);
 
             //Advance data pointer
             p += n;
@@ -292,8 +290,8 @@ __weak_func error_t tlsParseCertificateList(TlsContext *context,
    uint_t i;
    size_t n;
    const char_t *subjectName;
-   X509CertificateInfo *certInfo;
-   X509CertificateInfo *issuerCertInfo;
+   X509CertInfo *certInfo;
+   X509CertInfo *issuerCertInfo;
 
    //Initialize X.509 certificates
    certInfo = NULL;
@@ -303,7 +301,7 @@ __weak_func error_t tlsParseCertificateList(TlsContext *context,
    do
    {
       //Allocate a memory buffer to store X.509 certificate info
-      certInfo = tlsAllocMem(sizeof(X509CertificateInfo));
+      certInfo = tlsAllocMem(sizeof(X509CertInfo));
       //Failed to allocate memory?
       if(certInfo == NULL)
       {
@@ -313,7 +311,7 @@ __weak_func error_t tlsParseCertificateList(TlsContext *context,
       }
 
       //Allocate a memory buffer to store the parent certificate
-      issuerCertInfo = tlsAllocMem(sizeof(X509CertificateInfo));
+      issuerCertInfo = tlsAllocMem(sizeof(X509CertInfo));
       //Failed to allocate memory?
       if(issuerCertInfo == NULL)
       {
@@ -1154,7 +1152,7 @@ bool_t tlsIsCertificateAcceptable(TlsContext *context, const TlsCertDesc *cert,
          size_t certChainLen;
          uint8_t *derCert;
          size_t derCertLen;
-         X509CertificateInfo *certInfo;
+         X509CertInfo *certInfo;
 
          //The list of acceptable certificate authorities describes the
          //known roots CA
@@ -1166,7 +1164,7 @@ bool_t tlsIsCertificateAcceptable(TlsContext *context, const TlsCertDesc *cert,
          certChainLen = cert->certChainLen;
 
          //Allocate a memory buffer to store X.509 certificate info
-         certInfo = tlsAllocMem(sizeof(X509CertificateInfo));
+         certInfo = tlsAllocMem(sizeof(X509CertInfo));
 
          //Successful memory allocation?
          if(certInfo != NULL)
@@ -1220,8 +1218,8 @@ bool_t tlsIsCertificateAcceptable(TlsContext *context, const TlsCertDesc *cert,
 
                            //Check if the distinguished name matches the root CA
                            if(x509CompareName(certAuthorities->value + i + 2, n,
-                              certInfo->tbsCert.issuer.rawData,
-                              certInfo->tbsCert.issuer.rawDataLen))
+                              certInfo->tbsCert.issuer.raw.value,
+                              certInfo->tbsCert.issuer.raw.length))
                            {
                               acceptable = TRUE;
                               break;
@@ -1265,7 +1263,7 @@ bool_t tlsIsCertificateAcceptable(TlsContext *context, const TlsCertDesc *cert,
  **/
 
 error_t tlsValidateCertificate(TlsContext *context,
-   const X509CertificateInfo *certInfo, uint_t pathLen,
+   const X509CertInfo *certInfo, uint_t pathLen,
    const char_t *subjectName)
 {
    error_t error;
@@ -1274,7 +1272,7 @@ error_t tlsValidateCertificate(TlsContext *context,
    size_t trustedCaListLen;
    uint8_t *derCert;
    size_t derCertLen;
-   X509CertificateInfo *caCertInfo;
+   X509CertInfo *caCertInfo;
 
    //Initialize status code
    error = ERROR_UNKNOWN_CA;
@@ -1303,7 +1301,7 @@ error_t tlsValidateCertificate(TlsContext *context,
          trustedCaListLen = context->trustedCaListLen;
 
          //Allocate a memory buffer to store X.509 certificate info
-         caCertInfo = tlsAllocMem(sizeof(X509CertificateInfo));
+         caCertInfo = tlsAllocMem(sizeof(X509CertInfo));
 
          //Successful memory allocation?
          if(caCertInfo != NULL)
@@ -1428,7 +1426,7 @@ error_t tlsValidateCertificate(TlsContext *context,
  * @return Error code
  **/
 
-error_t tlsGetCertificateType(const X509CertificateInfo *certInfo,
+error_t tlsGetCertificateType(const X509CertInfo *certInfo,
    TlsCertificateType *certType, TlsNamedGroup *namedCurve)
 {
    size_t oidLen;
@@ -1439,8 +1437,8 @@ error_t tlsGetCertificateType(const X509CertificateInfo *certInfo,
       return ERROR_INVALID_PARAMETER;
 
    //Point to the public key identifier
-   oid = certInfo->tbsCert.subjectPublicKeyInfo.oid;
-   oidLen = certInfo->tbsCert.subjectPublicKeyInfo.oidLen;
+   oid = certInfo->tbsCert.subjectPublicKeyInfo.oid.value;
+   oidLen = certInfo->tbsCert.subjectPublicKeyInfo.oid.length;
 
 #if (TLS_RSA_SIGN_SUPPORT == ENABLED || TLS_RSA_PSS_SIGN_SUPPORT == ENABLED)
    //RSA public key?
@@ -1486,8 +1484,11 @@ error_t tlsGetCertificateType(const X509CertificateInfo *certInfo,
 
       //Save certificate type
       *certType = TLS_CERT_ECDSA_SIGN;
-      //Retrieve the named curve that has been used to generate the EC public key
-      *namedCurve = tlsGetNamedCurve(params->namedCurve, params->namedCurveLen);
+
+      //Retrieve the named curve that has been used to generate the EC
+      //public key
+      *namedCurve = tlsGetNamedCurve(params->namedCurve.value,
+         params->namedCurve.length);
    }
    else
 #endif
@@ -1530,7 +1531,7 @@ error_t tlsGetCertificateType(const X509CertificateInfo *certInfo,
  * @return Error code
  **/
 
-error_t tlsGetCertificateSignAlgo(const X509CertificateInfo *certInfo,
+error_t tlsGetCertificateSignAlgo(const X509CertInfo *certInfo,
    TlsSignatureAlgo *signAlgo, TlsHashAlgo *hashAlgo)
 {
    size_t oidLen;
@@ -1541,8 +1542,8 @@ error_t tlsGetCertificateSignAlgo(const X509CertificateInfo *certInfo,
       return ERROR_INVALID_PARAMETER;
 
    //Point to the signature algorithm
-   oid = certInfo->signatureAlgo.oid;
-   oidLen = certInfo->signatureAlgo.oidLen;
+   oid = certInfo->signatureAlgo.oid.value;
+   oidLen = certInfo->signatureAlgo.oid.length;
 
 #if (RSA_SUPPORT == ENABLED)
    //RSA signature algorithm?
@@ -1583,20 +1584,17 @@ error_t tlsGetCertificateSignAlgo(const X509CertificateInfo *certInfo,
    }
    else
 #endif
-#if (RSA_PSS_SUPPORT == ENABLED)
+#if (RSA_SUPPORT == ENABLED && X509_RSA_PSS_SUPPORT == ENABLED)
    //RSA-PSS signature algorithm?
    if(!oidComp(oid, oidLen, RSASSA_PSS_OID, sizeof(RSASSA_PSS_OID)))
    {
-      size_t hashAlgoLen;
-      const uint8_t *hashAlgo;
-
       //Get the OID of the hash algorithm
-      hashAlgo = certInfo->signatureAlgo.rsaPssParams.hashAlgo;
-      hashAlgoLen = certInfo->signatureAlgo.rsaPssParams.hashAlgoLen;
+      oid = certInfo->signatureAlgo.rsaPssParams.hashAlgo.value;
+      oidLen = certInfo->signatureAlgo.rsaPssParams.hashAlgo.length;
 
 #if (SHA256_SUPPORT == ENABLED)
       //SHA-256 hash algorithm identifier?
-      if(!oidComp(hashAlgo, hashAlgoLen, SHA256_OID, sizeof(SHA256_OID)))
+      if(!oidComp(oid, oidLen, SHA256_OID, sizeof(SHA256_OID)))
       {
          //RSA-PSS with SHA-256 signature algorithm
          *signAlgo = TLS_SIGN_ALGO_RSA_PSS_PSS_SHA256;
@@ -1606,7 +1604,7 @@ error_t tlsGetCertificateSignAlgo(const X509CertificateInfo *certInfo,
 #endif
 #if (SHA384_SUPPORT == ENABLED)
       //SHA-384 hash algorithm identifier?
-      if(!oidComp(hashAlgo, hashAlgoLen, SHA384_OID, sizeof(SHA384_OID)))
+      if(!oidComp(oid, oidLen, SHA384_OID, sizeof(SHA384_OID)))
       {
          //RSA-PSS with SHA-384 signature algorithm
          *signAlgo = TLS_SIGN_ALGO_RSA_PSS_PSS_SHA384;
@@ -1616,7 +1614,7 @@ error_t tlsGetCertificateSignAlgo(const X509CertificateInfo *certInfo,
 #endif
 #if (SHA512_SUPPORT == ENABLED)
       //SHA-512 hash algorithm identifier?
-      if(!oidComp(hashAlgo, hashAlgoLen, SHA512_OID, sizeof(SHA512_OID)))
+      if(!oidComp(oid, oidLen, SHA512_OID, sizeof(SHA512_OID)))
       {
          //RSA-PSS with SHA-512 signature algorithm
          *signAlgo = TLS_SIGN_ALGO_RSA_PSS_PSS_SHA512;
@@ -1742,8 +1740,8 @@ error_t tlsReadSubjectPublicKey(TlsContext *context,
    const uint8_t *oid;
 
    //Retrieve public key identifier
-   oid = subjectPublicKeyInfo->oid;
-   oidLen = subjectPublicKeyInfo->oidLen;
+   oid = subjectPublicKeyInfo->oid.value;
+   oidLen = subjectPublicKeyInfo->oid.length;
 
 #if (TLS_RSA_SIGN_SUPPORT == ENABLED || TLS_RSA_PSS_SIGN_SUPPORT == ENABLED)
    //RSA public key?
@@ -1834,8 +1832,8 @@ error_t tlsReadSubjectPublicKey(TlsContext *context,
       const EcCurveInfo *curveInfo;
 
       //Retrieve EC domain parameters
-      curveInfo = x509GetCurveInfo(subjectPublicKeyInfo->ecParams.namedCurve,
-         subjectPublicKeyInfo->ecParams.namedCurveLen);
+      curveInfo = x509GetCurveInfo(subjectPublicKeyInfo->ecParams.namedCurve.value,
+         subjectPublicKeyInfo->ecParams.namedCurve.length);
 
       //Make sure the specified elliptic curve is supported
       if(curveInfo != NULL)
@@ -1848,7 +1846,8 @@ error_t tlsReadSubjectPublicKey(TlsContext *context,
          {
             //Retrieve the EC public key
             error = ecImport(&context->peerEcParams, &context->peerEcPublicKey.q,
-               subjectPublicKeyInfo->ecPublicKey.q, subjectPublicKeyInfo->ecPublicKey.qLen);
+               subjectPublicKeyInfo->ecPublicKey.q.value,
+               subjectPublicKeyInfo->ecPublicKey.q.length);
          }
       }
       else
@@ -1887,7 +1886,8 @@ error_t tlsReadSubjectPublicKey(TlsContext *context,
          {
             //Retrieve the EC public key
             error = ecImport(&context->peerEcParams, &context->peerEcPublicKey.q,
-               subjectPublicKeyInfo->ecPublicKey.q, subjectPublicKeyInfo->ecPublicKey.qLen);
+               subjectPublicKeyInfo->ecPublicKey.q.value,
+               subjectPublicKeyInfo->ecPublicKey.q.length);
          }
       }
       else
@@ -2001,7 +2001,7 @@ error_t tlsReadSubjectPublicKey(TlsContext *context,
  * @return Error code
  **/
 
-error_t tlsCheckKeyUsage(const X509CertificateInfo *certInfo,
+error_t tlsCheckKeyUsage(const X509CertInfo *certInfo,
    TlsConnectionEnd entity, TlsKeyExchMethod keyExchMethod)
 {
 #if (TLS_CERT_KEY_USAGE_SUPPORT == ENABLED)

@@ -25,14 +25,13 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.4
+ * @version 2.3.0
  **/
 
 //Switch to the appropriate trace level
 #define TRACE_LEVEL TLS_TRACE_LEVEL
 
 //Dependencies
-#include <string.h>
 #include "tls.h"
 #include "tls_signature.h"
 #include "tls_transcript_hash.h"
@@ -233,30 +232,47 @@ error_t tlsSelectSignatureScheme(TlsContext *context, const TlsCertDesc *cert,
          //Version of TLS prior to TLS 1.3?
          if(context->version <= TLS_VERSION_1_2)
          {
-            //Select the default hash algorithm to be used when generating RSA,
-            //DSA or ECDSA signatures
+            //Check certificate type
+            if(cert->type == TLS_CERT_RSA_SIGN)
+            {
+               //Select RSA signature algorithm
+               context->signAlgo = TLS_SIGN_ALGO_RSA;
+            }
+            else if(cert->type == TLS_CERT_DSS_SIGN)
+            {
+               //Select DSA signature algorithm
+               context->signAlgo = TLS_SIGN_ALGO_DSA;
+            }
+            else if(cert->type == TLS_CERT_ECDSA_SIGN)
+            {
+               //Select ECDSA signature algorithm
+               context->signAlgo = TLS_SIGN_ALGO_ECDSA;
+            }
+            else
+            {
+               //Just for sanity
+            }
+
+            //Select the default hash algorithm to be used when generating
+            //RSA, DSA or ECDSA signatures
             if(tlsGetHashAlgo(TLS_HASH_ALGO_SHA1) != NULL)
             {
                //Select SHA-1 hash algorithm
-               context->signAlgo = cert->signAlgo;
                context->signHashAlgo = TLS_HASH_ALGO_SHA1;
             }
             else if(tlsGetHashAlgo(TLS_HASH_ALGO_SHA256) != NULL)
             {
                //Select SHA-256 hash algorithm
-               context->signAlgo = cert->signAlgo;
                context->signHashAlgo = TLS_HASH_ALGO_SHA256;
             }
             else if(tlsGetHashAlgo(TLS_HASH_ALGO_SHA384) != NULL)
             {
                //Select SHA-384 hash algorithm
-               context->signAlgo = cert->signAlgo;
                context->signHashAlgo = TLS_HASH_ALGO_SHA384;
             }
             else if(tlsGetHashAlgo(TLS_HASH_ALGO_SHA512) != NULL)
             {
                //Select SHA-512 hash algorithm
-               context->signAlgo = cert->signAlgo;
                context->signHashAlgo = TLS_HASH_ALGO_SHA512;
             }
             else
@@ -341,9 +357,23 @@ error_t tlsSelectSignatureScheme(TlsContext *context, const TlsCertDesc *cert,
          (context->version >= TLS_VERSION_1_3 &&
          context->entity == TLS_CONNECTION_END_CLIENT))
       {
-         //Ed25519 and Ed448 are used in PureEdDSA mode, without pre-hashing
-         context->signAlgo = cert->signAlgo;
-         context->signHashAlgo = TLS_HASH_ALGO_INTRINSIC;
+         //Check certificate type
+         if(cert->type == TLS_CERT_ED25519_SIGN)
+         {
+            //Ed25519 is used in PureEdDSA mode, without pre-hashing
+            context->signAlgo = TLS_SIGN_ALGO_ED25519;
+            context->signHashAlgo = TLS_HASH_ALGO_INTRINSIC;
+         }
+         else if(cert->type == TLS_CERT_ED448_SIGN)
+         {
+            //Ed448 is used in PureEdDSA mode, without pre-hashing
+            context->signAlgo = TLS_SIGN_ALGO_ED448;
+            context->signHashAlgo = TLS_HASH_ALGO_INTRINSIC;
+         }
+         else
+         {
+            //Just for sanity
+         }
       }
    }
    else

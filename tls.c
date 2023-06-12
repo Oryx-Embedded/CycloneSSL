@@ -31,15 +31,13 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.4
+ * @version 2.3.0
  **/
 
 //Switch to the appropriate trace level
 #define TRACE_LEVEL TLS_TRACE_LEVEL
 
 //Dependencies
-#include <string.h>
-#include <ctype.h>
 #include "tls.h"
 #include "tls_handshake.h"
 #include "tls_common.h"
@@ -421,7 +419,9 @@ error_t tlsSetServerName(TlsContext *context, const char_t *serverName)
 
       //Convert the hostname into lowercase
       for(i = 0; i < length; i++)
+      {
          context->serverName[i] = osTolower(serverName[i]);
+      }
 
       //Properly terminate the string with a NULL character
       context->serverName[length] = '\0';
@@ -709,7 +709,7 @@ error_t tlsSetEcdhCallback(TlsContext *context, TlsEcdhCallback ecdhCallback)
    if(context == NULL || ecdhCallback == NULL)
       return ERROR_INVALID_PARAMETER;
 
-   //Save the ECDH key agreement callback function
+   //Save ECDH key agreement callback function
    context->ecdhCallback = ecdhCallback;
 
    //Successful processing
@@ -722,7 +722,7 @@ error_t tlsSetEcdhCallback(TlsContext *context, TlsEcdhCallback ecdhCallback)
 
 
 /**
- * @brief ECDSA signature generation callback function
+ * @brief Register ECDSA signature generation callback function
  * @param[in] context Pointer to the TLS context
  * @param[in] ecdsaSignCallback ECDSA signature generation callback function
  * @return Error code
@@ -736,7 +736,7 @@ error_t tlsSetEcdsaSignCallback(TlsContext *context,
    if(context == NULL || ecdsaSignCallback == NULL)
       return ERROR_INVALID_PARAMETER;
 
-   //Save the ECDSA signature generation callback function
+   //Save ECDSA signature generation callback function
    context->ecdsaSignCallback = ecdsaSignCallback;
 
    //Successful processing
@@ -763,7 +763,7 @@ error_t tlsSetEcdsaVerifyCallback(TlsContext *context,
    if(context == NULL || ecdsaVerifyCallback == NULL)
       return ERROR_INVALID_PARAMETER;
 
-   //Save the ECDSA signature verification callback function
+   //Save ECDSA signature verification callback function
    context->ecdsaVerifyCallback = ecdsaVerifyCallback;
 
    //Successful processing
@@ -790,7 +790,7 @@ error_t tlsSetKeyLogCallback(TlsContext *context,
    if(context == NULL || keyLogCallback == NULL)
       return ERROR_INVALID_PARAMETER;
 
-   //Save the key logging callback function
+   //Save key logging callback function
    context->keyLogCallback = keyLogCallback;
 
    //Successful processing
@@ -891,7 +891,7 @@ error_t tlsSetAlpnCallback(TlsContext *context, TlsAlpnCallback alpnCallback)
    if(context == NULL || alpnCallback == NULL)
       return ERROR_INVALID_PARAMETER;
 
-   //Save the ALPN callback function
+   //Save ALPN callback function
    context->alpnCallback = alpnCallback;
 
    //Successful processing
@@ -1103,7 +1103,7 @@ error_t tlsSetPskCallback(TlsContext *context, TlsPskCallback pskCallback)
    if(context == NULL || pskCallback == NULL)
       return ERROR_INVALID_PARAMETER;
 
-   //Save the PSK callback function
+   //Save PSK callback function
    context->pskCallback = pskCallback;
 
    //Successful processing
@@ -1130,7 +1130,7 @@ error_t tlsSetRpkVerifyCallback(TlsContext *context,
    if(context == NULL || rpkVerifyCallback == NULL)
       return ERROR_INVALID_PARAMETER;
 
-   //Save the raw public key verification callback function
+   //Save raw public key verification callback function
    context->rpkVerifyCallback = rpkVerifyCallback;
 
    //Successful processing
@@ -1233,7 +1233,7 @@ error_t tlsLoadCertificate(TlsContext *context, uint_t index,
    error_t error;
    uint8_t *derCert;
    size_t derCertLen;
-   X509CertificateInfo *certInfo;
+   X509CertInfo *certInfo;
    TlsCertDesc *cert;
    TlsCertificateType certType;
    TlsNamedGroup namedCurve;
@@ -1281,7 +1281,7 @@ error_t tlsLoadCertificate(TlsContext *context, uint_t index,
          if(!error)
          {
             //Allocate a memory buffer to store X.509 certificate info
-            certInfo = tlsAllocMem(sizeof(X509CertificateInfo));
+            certInfo = tlsAllocMem(sizeof(X509CertInfo));
 
             //Successful memory allocation?
             if(certInfo != NULL)
@@ -1360,9 +1360,9 @@ error_t tlsLoadCertificate(TlsContext *context, uint_t index,
 
 
 /**
- * @brief Set certificate verification callback
+ * @brief Register certificate verification callback function
  * @param[in] context Pointer to the TLS context
- * @param[in] certVerifyCallback Certificate verification callback
+ * @param[in] certVerifyCallback Certificate verification callback function
  * @param[in] param An opaque pointer passed to the callback function
  * @return Error code
  **/
@@ -1374,7 +1374,7 @@ error_t tlsSetCertificateVerifyCallback(TlsContext *context,
    if(context == NULL)
       return ERROR_INVALID_PARAMETER;
 
-   //Save certificate verification callback
+   //Save certificate verification callback function
    context->certVerifyCallback = certVerifyCallback;
    //This opaque pointer will be directly passed to the callback function
    context->certVerifyParam = param;
@@ -2053,7 +2053,10 @@ error_t tlsRead(TlsContext *context, void *data,
                      char_t c = LSB(flags);
 
                      //Search for the specified break character
-                     for(i = 0; i < n && p[i] != c; i++);
+                     for(i = 0; i < n && p[i] != c; i++)
+                     {
+                     }
+
                      //Adjust the number of data to read
                      n = MIN(n, i + 1);
 

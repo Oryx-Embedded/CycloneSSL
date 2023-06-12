@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.4
+ * @version 2.3.0
  **/
 
 #ifndef _TLS_H
@@ -83,13 +83,13 @@ struct _TlsEncryptionEngine;
 #endif
 
 //Version string
-#define CYCLONE_SSL_VERSION_STRING "2.2.4"
+#define CYCLONE_SSL_VERSION_STRING "2.3.0"
 //Major version
 #define CYCLONE_SSL_MAJOR_VERSION 2
 //Minor version
-#define CYCLONE_SSL_MINOR_VERSION 2
+#define CYCLONE_SSL_MINOR_VERSION 3
 //Revision number
-#define CYCLONE_SSL_REV_NUMBER 4
+#define CYCLONE_SSL_REV_NUMBER 0
 
 //TLS version numbers
 #define SSL_VERSION_3_0 0x0300
@@ -1337,6 +1337,10 @@ typedef enum
    TLS_GROUP_FFDHE6144             = 259,   //RFC 7919
    TLS_GROUP_FFDHE8192             = 260,   //RFC 7919
    TLS_GROUP_FFDHE_MAX             = 511,   //RFC 7919
+   TLS_GROUP_X25519_KYBER512       = 12089, //Experimental
+   TLS_GROUP_SECP256R1_KYBER512    = 12090, //Experimental
+   TLS_GROUP_SECP384R1_KYBER768    = 12092, //Experimental
+   TLS_GROUP_SECP521R1_KYBER1024   = 12093, //Experimental
    TLS_GROUP_EXPLICIT_PRIME_CURVE  = 65281, //RFC 4492
    TLS_GROUP_EXPLICIT_CHAR2_CURVE  = 65282  //RFC 4492
 } TlsNamedGroup;
@@ -1418,7 +1422,7 @@ typedef enum
  * @brief Sequence number
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint8_t b[8];
 } TlsSequenceNumber;
@@ -1428,259 +1432,259 @@ typedef __start_packed struct
  * @brief Cipher suites
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint16_t length;  //0-1
    uint16_t value[]; //2
-} __end_packed TlsCipherSuites;
+} TlsCipherSuites;
 
 
 /**
  * @brief Compression methods
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint8_t length;  //0
    uint8_t value[]; //1
-} __end_packed TlsCompressMethods;
+} TlsCompressMethods;
 
 
 /**
  * @brief Signature algorithm
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint8_t hash;      //0
    uint8_t signature; //1
-} __end_packed TlsSignHashAlgo;
+} TlsSignHashAlgo;
 
 
 /**
  * @brief List of signature algorithms
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint16_t length;         //0-1
    TlsSignHashAlgo value[]; //2
-} __end_packed TlsSignHashAlgos;
+} TlsSignHashAlgos;
 
 
 /**
  * @brief List of certificates
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint8_t length[3]; //0-2
    uint8_t value[];   //3
-} __end_packed TlsCertificateList;
+} TlsCertificateList;
 
 
 /**
  * @brief List of certificate authorities
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint16_t length; //0-1
    uint8_t value[]; //2
-} __end_packed TlsCertAuthorities;
+} TlsCertAuthorities;
 
 
 /**
  * @brief TLS extension
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint16_t type;   //0-1
    uint16_t length; //2-3
    uint8_t value[]; //4
-} __end_packed TlsExtension;
+} TlsExtension;
 
 
 /**
  * @brief List of TLS extensions
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint16_t length; //0-1
    uint8_t value[]; //2
-} __end_packed TlsExtensionList;
+} TlsExtensionList;
 
 
 /**
  * @brief List of supported versions
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint8_t length;   //0
    uint16_t value[]; //1
-} __end_packed TlsSupportedVersionList;
+} TlsSupportedVersionList;
 
 
 /**
  * @brief Server name
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint8_t type;      //0
    uint16_t length;   //1-2
    char_t hostname[]; //2
-} __end_packed TlsServerName;
+} TlsServerName;
 
 
 /**
  * @brief List of server names
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint16_t length; //0-1
    uint8_t value[]; //2
-} __end_packed TlsServerNameList;
+} TlsServerNameList;
 
 
 /**
  * @brief Protocol name
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint8_t length; //0
    char_t value[]; //1
-} __end_packed TlsProtocolName;
+} TlsProtocolName;
 
 
 /**
  * @brief List of protocol names
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint16_t length; //0-1
    uint8_t value[]; //2
-} __end_packed TlsProtocolNameList;
+} TlsProtocolNameList;
 
 
 /**
  * @brief List of supported groups
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint16_t length;  //0-1
    uint16_t value[]; //2
-} __end_packed TlsSupportedGroupList;
+} TlsSupportedGroupList;
 
 
 /**
  * @brief List of supported EC point formats
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint8_t length;  //0
    uint8_t value[]; //1
-} __end_packed TlsEcPointFormatList;
+} TlsEcPointFormatList;
 
 
 /**
  * @brief List of supported certificate types
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint8_t length;  //0
    uint8_t value[]; //1
-} __end_packed TlsCertTypeList;
+} TlsCertTypeList;
 
 
 /**
  * @brief Renegotiated connection
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint8_t length;  //0
    uint8_t value[]; //1
-} __end_packed TlsRenegoInfo;
+} TlsRenegoInfo;
 
 
 /**
  * @brief PSK identity
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint16_t length; //0-1
    uint8_t value[]; //2
-} __end_packed TlsPskIdentity;
+} TlsPskIdentity;
 
 
 /**
  * @brief PSK identity hint
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint16_t length; //0-1
    uint8_t value[]; //2
-} __end_packed TlsPskIdentityHint;
+} TlsPskIdentityHint;
 
 
 /**
  * @brief Digitally-signed element (TLS 1.0 and TLS 1.1)
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint16_t length; //0-1
    uint8_t value[]; //2
-} __end_packed TlsDigitalSignature;
+} TlsDigitalSignature;
 
 
 /**
  * @brief Digitally-signed element (TLS 1.2)
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    TlsSignHashAlgo algorithm; //0-1
    uint16_t length;           //2-3
    uint8_t value[];           //4
-} __end_packed Tls12DigitalSignature;
+} Tls12DigitalSignature;
 
 
 /**
  * @brief TLS record
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint8_t type;     //0
    uint16_t version; //1-2
    uint16_t length;  //3-4
    uint8_t data[];   //5
-} __end_packed TlsRecord;
+} TlsRecord;
 
 
 /**
  * @brief TLS handshake message
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint8_t msgType;   //0
    uint8_t length[3]; //1-3
    uint8_t data[];    //4
-} __end_packed TlsHandshake;
+} TlsHandshake;
 
 
 /**
@@ -1694,26 +1698,26 @@ typedef void TlsHelloRequest;
  * @brief ClientHello message
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint16_t clientVersion; //0-1
    uint8_t random[32];     //2-33
    uint8_t sessionIdLen;   //34
    uint8_t sessionId[];    //35
-} __end_packed TlsClientHello;
+} TlsClientHello;
 
 
 /**
  * @brief ServerHello message
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint16_t serverVersion; //0-1
    uint8_t random[32];     //2-33
    uint8_t sessionIdLen;   //34
    uint8_t sessionId[];    //35
-} __end_packed TlsServerHello;
+} TlsServerHello;
 
 
 /**
@@ -1734,11 +1738,11 @@ typedef void TlsServerKeyExchange;
  * @brief CertificateRequest message
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint8_t certificateTypesLen;  //0
    uint8_t certificateTypes[];   //1
-} __end_packed TlsCertificateRequest;
+} TlsCertificateRequest;
 
 
 /**
@@ -1766,12 +1770,12 @@ typedef void TlsCertificateVerify;
  * @brief NewSessionTicket message
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint32_t ticketLifetimeHint; //0-3
    uint16_t ticketLen;          //4-5
    uint8_t ticket[];            //6
-} __end_packed TlsNewSessionTicket;
+} TlsNewSessionTicket;
 
 
 /**
@@ -1785,28 +1789,28 @@ typedef void TlsFinished;
  * @brief ChangeCipherSpec message
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint8_t type; //0
-} __end_packed TlsChangeCipherSpec;
+} TlsChangeCipherSpec;
 
 
 /**
  * @brief Alert message
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint8_t level;       //0
    uint8_t description; //1
-} __end_packed TlsAlert;
+} TlsAlert;
 
 
 /**
  * @brief Session state information
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint16_t version;                       ///<Protocol version
    uint16_t cipherSuite;                   ///<Cipher suite identifier
@@ -1816,7 +1820,7 @@ typedef __start_packed struct
 #if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
    bool_t extendedMasterSecret;            ///<Extended master secret computation
 #endif
-} __end_packed TlsPlaintextSessionState;
+} TlsPlaintextSessionState;
 
 
 //CodeWarrior or Win32 compiler?
@@ -1876,7 +1880,7 @@ typedef error_t (*TlsPskCallback)(TlsContext *context,
  **/
 
 typedef error_t (*TlsCertVerifyCallback)(TlsContext *context,
-   const X509CertificateInfo *certInfo, uint_t pathLen, void *param);
+   const X509CertInfo *certInfo, uint_t pathLen, void *param);
 
 
 /**

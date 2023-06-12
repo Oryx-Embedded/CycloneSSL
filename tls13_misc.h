@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.4
+ * @version 2.3.0
  **/
 
 #ifndef _TLS13_MISC_H
@@ -197,125 +197,125 @@ typedef enum
  * @brief Cookie
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint16_t length; //0-1
    uint8_t value[]; //2
-} __end_packed Tls13Cookie;
+} Tls13Cookie;
 
 
 /**
  * @brief Key share entry
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint16_t group;        //0
    uint16_t length;       //1
    uint8_t keyExchange[]; //2
-} __end_packed Tls13KeyShareEntry;
+} Tls13KeyShareEntry;
 
 
 /**
  * @brief List of key shares
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint16_t length; //0
    uint8_t value[]; //1
-} __end_packed Tls13KeyShareList;
+} Tls13KeyShareList;
 
 
 /**
  * @brief List of PSK key exchange modes
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint8_t length;  //0
    uint8_t value[]; //1
-} __end_packed Tls13PskKeModeList;
+} Tls13PskKeModeList;
 
 
 /**
  * @brief PSK identity
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint16_t length; //0-1
    uint8_t value[]; //2
-} __end_packed Tls13PskIdentity;
+} Tls13PskIdentity;
 
 
 /**
  * @brief List of PSK identities
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint16_t length; //0-1
    uint8_t value[]; //2
-} __end_packed Tls13PskIdentityList;
+} Tls13PskIdentityList;
 
 
 /**
  * @brief PSK binder
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint8_t length;  //0
    uint8_t value[]; //1
-} __end_packed Tls13PskBinder;
+} Tls13PskBinder;
 
 
 /**
  * @brief List of PSK binders
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint16_t length; //0-1
    uint8_t value[]; //2
-} __end_packed Tls13PskBinderList;
+} Tls13PskBinderList;
 
 
 /**
  * @brief Certificate request context
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint8_t length; //0
    uint8_t value[]; //1
-} __end_packed Tls13CertRequestContext;
+} Tls13CertRequestContext;
 
 
 /**
  * @brief Digitally-signed element (TLS 1.3)
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint16_t algorithm; //0-1
    uint16_t length;    //2-3
    uint8_t value[];    //4
-} __end_packed Tls13DigitalSignature;
+} Tls13DigitalSignature;
 
 
 /**
  * @brief HelloRetryRequest message
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint16_t serverVersion; //0-1
    uint8_t random[32];     //2-33
    uint8_t sessionIdLen;   //34
    uint8_t sessionId[];    //35
-} __end_packed Tls13HelloRetryRequest;
+} Tls13HelloRetryRequest;
 
 
 /**
@@ -329,52 +329,52 @@ typedef void *Tls13EndOfEarlyData;
  * @brief EncryptedExtensions message
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint16_t extensionsLen; //0-1
    uint8_t extensions[];   //2
-} __end_packed Tls13EncryptedExtensions;
+} Tls13EncryptedExtensions;
 
 
 /**
  * @brief NewSessionTicket message (TLS 1.3)
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint32_t ticketLifetime; //0-3
    uint32_t ticketAgeAdd;   //4-7
    uint8_t ticketNonceLen;  //8
    uint8_t ticketNonce[];   //9
-} __end_packed Tls13NewSessionTicket;
+} Tls13NewSessionTicket;
 
 
 /**
  * @brief KeyUpdate message
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint8_t requestUpdate; //0
-} __end_packed Tls13KeyUpdate;
+} Tls13KeyUpdate;
 
 
 /**
  * @brief Session ticket
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint16_t length; //0-1
    uint8_t data[];  //2
-} __end_packed Tls13Ticket;
+} Tls13Ticket;
 
 
 /**
  * @brief Session state information
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint16_t version;                              ///<Protocol version
    uint16_t cipherSuite;                          ///<Cipher suite identifier
@@ -384,7 +384,7 @@ typedef __start_packed struct
    uint8_t ticketNonce[4];                        ///<A per-ticket value that is unique across all tickets issued
    size_t ticketPskLen;                           ///<Length of the PSK associated with the ticket
    uint8_t ticketPsk[TLS13_MAX_HKDF_DIGEST_SIZE]; ///<PSK associated with the ticket
-} __end_packed Tls13PlaintextSessionState;
+} Tls13PlaintextSessionState;
 
 
 //CodeWarrior or Win32 compiler?

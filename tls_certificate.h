@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.4
+ * @version 2.3.0
  **/
 
 #ifndef _TLS_CERTIFICATE_H
@@ -59,19 +59,19 @@ bool_t tlsIsCertificateAcceptable(TlsContext *context, const TlsCertDesc *cert,
    const TlsCertAuthorities *certAuthorities);
 
 error_t tlsValidateCertificate(TlsContext *context,
-   const X509CertificateInfo *certInfo, uint_t pathLen,
+   const X509CertInfo *certInfo, uint_t pathLen,
    const char_t *subjectName);
 
-error_t tlsGetCertificateType(const X509CertificateInfo *certInfo,
+error_t tlsGetCertificateType(const X509CertInfo *certInfo,
    TlsCertificateType *certType, TlsNamedGroup *namedCurve);
 
-error_t tlsGetCertificateSignAlgo(const X509CertificateInfo *certInfo,
+error_t tlsGetCertificateSignAlgo(const X509CertInfo *certInfo,
    TlsSignatureAlgo *signAlgo, TlsHashAlgo *hashAlgo);
 
 error_t tlsReadSubjectPublicKey(TlsContext *context,
    const X509SubjectPublicKeyInfo *subjectPublicKeyInfo);
 
-error_t tlsCheckKeyUsage(const X509CertificateInfo *certInfo,
+error_t tlsCheckKeyUsage(const X509CertInfo *certInfo,
    TlsConnectionEnd entity, TlsKeyExchMethod keyExchMethod);
 
 //C++ guard

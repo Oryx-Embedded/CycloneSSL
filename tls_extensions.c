@@ -25,14 +25,13 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.4
+ * @version 2.3.0
  **/
 
 //Switch to the appropriate trace level
 #define TRACE_LEVEL TLS_TRACE_LEVEL
 
 //Dependencies
-#include <string.h>
 #include "tls.h"
 #include "tls_cipher_suites.h"
 #include "tls_extensions.h"
@@ -1046,9 +1045,13 @@ error_t tlsCheckDuplicateExtension(uint16_t type, const uint8_t *p,
       if(ntohs(extension->type) == type)
       {
          if(type > TLS_EXT_RENEGOTIATION_INFO)
+         {
             return ERROR_DECODING_FAILED;
+         }
          else
+         {
             return ERROR_ILLEGAL_PARAMETER;
+         }
       }
 
       //Retrieve the length of the extension

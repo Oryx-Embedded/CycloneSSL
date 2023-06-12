@@ -25,14 +25,13 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.4
+ * @version 2.3.0
  **/
 
 //Switch to the appropriate trace level
 #define TRACE_LEVEL TLS_TRACE_LEVEL
 
 //Dependencies
-#include <string.h>
 #include "tls.h"
 #include "tls_cipher_suites.h"
 #include "tls_client.h"
@@ -1045,27 +1044,39 @@ __weak_func error_t tls12VerifyServerKeySignature(TlsContext *context,
       {
          //The hashing is intrinsic to the signature algorithm
          if(signature->algorithm.hash == TLS_HASH_ALGO_INTRINSIC)
+         {
             hashAlgo = tlsGetHashAlgo(TLS_HASH_ALGO_SHA256);
+         }
          else
+         {
             hashAlgo = NULL;
+         }
       }
       else if(signature->algorithm.signature == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA384 ||
          signature->algorithm.signature == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA384)
       {
          //The hashing is intrinsic to the signature algorithm
          if(signature->algorithm.hash == TLS_HASH_ALGO_INTRINSIC)
+         {
             hashAlgo = tlsGetHashAlgo(TLS_HASH_ALGO_SHA384);
+         }
          else
+         {
             hashAlgo = NULL;
+         }
       }
       else if(signature->algorithm.signature == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA512 ||
          signature->algorithm.signature == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA512)
       {
          //The hashing is intrinsic to the signature algorithm
          if(signature->algorithm.hash == TLS_HASH_ALGO_INTRINSIC)
+         {
             hashAlgo = tlsGetHashAlgo(TLS_HASH_ALGO_SHA512);
+         }
          else
+         {
             hashAlgo = NULL;
+         }
       }
       else
       {

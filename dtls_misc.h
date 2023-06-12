@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.2.4
+ * @version 2.3.0
  **/
 
 #ifndef _DTLS_MISC_H
@@ -135,7 +135,7 @@ typedef enum
  * @brief Sequence number
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint8_t b[6];
 } DtlsSequenceNumber;
@@ -145,29 +145,29 @@ typedef __start_packed struct
  * @brief Cookie
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint8_t length;  //0
    uint8_t value[]; //1
-} __end_packed DtlsCookie;
+} DtlsCookie;
 
 
 /**
  * @brief List of supported versions
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint8_t length;   //0
    uint16_t value[]; //1
-} __end_packed DtlsSupportedVersionList;
+} DtlsSupportedVersionList;
 
 
 /**
  * @brief DTLS record
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint8_t type;              //0
    uint16_t version;          //1-2
@@ -175,14 +175,14 @@ typedef __start_packed struct
    DtlsSequenceNumber seqNum; //5-10
    uint16_t length;           //11-12
    uint8_t data[];            //13
-} __end_packed DtlsRecord;
+} DtlsRecord;
 
 
 /**
  * @brief DTLS handshake message
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint8_t msgType;       //0
    uint8_t length[3];     //1-3
@@ -190,19 +190,19 @@ typedef __start_packed struct
    uint8_t fragOffset[3]; //6-8
    uint8_t fragLength[3]; //9-11
    uint8_t data[];        //12
-} __end_packed DtlsHandshake;
+} DtlsHandshake;
 
 
 /**
  * @brief HelloVerifyRequest message
  **/
 
-typedef __start_packed struct
+typedef __packed_struct
 {
    uint16_t serverVersion; //0-1
    uint8_t cookieLength;   //2
    uint8_t cookie[];       //3
-} __end_packed DtlsHelloVerifyRequest;
+} DtlsHelloVerifyRequest;
 
 
 //CodeWarrior or Win32 compiler?
