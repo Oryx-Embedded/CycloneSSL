@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.0
+ * @version 2.3.2
  **/
 
 //Switch to the appropriate trace level
@@ -106,7 +106,8 @@ error_t tlsFormatSessionId(TlsContext *context, uint8_t *p,
 
    //TLS 1.3 supported by the client?
    if(context->versionMax >= TLS_VERSION_1_3 &&
-      context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM)
+      (context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM ||
+      context->transportProtocol == TLS_TRANSPORT_PROTOCOL_EAP))
    {
       //A client which has a cached session ID set by a pre-TLS 1.3 server
       //should set this field to that value

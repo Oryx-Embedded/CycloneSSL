@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.0
+ * @version 2.3.2
  **/
 
 //Switch to the appropriate trace level
@@ -470,7 +470,9 @@ error_t tlsExportKeyingMaterial(TlsContext *context, const char_t *label,
 
    //Check whether a context is provided
    if(useContextValue)
+   {
       n += contextValueLen + 2;
+   }
 
    //Allocate a memory buffer to hold the seed
    seed = tlsAllocMem(n);

@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.0
+ * @version 2.3.2
  **/
 
 //Switch to the appropriate trace level
@@ -160,7 +160,8 @@ error_t tlsSendClientHello(TlsContext *context)
    {
       //TLS 1.3 supported by the client?
       if(context->versionMax >= TLS_VERSION_1_3 &&
-         context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM)
+         (context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM ||
+         context->transportProtocol == TLS_TRANSPORT_PROTOCOL_EAP))
       {
          //Initial or updated ClientHello?
          if(context->state == TLS_STATE_CLIENT_HELLO)
@@ -596,7 +597,8 @@ error_t tlsFormatClientHello(TlsContext *context,
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
    //TLS 1.3 supported by the client?
    if(context->versionMax >= TLS_VERSION_1_3 &&
-      context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM)
+      (context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM ||
+      context->transportProtocol == TLS_TRANSPORT_PROTOCOL_EAP))
    {
       Tls13PskIdentityList *identityList;
       Tls13PskBinderList *binderList;
@@ -1034,10 +1036,11 @@ error_t tlsParseServerHello(TlsContext *context,
       return error;
 
    //TLS protocol?
-   if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM)
+   if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM ||
+      context->transportProtocol == TLS_TRANSPORT_PROTOCOL_EAP)
    {
-      //Check whether the ServerHello message is received in response to
-      //the initial ClientHello
+      //Check whether the ServerHello message is received in response to the
+      //initial ClientHello
       if(context->state != TLS_STATE_SERVER_HELLO_2)
       {
          //Release transcript hash context

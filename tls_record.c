@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.0
+ * @version 2.3.2
  **/
 
 //Switch to the appropriate trace level
@@ -209,7 +209,9 @@ error_t tlsReadProtocolData(TlsContext *context,
          {
             //Fragmented records with mixed types cannot be interleaved
             if(type != context->rxBufferType)
+            {
                error = ERROR_UNEXPECTED_MESSAGE;
+            }
          }
 
          //Check status code

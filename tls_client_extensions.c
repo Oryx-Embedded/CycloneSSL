@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.0
+ * @version 2.3.2
  **/
 
 //Switch to the appropriate trace level
@@ -343,7 +343,8 @@ error_t tlsFormatClientRecordSizeLimitExtension(TlsContext *context,
 
    //Check whether TLS 1.3 is supported
    if(context->versionMax >= TLS_VERSION_1_3 &&
-      context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM)
+      (context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM ||
+      context->transportProtocol == TLS_TRANSPORT_PROTOCOL_EAP))
    {
       //The value includes the content type and padding added in TLS 1.3
       recordSizeLimit++;

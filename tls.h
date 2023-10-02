@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.0
+ * @version 2.3.2
  **/
 
 #ifndef _TLS_H
@@ -40,7 +40,6 @@ struct _TlsEncryptionEngine;
 #define TlsEncryptionEngine struct _TlsEncryptionEngine
 
 //Dependencies
-#include "os_port.h"
 #include "core/crypto.h"
 #include "tls_config.h"
 #include "tls_legacy.h"
@@ -83,13 +82,13 @@ struct _TlsEncryptionEngine;
 #endif
 
 //Version string
-#define CYCLONE_SSL_VERSION_STRING "2.3.0"
+#define CYCLONE_SSL_VERSION_STRING "2.3.2"
 //Major version
 #define CYCLONE_SSL_MAJOR_VERSION 2
 //Minor version
 #define CYCLONE_SSL_MINOR_VERSION 3
 //Revision number
-#define CYCLONE_SSL_REV_NUMBER 0
+#define CYCLONE_SSL_REV_NUMBER 2
 
 //TLS version numbers
 #define SSL_VERSION_3_0 0x0300
@@ -497,6 +496,13 @@ struct _TlsEncryptionEngine;
    #error TLS_SEED_SUPPORT parameter is not valid
 #endif
 
+//SM4 cipher support
+#ifndef TLS_SM4_SUPPORT
+   #define TLS_SM4_SUPPORT DISABLED
+#elif (TLS_SM4_SUPPORT != ENABLED && TLS_SM4_SUPPORT != DISABLED)
+   #error TLS_SM4_SUPPORT parameter is not valid
+#endif
+
 //MD5 hash support (insecure)
 #ifndef TLS_MD5_SUPPORT
    #define TLS_MD5_SUPPORT DISABLED
@@ -537,6 +543,13 @@ struct _TlsEncryptionEngine;
    #define TLS_SHA512_SUPPORT DISABLED
 #elif (TLS_SHA512_SUPPORT != ENABLED && TLS_SHA512_SUPPORT != DISABLED)
    #error TLS_SHA512_SUPPORT parameter is not valid
+#endif
+
+//SM3 hash support
+#ifndef TLS_SM3_SUPPORT
+   #define TLS_SM3_SUPPORT DISABLED
+#elif (TLS_SM3_SUPPORT != ENABLED && TLS_SM3_SUPPORT != DISABLED)
+   #error TLS_SM3_SUPPORT parameter is not valid
 #endif
 
 //FFDHE key exchange mechanism
@@ -663,6 +676,13 @@ struct _TlsEncryptionEngine;
    #define TLS_BRAINPOOLP512R1_SUPPORT DISABLED
 #elif (TLS_BRAINPOOLP512R1_SUPPORT != ENABLED && TLS_BRAINPOOLP512R1_SUPPORT != DISABLED)
    #error TLS_BRAINPOOLP512R1_SUPPORT parameter is not valid
+#endif
+
+//SM2 elliptic curve support
+#ifndef TLS_SM2_SUPPORT
+   #define TLS_SM2_SUPPORT DISABLED
+#elif (TLS_SM2_SUPPORT != ENABLED && TLS_SM2_SUPPORT != DISABLED)
+   #error TLS_SM2_SUPPORT parameter is not valid
 #endif
 
 //Curve25519 elliptic curve support
@@ -909,7 +929,8 @@ extern "C" {
 typedef enum
 {
    TLS_TRANSPORT_PROTOCOL_STREAM   = 0,
-   TLS_TRANSPORT_PROTOCOL_DATAGRAM = 1
+   TLS_TRANSPORT_PROTOCOL_DATAGRAM = 1,
+   TLS_TRANSPORT_PROTOCOL_EAP      = 2
 } TlsTransportProtocol;
 
 
@@ -2511,11 +2532,11 @@ error_t tlsConnect(TlsContext *context);
 
 TlsEarlyDataStatus tlsGetEarlyDataStatus(TlsContext *context);
 
-error_t tlsWrite(TlsContext *context, const void *data,
-   size_t length, size_t *written, uint_t flags);
+error_t tlsWrite(TlsContext *context, const void *data, size_t length,
+   size_t *written, uint_t flags);
 
-error_t tlsRead(TlsContext *context, void *data,
-   size_t size, size_t *received, uint_t flags);
+error_t tlsRead(TlsContext *context, void *data, size_t size, size_t *received,
+   uint_t flags);
 
 bool_t tlsIsTxReady(TlsContext *context);
 bool_t tlsIsRxReady(TlsContext *context);

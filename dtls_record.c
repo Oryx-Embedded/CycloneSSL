@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.0
+ * @version 2.3.2
  **/
 
 //Switch to the appropriate trace level
@@ -298,7 +298,7 @@ error_t dtlsWriteRecord(TlsContext *context, const uint8_t *data,
       n = ntohs(record->length) + sizeof(DtlsRecord);
 
       //Debug message
-      TRACE_INFO("Sending UDP datagram (%u bytes)...\r\n", n);
+      TRACE_INFO("Sending UDP datagram (%" PRIuSIZE " bytes)...\r\n", n);
 
       //Send datagram
       error = context->socketSendCallback(context->socketHandle, record, n, &n, 0);
@@ -793,7 +793,8 @@ error_t dtlsSendFlight(TlsContext *context)
             if((context->txDatagramLen + n) > pmtu)
             {
                //Debug message
-               TRACE_INFO("Sending UDP datagram (%u bytes)...\r\n", context->txDatagramLen);
+               TRACE_INFO("Sending UDP datagram (%" PRIuSIZE " bytes)...\r\n",
+                  context->txDatagramLen);
 
                //Send datagram
                error = context->socketSendCallback(context->socketHandle,
@@ -855,7 +856,8 @@ error_t dtlsSendFlight(TlsContext *context)
    if(context->txDatagramLen > 0)
    {
       //Debug message
-      TRACE_INFO("Sending UDP datagram (%u bytes)...\r\n", context->txDatagramLen);
+      TRACE_INFO("Sending UDP datagram (%" PRIuSIZE " bytes)...\r\n",
+         context->txDatagramLen);
 
       //Send datagram
       error = context->socketSendCallback(context->socketHandle, datagram,
@@ -941,7 +943,8 @@ error_t dtlsFragmentHandshakeMessage(TlsContext *context, uint16_t version,
          if((context->txDatagramLen + n) > pmtu)
          {
             //Debug message
-            TRACE_INFO("Sending UDP datagram (%u bytes)...\r\n", context->txDatagramLen);
+            TRACE_INFO("Sending UDP datagram (%" PRIuSIZE " bytes)...\r\n",
+               context->txDatagramLen);
 
             //Send datagram
             error = context->socketSendCallback(context->socketHandle,

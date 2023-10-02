@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.0
+ * @version 2.3.2
  **/
 
 //Switch to the appropriate trace level
@@ -314,7 +314,8 @@ error_t tlsSetTransportProtocol(TlsContext *context,
 
    //Check parameters
    if(transportProtocol != TLS_TRANSPORT_PROTOCOL_STREAM &&
-      transportProtocol != TLS_TRANSPORT_PROTOCOL_DATAGRAM)
+      transportProtocol != TLS_TRANSPORT_PROTOCOL_DATAGRAM &&
+      transportProtocol != TLS_TRANSPORT_PROTOCOL_EAP)
    {
       return ERROR_INVALID_PARAMETER;
    }
@@ -1808,8 +1809,8 @@ TlsEarlyDataStatus tlsGetEarlyDataStatus(TlsContext *context)
  * @return Error code
  **/
 
-error_t tlsWrite(TlsContext *context, const void *data,
-   size_t length, size_t *written, uint_t flags)
+error_t tlsWrite(TlsContext *context, const void *data, size_t length,
+   size_t *written, uint_t flags)
 {
    error_t error;
    size_t n;
@@ -1943,8 +1944,8 @@ error_t tlsWrite(TlsContext *context, const void *data,
  * @return Error code
  **/
 
-error_t tlsRead(TlsContext *context, void *data,
-   size_t size, size_t *received, uint_t flags)
+error_t tlsRead(TlsContext *context, void *data, size_t size, size_t *received,
+   uint_t flags)
 {
    error_t error;
    size_t i;
@@ -2193,7 +2194,8 @@ bool_t tlsIsTxReady(TlsContext *context)
    if(context != NULL)
    {
       //TLS protocol?
-      if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM)
+      if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM ||
+         context->transportProtocol == TLS_TRANSPORT_PROTOCOL_EAP)
       {
          //Check whether some data is pending in the transmit buffer
          if(context->txBufferPos < context->txBufferLen)
@@ -2303,7 +2305,8 @@ error_t tlsShutdownEx(TlsContext *context, bool_t waitForCloseNotify)
       if(context->state == TLS_STATE_APPLICATION_DATA)
       {
          //TLS protocol?
-         if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM)
+         if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM ||
+            context->transportProtocol == TLS_TRANSPORT_PROTOCOL_EAP)
          {
             //Flush send buffer
             error = tlsWriteProtocolData(context, NULL, 0, TLS_TYPE_NONE);
@@ -2319,7 +2322,8 @@ error_t tlsShutdownEx(TlsContext *context, bool_t waitForCloseNotify)
       else if(context->state == TLS_STATE_CLOSING)
       {
          //TLS protocol?
-         if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM)
+         if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM ||
+            context->transportProtocol == TLS_TRANSPORT_PROTOCOL_EAP)
          {
             //Flush send buffer
             error = tlsWriteProtocolData(context, NULL, 0, TLS_TYPE_NONE);
