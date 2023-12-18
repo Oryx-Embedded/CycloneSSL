@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
 //Switch to the appropriate trace level
@@ -502,7 +502,7 @@ error_t dtlsCheckReplayWindow(TlsContext *context, DtlsSequenceNumber *seqNum)
 
             //Duplicate record are rejected through the use of a sliding
             //receive window
-            if(context->replayWindow[j] & (1 << k))
+            if(context->replayWindow[j] & (1U << k))
             {
                //The received record is a duplicate
                error = ERROR_INVALID_SEQUENCE_NUMBER;
@@ -576,7 +576,7 @@ void dtlsUpdateReplayWindow(TlsContext *context, DtlsSequenceNumber *seqNum)
          k = (uint_t) (n % 32);
 
          //Set the corresponding bit in the bitmap window
-         context->replayWindow[j] |= 1 << k;
+         context->replayWindow[j] |= 1U << k;
       }
 #endif
    }

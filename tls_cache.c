@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
 //Switch to the appropriate trace level
@@ -135,7 +135,7 @@ TlsSessionState *tlsFindCache(TlsCache *cache, const uint8_t *sessionId,
    {
       //Check whether the current identifier matches the specified session ID
       if(cache->sessions[i].sessionIdLen == sessionIdLen &&
-         !osMemcmp(cache->sessions[i].sessionId, sessionId, sessionIdLen))
+         osMemcmp(cache->sessions[i].sessionId, sessionId, sessionIdLen) == 0)
       {
          //A matching session has been found
          session = &cache->sessions[i];
@@ -202,7 +202,7 @@ error_t tlsSaveToCache(TlsContext *context)
 
       //If the session ID already exists, we are done
       if(session->sessionIdLen == context->sessionIdLen &&
-         !osMemcmp(session->sessionId, context->sessionId, session->sessionIdLen))
+         osMemcmp(session->sessionId, context->sessionId, session->sessionIdLen) == 0)
       {
          //Do not write to session cache
          firstFreeEntry = NULL;
@@ -295,7 +295,7 @@ error_t tlsRemoveFromCache(TlsContext *context)
 
       //Check whether the current identifier matches the specified session ID
       if(session->sessionIdLen == context->sessionIdLen &&
-         !osMemcmp(session->sessionId, context->sessionId, session->sessionIdLen))
+         osMemcmp(session->sessionId, context->sessionId, session->sessionIdLen) == 0)
       {
          //Drop current entry
          tlsFreeSessionState(session);

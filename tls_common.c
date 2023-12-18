@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
 //Switch to the appropriate trace level
@@ -39,12 +39,14 @@
 #include "tls_server.h"
 #include "tls_common.h"
 #include "tls_certificate.h"
-#include "tls_signature.h"
+#include "tls_sign_generate.h"
+#include "tls_sign_verify.h"
 #include "tls_transcript_hash.h"
 #include "tls_cache.h"
 #include "tls_record.h"
 #include "tls_misc.h"
-#include "tls13_signature.h"
+#include "tls13_sign_generate.h"
+#include "tls13_sign_verify.h"
 #include "dtls_record.h"
 #include "pkix/pem_import.h"
 #include "pkix/x509_common.h"
@@ -205,6 +207,7 @@ error_t tlsSendCertificateVerify(TlsContext *context)
          context->cert->type == TLS_CERT_RSA_PSS_SIGN ||
          context->cert->type == TLS_CERT_DSS_SIGN ||
          context->cert->type == TLS_CERT_ECDSA_SIGN ||
+         context->cert->type == TLS_CERT_SM2_SIGN ||
          context->cert->type == TLS_CERT_ED25519_SIGN ||
          context->cert->type == TLS_CERT_ED448_SIGN)
       {
@@ -602,7 +605,7 @@ error_t tlsFormatCertificate(TlsContext *context,
    error_t error;
    size_t n;
    uint8_t *p;
-   TlsCertificateList *certificateList;
+   TlsCertList *certList;
 
    //Point to the beginning of the handshake message
    p = message;
@@ -647,29 +650,29 @@ error_t tlsFormatCertificate(TlsContext *context,
 #endif
 
    //Point to the chain of certificates
-   certificateList = (TlsCertificateList *) p;
+   certList = (TlsCertList *) p;
 
 #if (TLS_RAW_PUBLIC_KEY_SUPPORT == ENABLED)
    //Check certificate type
    if(context->certFormat == TLS_CERT_FORMAT_RAW_PUBLIC_KEY)
    {
       //Format the raw public key
-      error = tlsFormatRawPublicKey(context, certificateList->value, &n);
+      error = tlsFormatRawPublicKey(context, certList->value, &n);
    }
    else
 #endif
    {
       //Format the certificate chain
-      error = tlsFormatCertificateList(context, certificateList->value, &n);
+      error = tlsFormatCertificateList(context, certList->value, &n);
    }
 
    //Check status code
    if(!error)
    {
       //A 3-byte length field shall precede the certificate list
-      STORE24BE(n, certificateList->length);
+      STORE24BE(n, certList->length);
       //Adjust the length of the Certificate message
-      *length += sizeof(TlsCertificateList) + n;
+      *length += sizeof(TlsCertList) + n;
    }
 
    //Return status code
@@ -810,443 +813,6 @@ error_t tlsFormatAlert(TlsContext *context, uint8_t level,
 
    //Length of the Alert message
    *length = sizeof(TlsAlert);
-
-   //Successful processing
-   return NO_ERROR;
-}
-
-
-/**
- * @brief Format SignatureAlgorithms extension
- * @param[in] context Pointer to the TLS context
- * @param[in] cipherSuiteTypes Types of cipher suites proposed by the client
- * @param[in] p Output stream where to write the SignatureAlgorithms extension
- * @param[out] written Total number of bytes that have been written
- * @return Error code
- **/
-
-error_t tlsFormatSignAlgosExtension(TlsContext *context,
-   uint_t cipherSuiteTypes, uint8_t *p, size_t *written)
-{
-   size_t n = 0;
-
-#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
-   //This extension is not meaningful for TLS versions prior to 1.2. Clients
-   //must not offer it if they are offering prior versions (refer to RFC 5246,
-   //section 7.4.1.4.1)
-   if(context->versionMax >= TLS_VERSION_1_2)
-   {
-      TlsExtension *extension;
-      TlsSignHashAlgos *supportedSignAlgos;
-
-      //Add the SignatureAlgorithms extension
-      extension = (TlsExtension *) p;
-      //Type of the extension
-      extension->type = HTONS(TLS_EXT_SIGNATURE_ALGORITHMS);
-
-      //Point to the list of the hash/signature algorithm pairs that the
-      //server is able to verify
-      supportedSignAlgos = (TlsSignHashAlgos *) extension->value;
-
-      //Enumerate the hash/signature algorithm pairs in descending order
-      //of preference
-      n = 0;
-
-#if (TLS_EDDSA_SIGN_SUPPORT == ENABLED)
-#if (TLS_ED25519_SUPPORT == ENABLED)
-      //Ed25519 signature algorithm (PureEdDSA mode)
-      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ED25519;
-      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
-#endif
-#if (TLS_ED448_SUPPORT == ENABLED)
-      //Ed448 signature algorithm (PureEdDSA mode)
-      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ED448;
-      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
-#endif
-#endif
-
-#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED)
-      //Any ECC cipher suite proposed by the client?
-      if((cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_ECC) != 0 ||
-         (cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_TLS13) != 0)
-      {
-#if (TLS_SHA256_SUPPORT == ENABLED)
-         //ECDSA signature algorithm with SHA-256
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA256;
-#endif
-#if (TLS_SHA384_SUPPORT == ENABLED)
-         //ECDSA signature algorithm with SHA-384
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA384;
-#endif
-#if (TLS_SHA512_SUPPORT == ENABLED)
-         //ECDSA signature algorithm with SHA-512
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA512;
-#endif
-      }
-#endif
-
-#if (TLS_RSA_PSS_SIGN_SUPPORT == ENABLED)
-      //Check whether the X.509 parser supports RSA-PSS signatures
-      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_RSA_PSS))
-      {
-#if (TLS_SHA256_SUPPORT == ENABLED)
-         //RSASSA-PSS PSS signature algorithm with SHA-256
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA_PSS_PSS_SHA256;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
-#endif
-#if (TLS_SHA384_SUPPORT == ENABLED)
-         //RSASSA-PSS PSS signature algorithm with SHA-384
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA_PSS_PSS_SHA384;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
-#endif
-#if (TLS_SHA512_SUPPORT == ENABLED)
-         //RSASSA-PSS PSS signature algorithm with SHA-512
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA_PSS_PSS_SHA512;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
-#endif
-      }
-#endif
-
-#if (TLS_RSA_PSS_SIGN_SUPPORT == ENABLED)
-#if (TLS_SHA256_SUPPORT == ENABLED)
-      //RSASSA-PSS RSAE signature algorithm with SHA-256
-      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA256;
-      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
-#endif
-#if (TLS_SHA384_SUPPORT == ENABLED)
-      //RSASSA-PSS RSAE signature algorithm with SHA-384
-      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA384;
-      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
-#endif
-#if (TLS_SHA512_SUPPORT == ENABLED)
-      //RSASSA-PSS RSAE signature algorithm with SHA-512
-      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA512;
-      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
-#endif
-#endif
-
-#if (TLS_RSA_SIGN_SUPPORT == ENABLED)
-#if (TLS_SHA256_SUPPORT == ENABLED)
-      //RSASSA-PKCS1-v1_5 signature algorithm with SHA-256
-      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
-      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA256;
-#endif
-#if (TLS_SHA384_SUPPORT == ENABLED)
-      //RSASSA-PKCS1-v1_5 signature algorithm with SHA-384
-      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
-      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA384;
-#endif
-#if (TLS_SHA512_SUPPORT == ENABLED)
-      //RSASSA-PKCS1-v1_5 signature algorithm with SHA-512
-      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
-      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA512;
-#endif
-#endif
-
-#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED)
-      //Any ECC cipher suite proposed by the client?
-      if((cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_ECC) != 0 ||
-         (cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_TLS13) != 0)
-      {
-#if (TLS_SHA1_SUPPORT == ENABLED)
-         //ECDSA signature algorithm with SHA-1
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA1;
-#endif
-#if (TLS_SHA224_SUPPORT == ENABLED)
-         //ECDSA signature algorithm with SHA-224
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA224;
-#endif
-      }
-#endif
-
-#if (TLS_RSA_SIGN_SUPPORT == ENABLED)
-#if (TLS_SHA1_SUPPORT == ENABLED)
-      //RSASSA-PKCS1-v1_5 signature algorithm with SHA-1
-      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
-      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA1;
-#endif
-#if (TLS_SHA224_SUPPORT == ENABLED)
-      //RSASSA-PKCS1-v1_5 signature algorithm with SHA-224
-      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
-      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA224;
-#endif
-#if (TLS_MD5_SUPPORT == ENABLED)
-      //RSASSA-PKCS1-v1_5 signature algorithm with MD5
-      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
-      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_MD5;
-#endif
-#endif
-
-#if (TLS_DSA_SIGN_SUPPORT == ENABLED)
-#if (TLS_SHA1_SUPPORT == ENABLED)
-      //DSA signature algorithm with SHA-1
-      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_DSA;
-      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA1;
-#endif
-#if (TLS_SHA224_SUPPORT == ENABLED)
-      //DSA signature algorithm with SHA-224
-      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_DSA;
-      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA224;
-#endif
-#if (TLS_SHA256_SUPPORT == ENABLED)
-      //DSA signature algorithm with SHA-256
-      supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_DSA;
-      supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA256;
-#endif
-#endif
-
-      //Compute the length, in bytes, of the list
-      n *= sizeof(TlsSignHashAlgo);
-      //Fix the length of the list
-      supportedSignAlgos->length = htons(n);
-
-      //Consider the 2-byte length field that precedes the list
-      n += sizeof(TlsSignHashAlgos);
-      //Fix the length of the extension
-      extension->length = htons(n);
-
-      //Compute the length, in bytes, of the SignatureAlgorithms extension
-      n += sizeof(TlsExtension);
-   }
-#endif
-
-   //Total number of bytes that have been written
-   *written = n;
-
-   //Successful processing
-   return NO_ERROR;
-}
-
-
-/**
- * @brief Format SignatureAlgorithmsCert extension
- * @param[in] context Pointer to the TLS context
- * @param[in] p Output stream where to write the SignatureAlgorithmsCert extension
- * @param[out] written Total number of bytes that have been written
- * @return Error code
- **/
-
-error_t tlsFormatSignAlgosCertExtension(TlsContext *context,
-   uint8_t *p, size_t *written)
-{
-   size_t n = 0;
-
-#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
-   //TLS 1.2 implementations should also process this extension
-   if(context->versionMax >= TLS_VERSION_1_2)
-   {
-      TlsExtension *extension;
-      TlsSignHashAlgos *supportedSignAlgos;
-
-      //Add the SignatureAlgorithmsCert extension
-      extension = (TlsExtension *) p;
-      //Type of the extension
-      extension->type = HTONS(TLS_EXT_SIGNATURE_ALGORITHMS_CERT);
-
-      //The SignatureAlgorithmsCert extension allows a client to indicate
-      //which signature algorithms it can validate in X.509 certificates
-      supportedSignAlgos = (TlsSignHashAlgos *) extension->value;
-
-      //Enumerate the hash/signature algorithm pairs in descending order
-      //of preference
-      n = 0;
-
-      //Ed25519 signature algorithm (PureEdDSA mode)
-      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_ED25519))
-      {
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ED25519;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
-      }
-
-      //Ed448 signature algorithm (PureEdDSA mode)
-      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_ED448))
-      {
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ED448;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
-      }
-
-      //ECDSA signature algorithm with SHA-256
-      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_ECDSA) &&
-         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA256))
-      {
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA256;
-      }
-
-      //ECDSA signature algorithm with SHA-384
-      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_ECDSA) &&
-         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA384))
-      {
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA384;
-      }
-
-      //ECDSA signature algorithm with SHA-512
-      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_ECDSA) &&
-         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA512))
-      {
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA512;
-      }
-
-      //RSASSA-PSS PSS signature algorithm with SHA-256
-      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_RSA_PSS) &&
-         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA256))
-      {
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA_PSS_PSS_SHA256;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
-      }
-
-      //RSASSA-PSS PSS signature algorithm with SHA-384
-      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_RSA_PSS) &&
-         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA384))
-      {
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA_PSS_PSS_SHA384;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
-      }
-
-      //RSASSA-PSS PSS signature algorithm with SHA-512
-      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_RSA_PSS) &&
-         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA512))
-      {
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA_PSS_PSS_SHA512;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
-      }
-
-      //RSASSA-PSS RSAE signature algorithm with SHA-256
-      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_RSA) &&
-         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA256))
-      {
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA256;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
-      }
-
-      //RSASSA-PSS RSAE signature algorithm with SHA-384
-      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_RSA) &&
-         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA384))
-      {
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA384;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
-      }
-
-      //RSASSA-PSS RSAE signature algorithm with SHA-512
-      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_RSA) &&
-         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA512))
-      {
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA512;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
-      }
-
-      //RSASSA-PKCS1-v1_5 signature algorithm with SHA-256
-      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_RSA) &&
-         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA256))
-      {
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA256;
-      }
-
-      //RSASSA-PKCS1-v1_5 signature algorithm with SHA-384
-      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_RSA) &&
-         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA384))
-      {
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA384;
-      }
-
-      //RSASSA-PKCS1-v1_5 signature algorithm with SHA-512
-      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_RSA) &&
-         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA512))
-      {
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA512;
-      }
-
-      //ECDSA signature algorithm with SHA-1
-      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_ECDSA) &&
-         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA1))
-      {
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA1;
-      }
-
-      //ECDSA signature algorithm with SHA-224
-      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_ECDSA) &&
-         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA224))
-      {
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA224;
-      }
-
-      //RSASSA-PKCS1-v1_5 signature algorithm with SHA-1
-      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_RSA) &&
-         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA1))
-      {
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA1;
-      }
-
-      //RSASSA-PKCS1-v1_5 signature algorithm with SHA-224
-      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_RSA) &&
-         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA224))
-      {
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA224;
-      }
-
-      //RSASSA-PKCS1-v1_5 signature algorithm with MD5
-      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_RSA) &&
-         x509IsHashAlgoSupported(X509_HASH_ALGO_MD5))
-      {
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_MD5;
-      }
-
-      //DSA signature algorithm with SHA-1
-      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_DSA) &&
-         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA1))
-      {
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_DSA;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA1;
-      }
-
-      //DSA signature algorithm with SHA-224
-      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_DSA) &&
-         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA224))
-      {
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_DSA;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA224;
-      }
-
-      //DSA signature algorithm with SHA-256
-      if(x509IsSignAlgoSupported(X509_SIGN_ALGO_DSA) &&
-         x509IsHashAlgoSupported(X509_HASH_ALGO_SHA256))
-      {
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_DSA;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA256;
-      }
-
-      //Compute the length, in bytes, of the list
-      n *= sizeof(TlsSignHashAlgo);
-      //Fix the length of the list
-      supportedSignAlgos->length = htons(n);
-
-      //Consider the 2-byte length field that precedes the list
-      n += sizeof(TlsSignHashAlgos);
-      //Fix the length of the extension
-      extension->length = htons(n);
-
-      //Compute the length, in bytes, of the SignatureAlgorithmsCert extension
-      n += sizeof(TlsExtension);
-   }
-#endif
-
-   //Total number of bytes that have been written
-   *written = n;
 
    //Successful processing
    return NO_ERROR;
@@ -1429,8 +995,12 @@ error_t tlsFormatCertAuthorities(TlsContext *context, uint8_t *p,
       error = ERROR_OUT_OF_MEMORY;
    }
 
-   //Total number of bytes that have been written
-   *written = sizeof(TlsCertAuthorities) + n;
+   //Check status code
+   if(!error)
+   {
+      //Total number of bytes that have been written
+      *written = sizeof(TlsCertAuthorities) + n;
+   }
 
    //Return status code
    return error;
@@ -1451,7 +1021,7 @@ error_t tlsParseCertificate(TlsContext *context,
    error_t error;
    size_t n;
    const uint8_t *p;
-   const TlsCertificateList *certificateList;
+   const TlsCertList *certList;
 
    //Debug message
    TRACE_INFO("Certificate message received (%" PRIuSIZE " bytes)...\r\n", length);
@@ -1510,16 +1080,16 @@ error_t tlsParseCertificate(TlsContext *context,
 #endif
 
    //Point to the chain of certificates
-   certificateList = (TlsCertificateList *) p;
+   certList = (TlsCertList *) p;
 
    //Malformed Certificate message?
-   if(length < sizeof(TlsCertificateList))
+   if(length < sizeof(TlsCertList))
       return ERROR_DECODING_FAILED;
 
    //Get the size occupied by the certificate list
-   n = LOAD24BE(certificateList->length);
+   n = LOAD24BE(certList->length);
    //Remaining bytes to process
-   length -= sizeof(TlsCertificateList);
+   length -= sizeof(TlsCertList);
 
    //Malformed Certificate message?
    if(n != length)
@@ -1533,13 +1103,13 @@ error_t tlsParseCertificate(TlsContext *context,
       if(context->peerCertFormat == TLS_CERT_FORMAT_RAW_PUBLIC_KEY)
       {
          //Parse the raw public key
-         error = tlsParseRawPublicKey(context, certificateList->value, n);
+         error = tlsParseRawPublicKey(context, certList->value, n);
       }
       else
 #endif
       {
          //Parse the certificate chain
-         error = tlsParseCertificateList(context, certificateList->value, n);
+         error = tlsParseCertificateList(context, certList->value, n);
       }
    }
    else

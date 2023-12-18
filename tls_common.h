@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
 #ifndef _TLS_COMMON_H
@@ -60,12 +60,6 @@ error_t tlsFormatFinished(TlsContext *context,
 
 error_t tlsFormatAlert(TlsContext *context, uint8_t level,
    uint8_t description, TlsAlert *message, size_t *length);
-
-error_t tlsFormatSignAlgosExtension(TlsContext *context,
-   uint_t cipherSuiteTypes, uint8_t *p, size_t *written);
-
-error_t tlsFormatSignAlgosCertExtension(TlsContext *context,
-   uint8_t *p, size_t *written);
 
 error_t tlsFormatCertAuthoritiesExtension(TlsContext *context,
    uint8_t *p, size_t *written);

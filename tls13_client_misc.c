@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
 //Switch to the appropriate trace level
@@ -68,8 +68,8 @@ bool_t tls13IsHelloRetryRequest(const TlsServerHello *message, size_t length)
    {
       //Upon receiving a message with type ServerHello, implementations must
       //first examine the Random field
-      if(!osMemcmp(&message->random, tls13HelloRetryRequestRandom,
-         sizeof(tls13HelloRetryRequestRandom)))
+      if(osMemcmp(&message->random, tls13HelloRetryRequestRandom,
+         sizeof(tls13HelloRetryRequestRandom)) == 0)
       {
          //The Random field matches the special value
          res = TRUE;

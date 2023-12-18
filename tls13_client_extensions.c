@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
 //Switch to the appropriate trace level
@@ -110,8 +110,8 @@ error_t tls13FormatClientKeyShareExtension(TlsContext *context,
 {
    size_t n = 0;
 
-#if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_ECDHE_KE_SUPPORT == ENABLED || \
-   TLS13_PSK_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
+#if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
+   TLS13_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
    error_t error;
    TlsExtension *extension;
    Tls13KeyShareList *keyShareList;
@@ -129,34 +129,10 @@ error_t tls13FormatClientKeyShareExtension(TlsContext *context,
    //Point to the KeyShareEntry
    keyShareEntry = (Tls13KeyShareEntry *) keyShareList->value;
 
-#if (TLS13_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
-   //Elliptic curve group?
-   if(tls13IsEcdheGroupSupported(context, context->namedGroup))
-   {
-      //Specify the named group for the key being exchanged
-      keyShareEntry->group = htons(context->namedGroup);
-
-      //ECDHE parameters are encoded in the opaque key_exchange field of
-      //the KeyShareEntry
-      error = ecExport(&context->ecdhContext.params,
-         &context->ecdhContext.qa.q, keyShareEntry->keyExchange, &n);
-      //Any error to report?
-      if(error)
-         return error;
-
-      //Set the length of the key_exchange field
-      keyShareEntry->length = htons(n);
-
-      //Compute the length of the KeyShareEntry
-      n += sizeof(Tls13KeyShareEntry);
-   }
-   else
-#endif
 #if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED)
    //Finite field group?
    if(tls13IsFfdheGroupSupported(context, context->namedGroup))
    {
-#if (TLS_FFDHE_SUPPORT == ENABLED)
       //Specify the named group for the key being exchanged
       keyShareEntry->group = htons(context->namedGroup);
 
@@ -178,7 +154,29 @@ error_t tls13FormatClientKeyShareExtension(TlsContext *context,
 
       //Compute the length of the KeyShareEntry
       n += sizeof(Tls13KeyShareEntry);
+   }
+   else
 #endif
+#if (TLS13_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
+   //Elliptic curve group?
+   if(tls13IsEcdheGroupSupported(context, context->namedGroup))
+   {
+      //Specify the named group for the key being exchanged
+      keyShareEntry->group = htons(context->namedGroup);
+
+      //ECDHE parameters are encoded in the opaque key_exchange field of
+      //the KeyShareEntry
+      error = ecExport(&context->ecdhContext.params,
+         &context->ecdhContext.qa.q, keyShareEntry->keyExchange, &n);
+      //Any error to report?
+      if(error)
+         return error;
+
+      //Set the length of the key_exchange field
+      keyShareEntry->length = htons(n);
+
+      //Compute the length of the KeyShareEntry
+      n += sizeof(Tls13KeyShareEntry);
    }
    else
 #endif
@@ -577,8 +575,8 @@ error_t tls13ParseSelectedGroupExtension(TlsContext *context,
    //Initialize status code
    error = NO_ERROR;
 
-#if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_ECDHE_KE_SUPPORT == ENABLED || \
-   TLS13_PSK_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
+#if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
+   TLS13_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
    //KeyShare extension found?
    if(selectedGroup != NULL)
    {
@@ -621,8 +619,8 @@ error_t tls13ParseSelectedGroupExtension(TlsContext *context,
 error_t tls13ParseServerKeyShareExtension(TlsContext *context,
    const Tls13KeyShareEntry *serverShare)
 {
-#if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_ECDHE_KE_SUPPORT == ENABLED || \
-   TLS13_PSK_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
+#if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
+   TLS13_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
    //If using (EC)DHE key establishment, servers offer exactly one KeyShareEntry
    //in the ServerHello
    if(serverShare != NULL)

@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
 //Switch to the appropriate trace level
@@ -67,6 +67,16 @@ const TlsCipherSuiteInfo tlsSupportedCipherSuites[] =
 //TLS_AES_128_CCM_8_SHA256 cipher suite
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3 && TLS_CCM_8_CIPHER_SUPPORT == ENABLED && TLS_AES_128_SUPPORT == ENABLED && TLS_SHA256_SUPPORT == ENABLED)
    TLS_CIPHER_SUITE(TLS_AES_128_CCM_8_SHA256, TLS_KEY_EXCH_NONE, AES_CIPHER_ALGO, CIPHER_MODE_CCM, NULL, SHA256_HASH_ALGO, 0, 16, 12, 0, 8, 32),
+#endif
+
+//TLS_SM4_GCM_SM3 cipher suite
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3 && TLS_GCM_CIPHER_SUPPORT == ENABLED && TLS_SM4_SUPPORT == ENABLED && TLS_SM3_SUPPORT == ENABLED)
+   TLS_CIPHER_SUITE(TLS_SM4_GCM_SM3, TLS_KEY_EXCH_NONE, SM4_CIPHER_ALGO, CIPHER_MODE_GCM, NULL, SM3_HASH_ALGO, 0, 16, 12, 0, 16, 32),
+#endif
+
+//TLS_SM4_CCM_SM3 cipher suite
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3 && TLS_CCM_CIPHER_SUPPORT == ENABLED && TLS_SM4_SUPPORT == ENABLED && TLS_SM3_SUPPORT == ENABLED)
+   TLS_CIPHER_SUITE(TLS_SM4_CCM_SM3, TLS_KEY_EXCH_NONE, SM4_CIPHER_ALGO, CIPHER_MODE_CCM, NULL, SM3_HASH_ALGO, 0, 16, 12, 0, 16, 32),
 #endif
 
 //TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256 cipher suite
@@ -1258,7 +1268,9 @@ bool_t tlsIsCipherSuiteAcceptable(const TlsCipherSuiteInfo *cipherSuite,
    {
       //TLS 1.2 cipher suite?
       if(cipherSuite->prfHashAlgo != NULL)
+      {
          acceptable = FALSE;
+      }
    }
 
    //Although TLS 1.3 uses the same cipher suite space as previous versions
@@ -1268,7 +1280,9 @@ bool_t tlsIsCipherSuiteAcceptable(const TlsCipherSuiteInfo *cipherSuite,
    {
       //TLS 1.3 cipher suite?
       if(cipherSuite->keyExchMethod == TLS_KEY_EXCH_NONE)
+      {
          acceptable = FALSE;
+      }
    }
 
    //Similarly, TLS 1.2 and lower cipher suites cannot be used with TLS 1.3
@@ -1276,7 +1290,9 @@ bool_t tlsIsCipherSuiteAcceptable(const TlsCipherSuiteInfo *cipherSuite,
    {
       //TLS 1.2 and lower cipher suite?
       if(cipherSuite->keyExchMethod != TLS_KEY_EXCH_NONE)
+      {
          acceptable = FALSE;
+      }
    }
 
    //The only stream cipher described in TLS 1.2 is RC4, which cannot be
@@ -1285,7 +1301,9 @@ bool_t tlsIsCipherSuiteAcceptable(const TlsCipherSuiteInfo *cipherSuite,
    {
       //RC4 stream cipher?
       if(cipherSuite->cipherMode == CIPHER_MODE_STREAM)
+      {
          acceptable = FALSE;
+      }
    }
 
    //Return TRUE is the cipher suite can be used with the specified protocol
@@ -1295,54 +1313,92 @@ bool_t tlsIsCipherSuiteAcceptable(const TlsCipherSuiteInfo *cipherSuite,
 
 
 /**
- * @brief Check whether the specified identifier matches an ECC or FFDHE
- *   cipher suite
+ * @brief Retrieve the cipher suite type for a given identifier
  * @param[in] identifier Cipher suite identifier
  * @return Cipher suite type
  **/
 
-TlsCipherSuiteType tlsGetCipherSuiteType(uint16_t identifier)
+uint_t tlsGetCipherSuiteType(uint16_t identifier)
 {
    uint_t i;
-   TlsCipherSuiteType type;
+   uint_t type;
 
-   //Initialize type
-   type = TLS_CIPHER_SUITE_TYPE_UNKNOWN;
-
-   //Loop through the list of supported cipher suites
-   for(i = 0; i < arraysize(tlsSupportedCipherSuites); i++)
+   //ShangMi cipher suite?
+   if(identifier == TLS_SM4_GCM_SM3 || identifier == TLS_SM4_CCM_SM3)
    {
-      //Compare cipher suite identifier against the specified value
-      if(tlsSupportedCipherSuites[i].identifier == identifier)
+      //These cipher suites are only applicable to TLS 1.3
+      type = TLS_CIPHER_SUITE_TYPE_SM;
+   }
+   else
+   {
+      //Initialize type
+      type = TLS_CIPHER_SUITE_TYPE_UNKNOWN;
+
+      //Loop through the list of supported cipher suites
+      for(i = 0; i < arraysize(tlsSupportedCipherSuites); i++)
       {
-         //Check key exchange mechanism
-         switch(tlsSupportedCipherSuites[i].keyExchMethod)
+         //Compare cipher suite identifier against the specified value
+         if(tlsSupportedCipherSuites[i].identifier == identifier)
          {
-         case TLS_KEY_EXCH_ECDH_ANON:
-         case TLS_KEY_EXCH_ECDHE_RSA:
-         case TLS_KEY_EXCH_ECDHE_ECDSA:
-         case TLS_KEY_EXCH_ECDHE_PSK:
-            //ECC cipher suite
-            type = TLS_CIPHER_SUITE_TYPE_ECC;
-            break;
-         case TLS_KEY_EXCH_DH_ANON:
-         case TLS_KEY_EXCH_DHE_RSA:
-         case TLS_KEY_EXCH_DHE_DSS:
-         case TLS_KEY_EXCH_DHE_PSK:
-            //FFDHE cipher suite
-            type = TLS_CIPHER_SUITE_TYPE_FFDHE;
-            break;
-         case TLS_KEY_EXCH_NONE:
-            //TLS 1.3 cipher suite
-            type = TLS_CIPHER_SUITE_TYPE_TLS13;
-            break;
-         default:
-            //Just for sanity
+            //Check key exchange mechanism
+            switch(tlsSupportedCipherSuites[i].keyExchMethod)
+            {
+            case TLS_KEY_EXCH_PSK:
+               type = TLS_CIPHER_SUITE_TYPE_PSK;
+               break;
+
+            case TLS_KEY_EXCH_RSA:
+               type = TLS_CIPHER_SUITE_TYPE_RSA;
+               break;
+
+            case TLS_KEY_EXCH_RSA_PSK:
+               type = TLS_CIPHER_SUITE_TYPE_RSA | TLS_CIPHER_SUITE_TYPE_PSK;
+               break;
+
+            case TLS_KEY_EXCH_DH_ANON:
+               type = TLS_CIPHER_SUITE_TYPE_DH;
+               break;
+
+            case TLS_KEY_EXCH_DHE_RSA:
+               type = TLS_CIPHER_SUITE_TYPE_DH | TLS_CIPHER_SUITE_TYPE_RSA;
+               break;
+
+            case TLS_KEY_EXCH_DHE_DSS:
+               type = TLS_CIPHER_SUITE_TYPE_DH | TLS_CIPHER_SUITE_TYPE_DSA;
+               break;
+
+            case TLS_KEY_EXCH_DHE_PSK:
+               type = TLS_CIPHER_SUITE_TYPE_DH | TLS_CIPHER_SUITE_TYPE_PSK;
+               break;
+
+            case TLS_KEY_EXCH_ECDH_ANON:
+               type = TLS_CIPHER_SUITE_TYPE_ECDH;
+               break;
+
+            case TLS_KEY_EXCH_ECDHE_RSA:
+               type = TLS_CIPHER_SUITE_TYPE_ECDH | TLS_CIPHER_SUITE_TYPE_RSA;
+               break;
+
+            case TLS_KEY_EXCH_ECDHE_ECDSA:
+               type = TLS_CIPHER_SUITE_TYPE_ECDH | TLS_CIPHER_SUITE_TYPE_ECDSA;
+               break;
+
+            case TLS_KEY_EXCH_ECDHE_PSK:
+               type = TLS_CIPHER_SUITE_TYPE_ECDH | TLS_CIPHER_SUITE_TYPE_PSK;
+               break;
+
+            case TLS_KEY_EXCH_NONE:
+               type = TLS_CIPHER_SUITE_TYPE_TLS13;
+               break;
+
+            default:
+               //Just for sanity
+               break;
+            }
+
+            //We are done
             break;
          }
-
-         //We are done
-         break;
       }
    }
 

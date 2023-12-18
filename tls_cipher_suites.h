@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
 #ifndef _TLS_CIPHER_SUITES_H
@@ -433,10 +433,15 @@ typedef enum
 
 typedef enum
 {
-   TLS_CIPHER_SUITE_TYPE_UNKNOWN = 0,
-   TLS_CIPHER_SUITE_TYPE_ECC     = 1,
-   TLS_CIPHER_SUITE_TYPE_FFDHE   = 2,
-   TLS_CIPHER_SUITE_TYPE_TLS13   = 4
+   TLS_CIPHER_SUITE_TYPE_UNKNOWN = 0x00,
+   TLS_CIPHER_SUITE_TYPE_DH      = 0x01,
+   TLS_CIPHER_SUITE_TYPE_ECDH    = 0x02,
+   TLS_CIPHER_SUITE_TYPE_RSA     = 0x04,
+   TLS_CIPHER_SUITE_TYPE_DSA     = 0x08,
+   TLS_CIPHER_SUITE_TYPE_ECDSA   = 0x10,
+   TLS_CIPHER_SUITE_TYPE_PSK     = 0x20,
+   TLS_CIPHER_SUITE_TYPE_TLS13   = 0x40,
+   TLS_CIPHER_SUITE_TYPE_SM      = 0x80
 } TlsCipherSuiteType;
 
 
@@ -451,7 +456,7 @@ bool_t tlsIsCipherSuiteAcceptable(const TlsCipherSuiteInfo *cipherSuite,
    uint16_t minVersion, uint16_t maxVersion,
    TlsTransportProtocol transportProtocol);
 
-TlsCipherSuiteType tlsGetCipherSuiteType(uint16_t identifier);
+uint_t tlsGetCipherSuiteType(uint16_t identifier);
 
 //C++ guard
 #ifdef __cplusplus

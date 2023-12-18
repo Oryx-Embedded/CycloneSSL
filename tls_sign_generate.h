@@ -1,6 +1,6 @@
 /**
- * @file tls_signature.h
- * @brief RSA/DSA/ECDSA/EdDSA signature generation and verification (TLS 1.3)
+ * @file tls_sign_generate.h
+ * @brief RSA/DSA/ECDSA/EdDSA signature generation
  *
  * @section License
  *
@@ -25,11 +25,11 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
-#ifndef _TLS_SIGNATURE_H
-#define _TLS_SIGNATURE_H
+#ifndef _TLS_SIGN_GENERATE_H
+#define _TLS_SIGN_GENERATE_H
 
 //Dependencies
 #include "tls.h"
@@ -40,48 +40,36 @@ extern "C" {
 #endif
 
 //TLS related functions
-error_t tlsSelectSignatureScheme(TlsContext *context, const TlsCertDesc *cert,
-   const TlsSignHashAlgos *supportedSignAlgos);
-
 error_t tlsGenerateSignature(TlsContext *context, uint8_t *p,
    size_t *length);
-
-error_t tlsVerifySignature(TlsContext *context, const uint8_t *p,
-   size_t length);
 
 error_t tls12GenerateSignature(TlsContext *context, uint8_t *p,
    size_t *length);
 
-error_t tls12VerifySignature(TlsContext *context, const uint8_t *p,
-   size_t length);
-
 error_t tlsGenerateRsaSignature(const RsaPrivateKey *key,
    const uint8_t *digest, uint8_t *signature, size_t *signatureLen);
 
-error_t tlsVerifyRsaSignature(const RsaPublicKey *key,
-   const uint8_t *digest, const uint8_t *signature, size_t signatureLen);
+error_t tlsGenerateRsaPkcs1Signature(TlsContext *context,
+   const HashAlgo *hashAlgo, const uint8_t *digest, uint8_t *signature,
+   size_t *signatureLen);
 
-error_t tlsVerifyRsaEm(const uint8_t *digest, const uint8_t *em, size_t emLen);
+error_t tlsGenerateRsaPssSignature(TlsContext *context,
+   const HashAlgo *hashAlgo, const uint8_t *digest, uint8_t *signature,
+   size_t *signatureLen);
 
 error_t tlsGenerateDsaSignature(TlsContext *context, const uint8_t *digest,
    size_t digestLen, uint8_t *signature, size_t *signatureLen);
 
-error_t tlsVerifyDsaSignature(TlsContext *context, const uint8_t *digest,
-   size_t digestLen, const uint8_t *signature, size_t signatureLen);
-
 error_t tlsGenerateEcdsaSignature(TlsContext *context, const uint8_t *digest,
    size_t digestLen, uint8_t *signature, size_t *signatureLen);
 
-error_t tlsVerifyEcdsaSignature(TlsContext *context, const uint8_t *digest,
-   size_t digestLen, const uint8_t *signature, size_t signatureLen);
-
-error_t tlsGenerateEddsaSignature(TlsContext *context,
+error_t tlsGenerateEd25519Signature(TlsContext *context,
    const EddsaMessageChunk *messageChunks, uint8_t *signature,
    size_t *signatureLen);
 
-error_t tlsVerifyEddsaSignature(TlsContext *context,
-   const EddsaMessageChunk *messageChunks, const uint8_t *signature,
-   size_t signatureLen);
+error_t tlsGenerateEd448Signature(TlsContext *context,
+   const EddsaMessageChunk *messageChunks, uint8_t *signature,
+   size_t *signatureLen);
 
 //C++ guard
 #ifdef __cplusplus

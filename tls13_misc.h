@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
 #ifndef _TLS13_MISC_H
@@ -129,43 +129,6 @@ extern "C" {
 
 
 /**
- * @brief Signature schemes (TLS 1.3)
- **/
-
-typedef enum
-{
-   TLS_SIGN_SCHEME_NONE                               = 0x0000,
-   TLS_SIGN_SCHEME_RSA_PKCS1_SHA1                     = 0x0201,
-   TLS_SIGN_SCHEME_RSA_PKCS1_SHA256                   = 0x0401,
-   TLS_SIGN_SCHEME_RSA_PKCS1_SHA384                   = 0x0501,
-   TLS_SIGN_SCHEME_RSA_PKCS1_SHA512                   = 0x0601,
-   TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA256                = 0x0804,
-   TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA384                = 0x0805,
-   TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA512                = 0x0806,
-   TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA256                 = 0x0809,
-   TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA384                 = 0x080A,
-   TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA512                 = 0x080B,
-   TLS_SIGN_SCHEME_ECDSA_SHA1                         = 0x0203,
-   TLS_SIGN_SCHEME_ECDSA_SECP256R1_SHA256             = 0x0403,
-   TLS_SIGN_SCHEME_ECDSA_SECP384R1_SHA384             = 0x0503,
-   TLS_SIGN_SCHEME_ECDSA_SECP521R1_SHA512             = 0x0603,
-   TLS_SIGN_SCHEME_SM2_SM3                            = 0x0708,
-   TLS_SIGN_SCHEME_GOSTR34102012_256A                 = 0x0709,
-   TLS_SIGN_SCHEME_GOSTR34102012_256B                 = 0x070A,
-   TLS_SIGN_SCHEME_GOSTR34102012_256C                 = 0x070B,
-   TLS_SIGN_SCHEME_GOSTR34102012_256D                 = 0x070C,
-   TLS_SIGN_SCHEME_GOSTR34102012_512A                 = 0x070D,
-   TLS_SIGN_SCHEME_GOSTR34102012_512B                 = 0x070E,
-   TLS_SIGN_SCHEME_GOSTR34102012_512C                 = 0x070F,
-   TLS_SIGN_SCHEME_ECDSA_BRAINPOOLP256R1_TLS13_SHA256 = 0x081A,
-   TLS_SIGN_SCHEME_ECDSA_BRAINPOOLP384R1_TLS13_SHA384 = 0x081B,
-   TLS_SIGN_SCHEME_ECDSA_BRAINPOOLP512R1_TLS13_SHA512 = 0x081C,
-   TLS_SIGN_SCHEME_ED25519                            = 0x0807,
-   TLS_SIGN_SCHEME_ED448                              = 0x0808
-} Tls13SignatureScheme;
-
-
-/**
  * @brief PSK key exchange modes
  **/
 
@@ -187,8 +150,10 @@ typedef enum
 } Tls13KeyUpdateRequest;
 
 
-//CodeWarrior or Win32 compiler?
-#if defined(__CWCC__) || defined(_WIN32)
+//CC-RX, CodeWarrior or Win32 compiler?
+#if defined(__CCRX__)
+   #pragma pack
+#elif defined(__CWCC__) || defined(_WIN32)
    #pragma pack(push, 1)
 #endif
 
@@ -387,8 +352,10 @@ typedef __packed_struct
 } Tls13PlaintextSessionState;
 
 
-//CodeWarrior or Win32 compiler?
-#if defined(__CWCC__) || defined(_WIN32)
+//CC-RX, CodeWarrior or Win32 compiler?
+#if defined(__CCRX__)
+   #pragma unpack
+#elif defined(__CWCC__) || defined(_WIN32)
    #pragma pack(pop)
 #endif
 
@@ -415,8 +382,8 @@ error_t tls13DigestClientHello1(TlsContext *context);
 bool_t tls13IsPskValid(TlsContext *context);
 
 bool_t tls13IsGroupSupported(TlsContext *context, uint16_t namedGroup);
-bool_t tls13IsEcdheGroupSupported(TlsContext *context, uint16_t namedGroup);
 bool_t tls13IsFfdheGroupSupported(TlsContext *context, uint16_t namedGroup);
+bool_t tls13IsEcdheGroupSupported(TlsContext *context, uint16_t namedGroup);
 
 error_t tls13CheckDuplicateKeyShare(uint16_t namedGroup, const uint8_t *p,
    size_t length);

@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
 #ifndef _TLS_LEGACY_H
@@ -117,6 +117,22 @@
 #ifdef TLS_ARIA_SUPPORT
    #define TLS_ARIA_128_SUPPORT TLS_ARIA_SUPPORT
    #define TLS_ARIA_256_SUPPORT TLS_ARIA_SUPPORT
+#endif
+
+#if defined(TLS_EDDSA_SIGN_SUPPORT) && defined(TLS_ED25519_SUPPORT)
+   #if (TLS_EDDSA_SIGN_SUPPORT == ENABLED && TLS_ED25519_SUPPORT == ENABLED)
+      #define TLS_ED25519_SIGN_SUPPORT ENABLED
+   #else
+      #define TLS_ED25519_SIGN SUPPORT DISABLED
+   #endif
+#endif
+
+#if defined(TLS_EDDSA_SIGN_SUPPORT) && defined(TLS_ED448_SUPPORT)
+   #if (TLS_EDDSA_SIGN_SUPPORT == ENABLED && TLS_ED448_SUPPORT == ENABLED)
+      #define TLS_ED448_SIGN_SUPPORT ENABLED
+   #else
+      #define TLS_ED448_SIGN SUPPORT DISABLED
+   #endif
 #endif
 
 #endif

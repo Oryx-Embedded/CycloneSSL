@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
 //Switch to the appropriate trace level
@@ -33,9 +33,9 @@
 
 //Dependencies
 #include "tls.h"
+#include "tls_cipher_suites.h"
 #include "tls_extensions.h"
 #include "tls_certificate.h"
-#include "tls_signature.h"
 #include "tls_transcript_hash.h"
 #include "tls_ffdhe.h"
 #include "tls_record.h"
@@ -261,6 +261,41 @@ error_t tls13GenerateKeyShare(TlsContext *context, uint16_t namedGroup)
 {
    error_t error;
 
+#if ((TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED) && \
+   TLS_FFDHE_SUPPORT == ENABLED)
+   //Finite field group?
+   if(tls13IsFfdheGroupSupported(context, namedGroup))
+   {
+      const TlsFfdheGroup *ffdheGroup;
+
+      //Get the FFDHE parameters that match the specified named group
+      ffdheGroup = tlsGetFfdheGroup(context, namedGroup);
+
+      //Valid FFDHE group?
+      if(ffdheGroup != NULL)
+      {
+         //Save the named group
+         context->namedGroup = namedGroup;
+
+         //Load FFDHE parameters
+         error = tlsLoadFfdheParameters(&context->dhContext.params, ffdheGroup);
+
+         //Check status code
+         if(!error)
+         {
+            //Generate an ephemeral key pair
+            error = dhGenerateKeyPair(&context->dhContext, context->prngAlgo,
+               context->prngContext);
+         }
+      }
+      else
+      {
+         //The specified FFDHE group is not supported
+         error = ERROR_ILLEGAL_PARAMETER;
+      }
+   }
+   else
+#endif
 #if (TLS13_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
    //Elliptic curve group?
    if(tls13IsEcdheGroupSupported(context, namedGroup))
@@ -295,42 +330,6 @@ error_t tls13GenerateKeyShare(TlsContext *context, uint16_t namedGroup)
    }
    else
 #endif
-#if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED)
-   //Finite field group?
-   if(tls13IsFfdheGroupSupported(context, namedGroup))
-   {
-#if (TLS_FFDHE_SUPPORT == ENABLED)
-      const TlsFfdheGroup *ffdheGroup;
-
-      //Get the FFDHE parameters that match the specified named group
-      ffdheGroup = tlsGetFfdheGroup(context, namedGroup);
-
-      //Valid FFDHE group?
-      if(ffdheGroup != NULL)
-      {
-         //Save the named group
-         context->namedGroup = namedGroup;
-
-         //Load FFDHE parameters
-         error = tlsLoadFfdheParameters(&context->dhContext.params, ffdheGroup);
-
-         //Check status code
-         if(!error)
-         {
-            //Generate an ephemeral key pair
-            error = dhGenerateKeyPair(&context->dhContext, context->prngAlgo,
-               context->prngContext);
-         }
-      }
-      else
-#endif
-      {
-         //The specified FFDHE group is not supported
-         error = ERROR_ILLEGAL_PARAMETER;
-      }
-   }
-   else
-#endif
    //Unknown group?
    {
       //Report an error
@@ -355,39 +354,10 @@ error_t tls13GenerateSharedSecret(TlsContext *context, const uint8_t *keyShare,
 {
    error_t error;
 
-#if (TLS13_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
-   //Elliptic curve group?
-   if(tls13IsEcdheGroupSupported(context, context->namedGroup))
-   {
-      //Read peer's public key (refer to RFC 8446, section 4.2.8.2)
-      error = ecImport(&context->ecdhContext.params,
-         &context->ecdhContext.qb.q, keyShare, length);
-
-      //Check status code
-      if(!error)
-      {
-         //Verify peer's public key
-         error = ecdhCheckPublicKey(&context->ecdhContext.params,
-            &context->ecdhContext.qb.q);
-      }
-
-      //Check status code
-      if(!error)
-      {
-         //ECDH shared secret calculation is performed according to IEEE Std
-         //1363-2000 (refer to RFC 8446, section 7.4.2)
-         error = ecdhComputeSharedSecret(&context->ecdhContext,
-            context->premasterSecret, TLS_PREMASTER_SECRET_SIZE,
-            &context->premasterSecretLen);
-      }
-   }
-   else
-#endif
 #if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED)
    //Finite field group?
    if(tls13IsFfdheGroupSupported(context, context->namedGroup))
    {
-#if (TLS_FFDHE_SUPPORT == ENABLED)
       size_t n;
 
       //Retrieve the length of the modulus
@@ -425,10 +395,34 @@ error_t tls13GenerateSharedSecret(TlsContext *context, const uint8_t *keyShare,
          //The length of the public key is not valid
          error = ERROR_ILLEGAL_PARAMETER;
       }
-#else
-      //The specified FFDHE group is not supported
-      error = ERROR_HANDSHAKE_FAILED;
+   }
+   else
 #endif
+#if (TLS13_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
+   //Elliptic curve group?
+   if(tls13IsEcdheGroupSupported(context, context->namedGroup))
+   {
+      //Read peer's public key (refer to RFC 8446, section 4.2.8.2)
+      error = ecImport(&context->ecdhContext.params,
+         &context->ecdhContext.qb.q, keyShare, length);
+
+      //Check status code
+      if(!error)
+      {
+         //Verify peer's public key
+         error = ecdhCheckPublicKey(&context->ecdhContext.params,
+            &context->ecdhContext.qb.q);
+      }
+
+      //Check status code
+      if(!error)
+      {
+         //ECDH shared secret calculation is performed according to IEEE Std
+         //1363-2000 (refer to RFC 8446, section 7.4.2)
+         error = ecdhComputeSharedSecret(&context->ecdhContext,
+            context->premasterSecret, TLS_PREMASTER_SECRET_SIZE,
+            &context->premasterSecretLen);
+      }
    }
    else
 #endif
@@ -586,12 +580,12 @@ bool_t tls13IsGroupSupported(TlsContext *context, uint16_t namedGroup)
    //Initialize flag
    acceptable = FALSE;
 
-   //Check whether the ECDHE of FFDHE group is supported
-   if(tls13IsEcdheGroupSupported(context, namedGroup))
+   //Check whether the FFDHE or ECDHE group is supported
+   if(tls13IsFfdheGroupSupported(context, namedGroup))
    {
       acceptable = TRUE;
    }
-   else if(tls13IsFfdheGroupSupported(context, namedGroup))
+   else if(tls13IsEcdheGroupSupported(context, namedGroup))
    {
       acceptable = TRUE;
    }
@@ -599,6 +593,46 @@ bool_t tls13IsGroupSupported(TlsContext *context, uint16_t namedGroup)
    {
       acceptable = FALSE;
    }
+
+   //Return TRUE is the named group is supported
+   return acceptable;
+}
+
+
+/**
+ * @brief Check whether a given FFDHE group is supported
+ * @param[in] context Pointer to the TLS context
+ * @param[in] namedGroup Named group
+ * @return TRUE is the FFDHE group is supported, else FALSE
+ **/
+
+bool_t tls13IsFfdheGroupSupported(TlsContext *context, uint16_t namedGroup)
+{
+   bool_t acceptable;
+
+   //Initialize flag
+   acceptable = FALSE;
+
+#if ((TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED) && \
+   TLS_FFDHE_SUPPORT == ENABLED)
+   //Finite field group?
+   if(namedGroup == TLS_GROUP_FFDHE2048 ||
+      namedGroup == TLS_GROUP_FFDHE3072 ||
+      namedGroup == TLS_GROUP_FFDHE4096 ||
+      namedGroup == TLS_GROUP_FFDHE6144 ||
+      namedGroup == TLS_GROUP_FFDHE8192)
+   {
+      //Any TLS 1.3 cipher suite proposed by the client?
+      if((context->cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_TLS13) != 0)
+      {
+         //Check whether the FFDHE group is supported
+         if(tlsGetFfdheGroup(context, namedGroup) != NULL)
+         {
+            acceptable = TRUE;
+         }
+      }
+   }
+#endif
 
    //Return TRUE is the named group is supported
    return acceptable;
@@ -630,48 +664,31 @@ bool_t tls13IsEcdheGroupSupported(TlsContext *context, uint16_t namedGroup)
       namedGroup == TLS_GROUP_BRAINPOOLP384R1_TLS13 ||
       namedGroup == TLS_GROUP_BRAINPOOLP512R1_TLS13)
    {
-      //Check whether the ECDHE group is supported
-      if(tlsGetCurveInfo(context, namedGroup) != NULL)
+      //Any TLS 1.3 cipher suite proposed by the client?
+      if((context->cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_TLS13) != 0)
       {
-         acceptable = TRUE;
+         //Check whether the ECDHE group is supported
+         if(tlsGetCurveInfo(context, namedGroup) != NULL)
+         {
+            acceptable = TRUE;
+         }
       }
    }
-#endif
-
-   //Return TRUE is the named group is supported
-   return acceptable;
-}
-
-
-/**
- * @brief Check whether a given FFDHE group is supported
- * @param[in] context Pointer to the TLS context
- * @param[in] namedGroup Named group
- * @return TRUE is the FFDHE group is supported, else FALSE
- **/
-
-bool_t tls13IsFfdheGroupSupported(TlsContext *context, uint16_t namedGroup)
-{
-   bool_t acceptable;
-
-   //Initialize flag
-   acceptable = FALSE;
-
-#if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED)
-   //Finite field group?
-   if(namedGroup == TLS_GROUP_FFDHE2048 ||
-      namedGroup == TLS_GROUP_FFDHE3072 ||
-      namedGroup == TLS_GROUP_FFDHE4096 ||
-      namedGroup == TLS_GROUP_FFDHE6144 ||
-      namedGroup == TLS_GROUP_FFDHE8192)
+   else if(namedGroup == TLS_GROUP_SM2)
    {
-#if (TLS_FFDHE_SUPPORT == ENABLED)
-      //Check whether the FFDHE group is supported
-      if(tlsGetFfdheGroup(context, namedGroup) != NULL)
+      //Any ShangMi cipher suite proposed by the client?
+      if((context->cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_SM) != 0)
       {
-         acceptable = TRUE;
+         //Check whether the SM2 group is supported
+         if(tlsGetCurveInfo(context, namedGroup) != NULL)
+         {
+            acceptable = TRUE;
+         }
       }
-#endif
+   }
+   else
+   {
+      //Unknown group
    }
 #endif
 

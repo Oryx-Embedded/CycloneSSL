@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
 #ifndef _TLS_MISC_H
@@ -77,7 +77,7 @@ error_t tlsReadEcPoint(const EcDomainParameters *params,
    EcPoint *a, const uint8_t *data, size_t size, size_t *length);
 
 const char_t *tlsGetVersionName(uint16_t version);
-const HashAlgo *tlsGetHashAlgo(uint8_t hashAlgoId);
+const HashAlgo *tlsGetHashAlgo(TlsHashAlgo hashAlgoId);
 const EcCurveInfo *tlsGetCurveInfo(TlsContext *context, uint16_t namedCurve);
 TlsNamedGroup tlsGetNamedCurve(const uint8_t *oid, size_t length);
 

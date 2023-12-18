@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
 #ifndef _TLS13_TICKET_H
@@ -33,6 +33,11 @@
 
 //Dependencies
 #include "tls.h"
+
+//C++ guard
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 //TLS related functions
 bool_t tls13IsTicketValid(TlsContext *context);
@@ -48,5 +53,10 @@ error_t tls13GenerateTicket(TlsContext *context,
 
 error_t tls13VerifyTicket(TlsContext *context, const uint8_t *ticket,
    size_t length, uint32_t obfuscatedTicketAge);
+
+//C++ guard
+#ifdef __cplusplus
+}
+#endif
 
 #endif

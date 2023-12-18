@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
 //Switch to the appropriate trace level
@@ -135,12 +135,15 @@ error_t tlsFormatServerMaxFragLenExtension(TlsContext *context,
          case 512:
             extension->value[0] = TLS_MAX_FRAGMENT_LENGTH_512;
             break;
+
          case 1024:
             extension->value[0] = TLS_MAX_FRAGMENT_LENGTH_1024;
             break;
+
          case 2048:
             extension->value[0] = TLS_MAX_FRAGMENT_LENGTH_2048;
             break;
+
          default:
             extension->value[0] = TLS_MAX_FRAGMENT_LENGTH_4096;
             break;
@@ -248,15 +251,10 @@ error_t tlsFormatServerEcPointFormatsExtension(TlsContext *context,
       //extension type appeared in the corresponding ClientHello
       if(context->ecPointFormatsExtReceived)
       {
-         uint16_t identifier;
-
-         //Retrieve the selected cipher suite
-         identifier = context->cipherSuite.identifier;
-
          //A server that selects an ECC cipher suite in response to a ClientHello
          //message including an EcPointFormats extension appends this extension
          //to its ServerHello message
-         if((tlsGetCipherSuiteType(identifier) & TLS_CIPHER_SUITE_TYPE_ECC) != 0)
+         if((context->cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_ECDH) != 0)
          {
             TlsExtension *extension;
             TlsEcPointFormatList *ecPointFormatList;
@@ -448,6 +446,48 @@ error_t tlsFormatServerCertTypeExtension(TlsContext *context,
 
       //Compute the length, in bytes, of the ServerCertType extension
       n += sizeof(TlsExtension);
+   }
+#endif
+
+   //Total number of bytes that have been written
+   *written = n;
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
+ * @brief Format EncryptThenMac extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] p Output stream where to write the EncryptThenMac extension
+ * @param[out] written Total number of bytes that have been written
+ * @return Error code
+ **/
+
+error_t tlsFormatServerEtmExtension(TlsContext *context,
+   uint8_t *p, size_t *written)
+{
+   size_t n = 0;
+
+#if (TLS_ENCRYPT_THEN_MAC_SUPPORT == ENABLED)
+   //If the server receives a ClientHello without the EncryptThenMac extension,
+   //then it must not include the extension in the ServerHello
+   if(context->etmExtReceived)
+   {
+      TlsExtension *extension;
+
+      //Add the EncryptThenMac extension
+      extension = (TlsExtension *) p;
+      //Type of the extension
+      extension->type = HTONS(TLS_EXT_ENCRYPT_THEN_MAC);
+
+      //The extension data field of this extension shall be empty (refer to
+      //RFC 7366, section 2)
+      extension->length = HTONS(0);
+
+      //Compute the length, in bytes, of the EncryptThenMac extension
+      n = sizeof(TlsExtension);
    }
 #endif
 
@@ -775,15 +815,19 @@ error_t tlsParseClientMaxFragLenExtension(TlsContext *context,
       case TLS_MAX_FRAGMENT_LENGTH_512:
          n = 512;
          break;
+
       case TLS_MAX_FRAGMENT_LENGTH_1024:
          n = 1024;
          break;
+
       case TLS_MAX_FRAGMENT_LENGTH_2048:
          n = 2048;
          break;
+
       case TLS_MAX_FRAGMENT_LENGTH_4096:
          n = 4096;
          break;
+
       default:
          n = 0;
          break;
@@ -1209,6 +1253,48 @@ error_t tlsParseServerCertTypeListExtension(TlsContext *context,
 
 
 /**
+ * @brief Parse EncryptThenMac extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] encryptThenMac Pointer to the EncryptThenMac extension
+ * @return Error code
+ **/
+
+error_t tlsParseClientEtmExtension(TlsContext *context,
+   const TlsExtension *encryptThenMac)
+{
+#if (TLS_ENCRYPT_THEN_MAC_SUPPORT == ENABLED)
+   //EncryptThenMac extension found?
+   if(encryptThenMac != NULL)
+   {
+      //CBC cipher suite?
+      if(context->cipherSuite.cipherMode == CIPHER_MODE_CBC)
+      {
+         //Use encrypt-then-MAC construction rather than the default
+         //MAC-then-encrypt
+         context->etmExtReceived = TRUE;
+      }
+      else
+      {
+         //If a server receives an encrypt-then-MAC request extension from a
+         //client and then selects a stream or AEAD ciphersuite, it must not
+         //send an encrypt-then-MAC response extension back to the client (refer
+         //to RFC 7366, section 3)
+         context->etmExtReceived = FALSE;
+      }
+   }
+   else
+   {
+      //Use default MAC-then-encrypt construction
+      context->etmExtReceived = FALSE;
+   }
+#endif
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
  * @brief Parse ExtendedMasterSecret extension
  * @param[in] context Pointer to the TLS context
  * @param[in] extendedMasterSecret Pointer to the ExtendedMasterSecret extension
@@ -1268,6 +1354,10 @@ error_t tlsParseClientSessionTicketExtension(TlsContext *context,
    const TlsExtension *sessionTicket)
 {
 #if (TLS_TICKET_SUPPORT == ENABLED)
+   //Clear flags
+   context->sessionTicketExtReceived = FALSE;
+   context->sessionTicketExtSent = FALSE;
+
    //SessionTicket extension found?
    if(sessionTicket != NULL)
    {
@@ -1282,7 +1372,7 @@ error_t tlsParseClientSessionTicketExtension(TlsContext *context,
    }
 #endif
 
-   //Return status code
+   //Successful processing
    return NO_ERROR;
 }
 
@@ -1340,6 +1430,15 @@ error_t tlsParseClientRenegoInfoExtension(TlsContext *context,
                error = ERROR_HANDSHAKE_FAILED;
             }
          }
+
+#if (TLS_ENCRYPT_THEN_MAC_SUPPORT == ENABLED)
+         //Implementations must not renegotiate a downgrade from
+         //encrypt-then-MAC to MAC-then-encrypt (refer to RFC 7366, section 3.1)
+         if(extensions->encryptThenMac == NULL && context->etmExtReceived)
+         {
+            error = ERROR_HANDSHAKE_FAILED;
+         }
+#endif
 
 #if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
          //ExtendedMasterSecret extension found?

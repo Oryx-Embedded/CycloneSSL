@@ -1,6 +1,6 @@
 /**
- * @file tls_extensions.h
- * @brief Parsing and checking of TLS extensions
+ * @file tls_sign_verify.h
+ * @brief RSA/DSA/ECDSA/EdDSA signature verification
  *
  * @section License
  *
@@ -28,8 +28,8 @@
  * @version 2.3.4
  **/
 
-#ifndef _TLS_EXTENSIONS_H
-#define _TLS_EXTENSIONS_H
+#ifndef _TLS_SIGN_VERIFY_H
+#define _TLS_SIGN_VERIFY_H
 
 //Dependencies
 #include "tls.h"
@@ -40,17 +40,30 @@ extern "C" {
 #endif
 
 //TLS related functions
-error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
-   size_t length, TlsHelloExtensions *extensions);
-
-error_t tlsCheckHelloExtensions(TlsMessageType msgType, uint16_t version,
-   TlsHelloExtensions *extensions);
-
-error_t tlsCheckDuplicateExtension(uint16_t type, const uint8_t *p,
+error_t tlsVerifySignature(TlsContext *context, const uint8_t *p,
    size_t length);
 
-bool_t tlsIsAlpnProtocolSupported(TlsContext *context,
-   const char_t *protocol, size_t length);
+error_t tls12VerifySignature(TlsContext *context, const uint8_t *p,
+   size_t length);
+
+error_t tlsVerifyRsaSignature(const RsaPublicKey *key,
+   const uint8_t *digest, const uint8_t *signature, size_t signatureLen);
+
+error_t tlsVerifyRsaEm(const uint8_t *digest, const uint8_t *em, size_t emLen);
+
+error_t tlsVerifyDsaSignature(TlsContext *context, const uint8_t *digest,
+   size_t digestLen, const uint8_t *signature, size_t signatureLen);
+
+error_t tlsVerifyEcdsaSignature(TlsContext *context, const uint8_t *digest,
+   size_t digestLen, const uint8_t *signature, size_t signatureLen);
+
+error_t tlsVerifyEd25519Signature(TlsContext *context,
+   const EddsaMessageChunk *messageChunks, const uint8_t *signature,
+   size_t signatureLen);
+
+error_t tlsVerifyEd448Signature(TlsContext *context,
+   const EddsaMessageChunk *messageChunks, const uint8_t *signature,
+   size_t signatureLen);
 
 //C++ guard
 #ifdef __cplusplus

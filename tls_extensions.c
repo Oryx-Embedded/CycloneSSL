@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
 //Switch to the appropriate trace level
@@ -240,15 +240,15 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
       }
       else if(type == TLS_EXT_SIGNATURE_ALGORITHMS)
       {
-         const TlsSignHashAlgos *signAlgoList;
+         const TlsSignSchemeList *signAlgoList;
 
          //Point to the SignatureAlgorithms extension
-         signAlgoList = (TlsSignHashAlgos *) extension->value;
+         signAlgoList = (TlsSignSchemeList *) extension->value;
 
          //Malformed extension?
-         if(n < sizeof(TlsSignHashAlgos))
+         if(n < sizeof(TlsSignSchemeList))
             return ERROR_DECODING_FAILED;
-         if(n != (sizeof(TlsSignHashAlgos) + ntohs(signAlgoList->length)))
+         if(n != (sizeof(TlsSignSchemeList) + ntohs(signAlgoList->length)))
             return ERROR_DECODING_FAILED;
 
          //Check the length of the list
@@ -262,15 +262,15 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
       }
       else if(type == TLS_EXT_SIGNATURE_ALGORITHMS_CERT)
       {
-         const TlsSignHashAlgos *certSignAlgoList;
+         const TlsSignSchemeList *certSignAlgoList;
 
          //Point to the SignatureAlgorithmsCert extension
-         certSignAlgoList = (TlsSignHashAlgos *) extension->value;
+         certSignAlgoList = (TlsSignSchemeList *) extension->value;
 
          //Malformed extension?
-         if(n < sizeof(TlsSignHashAlgos))
+         if(n < sizeof(TlsSignSchemeList))
             return ERROR_DECODING_FAILED;
-         if(n != (sizeof(TlsSignHashAlgos) + ntohs(certSignAlgoList->length)))
+         if(n != (sizeof(TlsSignSchemeList) + ntohs(certSignAlgoList->length)))
             return ERROR_DECODING_FAILED;
 
          //Check the length of the list
@@ -382,6 +382,18 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
             //The ServerCertType extension is valid
             extensions->serverCertType = extension;
          }
+      }
+#endif
+#if (TLS_ENCRYPT_THEN_MAC_SUPPORT == ENABLED)
+      else if(type == TLS_EXT_ENCRYPT_THEN_MAC)
+      {
+         //The extension data field of this extension shall be empty (refer to
+         //RFC 7366, section 2)
+         if(n != 0)
+            return ERROR_DECODING_FAILED;
+
+         //The EncryptThenMac extension is valid
+         extensions->encryptThenMac = extension;
       }
 #endif
 #if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
@@ -850,6 +862,18 @@ error_t tlsCheckHelloExtensions(TlsMessageType msgType, uint16_t version,
          //The extension can only appear in CH and EE messages
          if(msgType != TLS_TYPE_CLIENT_HELLO &&
             msgType != TLS_TYPE_ENCRYPTED_EXTENSIONS)
+         {
+            error = ERROR_ILLEGAL_PARAMETER;
+         }
+      }
+#endif
+
+#if (TLS_ENCRYPT_THEN_MAC_SUPPORT == ENABLED)
+      //EncryptThenMac extension found?
+      else if(extensions->encryptThenMac != NULL)
+      {
+         //The extension can only appear in CH
+         if(msgType != TLS_TYPE_CLIENT_HELLO)
          {
             error = ERROR_ILLEGAL_PARAMETER;
          }

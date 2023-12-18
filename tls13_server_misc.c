@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
 //Switch to the appropriate trace level
@@ -127,7 +127,8 @@ error_t tls13NegotiateCipherSuite(TlsContext *context, const void *clientHello,
       return error;
 
    //The KeyShare extension contains the client's cryptographic parameters
-   error = tls13ParseClientKeyShareExtension(context, extensions->keyShareList);
+   error = tls13ParseClientKeyShareExtension(context, extensions->keyShareList,
+      extensions->supportedGroupList);
    //Any error to report?
    if(error)
       return error;
@@ -209,18 +210,14 @@ error_t tls13SelectGroup(TlsContext *context,
    //Reset the named group to its default value
    context->namedGroup = TLS_GROUP_NONE;
 
-#if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_ECDHE_KE_SUPPORT == ENABLED || \
-   TLS13_PSK_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
+#if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
+   TLS13_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
    //Valid SupportedGroups extension?
    if(groupList != NULL)
    {
       uint_t i;
-      uint_t j;
       uint_t n;
       uint16_t namedGroup;
-
-      //Get the number of named groups present in the list
-      n = ntohs(groupList->length) / sizeof(uint16_t);
 
       //Any preferred ECDHE or FFDHE groups?
       if(context->numSupportedGroups > 0)
@@ -228,35 +225,34 @@ error_t tls13SelectGroup(TlsContext *context,
          //Loop through the list of allowed groups (most preferred first)
          for(i = 0; i < context->numSupportedGroups && error; i++)
          {
-            //Loop through the list of named groups the client supports
-            for(j = 0; j < n && error; j++)
-            {
-               //Convert the named group to host byte order
-               namedGroup = ntohs(groupList->value[j]);
+            //Get current named group
+            namedGroup = context->supportedGroups[i];
 
-               //The named group to be used when performing (EC)DHE key exchange
-               //must be one of those present in the SupportedGroups extension
-               if(context->supportedGroups[i] == namedGroup)
+            //The named group to be used when performing (EC)DHE key exchange
+            //must be one of those present in the SupportedGroups extension
+            if(tls13IsGroupOffered(namedGroup, groupList))
+            {
+               //Check whether the ECDHE or FFDHE group is supported
+               if(tls13IsGroupSupported(context, namedGroup))
                {
-                  //Check whether the ECDHE or FFDHE group is supported
-                  if(tls13IsGroupSupported(context, namedGroup))
-                  {
-                     //Save the named group
-                     context->namedGroup = namedGroup;
-                     error = NO_ERROR;
-                  }
+                  //Save the named group
+                  context->namedGroup = namedGroup;
+                  error = NO_ERROR;
                }
             }
          }
       }
       else
       {
+         //Get the number of named groups present in the list
+         n = ntohs(groupList->length) / sizeof(uint16_t);
+
          //The named group to be used when performing (EC)DHE key exchange must
          //be one of those present in the SupportedGroups extension
-         for(j = 0; j < n && error; j++)
+         for(i = 0; i < n && error; i++)
          {
             //Convert the named group to host byte order
-            namedGroup = ntohs(groupList->value[j]);
+            namedGroup = ntohs(groupList->value[i]);
 
             //Check whether the ECDHE or FFDHE group is supported
             if(tls13IsGroupSupported(context, namedGroup))
@@ -272,6 +268,46 @@ error_t tls13SelectGroup(TlsContext *context,
 
    //Return status code
    return error;
+}
+
+
+/**
+ * @brief Check whether a group is offered in the SupportedGroups extension 
+ * @param[in] namedGroup Named group
+ * @param[in] groupList List of named groups supported by the client
+ * @return TRUE if the group is offered in the SupportedGroups extension,
+ *   else FALSE
+ **/
+
+bool_t tls13IsGroupOffered(uint16_t namedGroup,
+   const TlsSupportedGroupList *groupList)
+{
+   uint_t i;
+   uint_t n;
+   bool_t found;
+
+   //Initialize flag
+   found = FALSE;
+
+   //Valid SupportedGroups extension?
+   if(groupList != NULL)
+   {
+      //Get the number of named groups present in the list
+      n = ntohs(groupList->length) / sizeof(uint16_t);
+
+      //Loop through the list of named groups the client supports
+      for(i = 0; i < n && !found; i++)
+      {
+         //Matching group?
+         if(ntohs(groupList->value[i]) == namedGroup)
+         {
+            found = TRUE;
+         }
+      }
+   }
+
+   //Return TRUE if the group is offered in the SupportedGroups extension
+   return found;
 }
 
 

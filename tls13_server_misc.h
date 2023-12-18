@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
 #ifndef _TLS13_SERVER_MISC_H
@@ -45,6 +45,9 @@ error_t tls13NegotiateCipherSuite(TlsContext *context, const void *clientHello,
    TlsHelloExtensions *extensions);
 
 error_t tls13SelectGroup(TlsContext *context,
+   const TlsSupportedGroupList *groupList);
+
+bool_t tls13IsGroupOffered(uint16_t namedGroup,
    const TlsSupportedGroupList *groupList);
 
 error_t tls13VerifyPskBinder(TlsContext *context, const void *clientHello,

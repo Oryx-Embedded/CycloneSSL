@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
 //Switch to the appropriate trace level
@@ -73,14 +73,33 @@ error_t tlsEncryptRecord(TlsContext *context,
    //CBC block cipher?
    if(encryptionEngine->cipherMode == CIPHER_MODE_CBC)
    {
-      //Compute message authentication code
-      error = tlsAppendMessageAuthCode(context, encryptionEngine, record);
-
-      //Check status code
-      if(!error)
+#if (TLS_ENCRYPT_THEN_MAC_SUPPORT == ENABLED)
+      //Encrypt-then-MAC construction?
+      if(encryptionEngine->encryptThenMac)
       {
          //Encrypt the contents of the record
          error = tlsEncryptCbcRecord(context, encryptionEngine, record);
+
+         //Check status code
+         if(!error)
+         {
+            //Compute message authentication code
+            error = tlsAppendMessageAuthCode(context, encryptionEngine, record);
+         }
+      }
+      else
+#endif
+      //MAC-then-encrypt construction?
+      {
+         //Compute message authentication code
+         error = tlsAppendMessageAuthCode(context, encryptionEngine, record);
+
+         //Check status code
+         if(!error)
+         {
+            //Encrypt the contents of the record
+            error = tlsEncryptCbcRecord(context, encryptionEngine, record);
+         }
       }
    }
    else

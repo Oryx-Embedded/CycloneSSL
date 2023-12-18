@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
 //Switch to the appropriate trace level
@@ -38,7 +38,8 @@
 #include "tls_client_misc.h"
 #include "tls_common.h"
 #include "tls_extensions.h"
-#include "tls_signature.h"
+#include "tls_sign_verify.h"
+#include "tls_sign_misc.h"
 #include "tls_cache.h"
 #include "tls_ffdhe.h"
 #include "tls_record.h"
@@ -147,14 +148,13 @@ error_t tlsFormatSessionId(TlsContext *context, uint8_t *p,
 /**
  * @brief Format the list of cipher suites supported by the client
  * @param[in] context Pointer to the TLS context
- * @param[out] cipherSuiteTypes Types of cipher suites proposed by the client
  * @param[in] p Output stream where to write the list of cipher suites
  * @param[out] written Total number of bytes that have been written
  * @return Error code
  **/
 
-error_t tlsFormatCipherSuites(TlsContext *context, uint_t *cipherSuiteTypes,
-   uint8_t *p, size_t *written)
+error_t tlsFormatCipherSuites(TlsContext *context, uint8_t *p,
+   size_t *written)
 {
    uint_t i;
    uint_t j;
@@ -164,7 +164,7 @@ error_t tlsFormatCipherSuites(TlsContext *context, uint_t *cipherSuiteTypes,
    TlsCipherSuites *cipherSuites;
 
    //Types of cipher suites proposed by the client
-   *cipherSuiteTypes = TLS_CIPHER_SUITE_TYPE_UNKNOWN;
+   context->cipherSuiteTypes = TLS_CIPHER_SUITE_TYPE_UNKNOWN;
 
    //Point to the list of cryptographic algorithms supported by the client
    cipherSuites = (TlsCipherSuites *) p;
@@ -207,7 +207,7 @@ error_t tlsFormatCipherSuites(TlsContext *context, uint_t *cipherSuiteTypes,
 
                   //Check whether the identifier matches an ECC or FFDHE cipher
                   //suite
-                  *cipherSuiteTypes |= tlsGetCipherSuiteType(identifier);
+                  context->cipherSuiteTypes |= tlsGetCipherSuiteType(identifier);
                }
             }
          }
@@ -236,7 +236,7 @@ error_t tlsFormatCipherSuites(TlsContext *context, uint_t *cipherSuiteTypes,
 
             //Check whether the identifier matches an ECC or FFDHE cipher
             //suite
-            *cipherSuiteTypes |= tlsGetCipherSuiteType(identifier);
+            context->cipherSuiteTypes |= tlsGetCipherSuiteType(identifier);
          }
       }
    }
@@ -630,7 +630,9 @@ error_t tlsParseServerKeyParams(TlsContext *context, const uint8_t *p,
 
          //Make sure the prime modulus is acceptable
          if(k < TLS_MIN_DH_MODULUS_SIZE || k > TLS_MAX_DH_MODULUS_SIZE)
+         {
             error = ERROR_ILLEGAL_PARAMETER;
+         }
       }
 
       //Check status code
@@ -702,7 +704,9 @@ error_t tlsParseServerKeyParams(TlsContext *context, const uint8_t *p,
 
       //Malformed ServerKeyExchange message?
       if(length < sizeof(curveType))
+      {
          error = ERROR_DECODING_FAILED;
+      }
 
       //Check status code
       if(!error)
@@ -717,7 +721,9 @@ error_t tlsParseServerKeyParams(TlsContext *context, const uint8_t *p,
 
          //Only named curves are supported
          if(curveType != TLS_EC_CURVE_TYPE_NAMED_CURVE)
+         {
             error = ERROR_ILLEGAL_PARAMETER;
+         }
       }
 
       //Check status code
@@ -725,7 +731,9 @@ error_t tlsParseServerKeyParams(TlsContext *context, const uint8_t *p,
       {
          //Malformed ServerKeyExchange message?
          if(length < sizeof(uint16_t))
+         {
             error = ERROR_DECODING_FAILED;
+         }
       }
 
       //Check status code
@@ -739,14 +747,26 @@ error_t tlsParseServerKeyParams(TlsContext *context, const uint8_t *p,
          //Remaining bytes to process
          length -= sizeof(uint16_t);
 
-         //Retrieve the corresponding EC domain parameters
-         curveInfo = tlsGetCurveInfo(context, context->namedGroup);
-
-         //Make sure the elliptic curve is supported
-         if(curveInfo == NULL)
+         //TLS 1.3 group?
+         if(context->namedGroup == TLS_GROUP_BRAINPOOLP256R1_TLS13 ||
+            context->namedGroup == TLS_GROUP_BRAINPOOLP384R1_TLS13 ||
+            context->namedGroup == TLS_GROUP_BRAINPOOLP512R1_TLS13 ||
+            context->namedGroup == TLS_GROUP_SM2)
          {
-            //The elliptic curve is not supported
+            //These elliptic curves do not apply to any older versions of TLS
             error = ERROR_ILLEGAL_PARAMETER;
+         }
+         else
+         {
+            //Retrieve the corresponding EC domain parameters
+            curveInfo = tlsGetCurveInfo(context, context->namedGroup);
+
+            //Make sure the elliptic curve is supported
+            if(curveInfo == NULL)
+            {
+               //The elliptic curve is not supported
+               error = ERROR_ILLEGAL_PARAMETER;
+            }
          }
       }
 
@@ -1012,6 +1032,7 @@ __weak_func error_t tls12VerifyServerKeySignature(TlsContext *context,
    const uint8_t *params, size_t paramsLen, size_t *consumed)
 {
    error_t error;
+   TlsSignatureScheme signScheme;
 
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //Initialize status code
@@ -1023,66 +1044,54 @@ __weak_func error_t tls12VerifyServerKeySignature(TlsContext *context,
    if(length < (sizeof(Tls12DigitalSignature) + ntohs(signature->length)))
       return ERROR_DECODING_FAILED;
 
+   //The algorithm field specifies the signature scheme
+   signScheme = (TlsSignatureScheme) ntohs(signature->algorithm);
+
+   //If the client has offered the SignatureAlgorithms extension, the signature
+   //algorithm and hash algorithm must be a pair listed in that extension (refer
+   //to RFC 5246, section 7.4.3)
+   if(!tlsIsSignAlgoSupported(context, signScheme))
+      return ERROR_ILLEGAL_PARAMETER;
+
 #if (TLS_RSA_SIGN_SUPPORT == ENABLED || TLS_RSA_PSS_SIGN_SUPPORT == ENABLED || \
    TLS_DSA_SIGN_SUPPORT == ENABLED || TLS_ECDSA_SIGN_SUPPORT == ENABLED)
    //RSA, DSA or ECDSA signature scheme?
-   if(signature->algorithm.signature == TLS_SIGN_ALGO_RSA ||
-      signature->algorithm.signature == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA256 ||
-      signature->algorithm.signature == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA384 ||
-      signature->algorithm.signature == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA512 ||
-      signature->algorithm.signature == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA256 ||
-      signature->algorithm.signature == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA384 ||
-      signature->algorithm.signature == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA512 ||
-      signature->algorithm.signature == TLS_SIGN_ALGO_DSA ||
-      signature->algorithm.signature == TLS_SIGN_ALGO_ECDSA)
+   if(TLS_SIGN_ALGO(signScheme) == TLS_SIGN_ALGO_RSA ||
+      TLS_SIGN_ALGO(signScheme) == TLS_SIGN_ALGO_DSA ||
+      TLS_SIGN_ALGO(signScheme) == TLS_SIGN_ALGO_ECDSA ||
+      signScheme == TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA256 ||
+      signScheme == TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA384 ||
+      signScheme == TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA512 ||
+      signScheme == TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA256 ||
+      signScheme == TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA384 ||
+      signScheme == TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA512)
    {
       const HashAlgo *hashAlgo;
       HashContext *hashContext;
 
-      //Retrieve the hash algorithm used for signing
-      if(signature->algorithm.signature == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA256 ||
-         signature->algorithm.signature == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA256)
+      //Check signature scheme
+      if(signScheme == TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA256 ||
+         signScheme == TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA256)
       {
          //The hashing is intrinsic to the signature algorithm
-         if(signature->algorithm.hash == TLS_HASH_ALGO_INTRINSIC)
-         {
-            hashAlgo = tlsGetHashAlgo(TLS_HASH_ALGO_SHA256);
-         }
-         else
-         {
-            hashAlgo = NULL;
-         }
+         hashAlgo = tlsGetHashAlgo(TLS_HASH_ALGO_SHA256);
       }
-      else if(signature->algorithm.signature == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA384 ||
-         signature->algorithm.signature == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA384)
+      else if(signScheme == TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA384 ||
+         signScheme == TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA384)
       {
          //The hashing is intrinsic to the signature algorithm
-         if(signature->algorithm.hash == TLS_HASH_ALGO_INTRINSIC)
-         {
-            hashAlgo = tlsGetHashAlgo(TLS_HASH_ALGO_SHA384);
-         }
-         else
-         {
-            hashAlgo = NULL;
-         }
+         hashAlgo = tlsGetHashAlgo(TLS_HASH_ALGO_SHA384);
       }
-      else if(signature->algorithm.signature == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA512 ||
-         signature->algorithm.signature == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA512)
+      else if(signScheme == TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA512 ||
+         signScheme == TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA512)
       {
          //The hashing is intrinsic to the signature algorithm
-         if(signature->algorithm.hash == TLS_HASH_ALGO_INTRINSIC)
-         {
-            hashAlgo = tlsGetHashAlgo(TLS_HASH_ALGO_SHA512);
-         }
-         else
-         {
-            hashAlgo = NULL;
-         }
+         hashAlgo = tlsGetHashAlgo(TLS_HASH_ALGO_SHA512);
       }
       else
       {
-         //This field indicates the hash algorithm that is used
-         hashAlgo = tlsGetHashAlgo(signature->algorithm.hash);
+         //Retrieve the hash algorithm used for signing
+         hashAlgo = tlsGetHashAlgo(TLS_HASH_ALGO(signScheme));
       }
 
       //Make sure the hash algorithm is supported
@@ -1104,7 +1113,7 @@ __weak_func error_t tls12VerifyServerKeySignature(TlsContext *context,
 
 #if (TLS_RSA_SIGN_SUPPORT == ENABLED)
             //RSASSA-PKCS1-v1_5 signature scheme?
-            if(signature->algorithm.signature == TLS_SIGN_ALGO_RSA &&
+            if(TLS_SIGN_ALGO(signScheme) == TLS_SIGN_ALGO_RSA &&
                context->peerCertType == TLS_CERT_RSA_SIGN)
             {
                //Verify RSA signature (RSASSA-PKCS1-v1_5 signature scheme)
@@ -1116,11 +1125,12 @@ __weak_func error_t tls12VerifyServerKeySignature(TlsContext *context,
 #endif
 #if (TLS_RSA_PSS_SIGN_SUPPORT == ENABLED)
             //RSASSA-PSS signature scheme (with public key OID rsaEncryption)?
-            if(signature->algorithm.signature == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA256 ||
-               signature->algorithm.signature == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA384 ||
-               signature->algorithm.signature == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA512)
+            if(signScheme == TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA256 ||
+               signScheme == TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA384 ||
+               signScheme == TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA512)
             {
-               //Enforce the type of the certificate provided by the peer
+               //The signature algorithm must be compatible with the key in the
+               //server's end-entity certificate (refer to RFC 5246, section 7.4.3)
                if(context->peerCertType == TLS_CERT_RSA_SIGN)
                {
                   //Verify RSA signature (RSASSA-PSS signature scheme)
@@ -1138,11 +1148,12 @@ __weak_func error_t tls12VerifyServerKeySignature(TlsContext *context,
 #endif
 #if (TLS_RSA_PSS_SIGN_SUPPORT == ENABLED)
             //RSASSA-PSS signature scheme (with public key OID RSASSA-PSS)?
-            if(signature->algorithm.signature == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA256 ||
-               signature->algorithm.signature == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA384 ||
-               signature->algorithm.signature == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA512)
+            if(signScheme == TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA256 ||
+               signScheme == TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA384 ||
+               signScheme == TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA512)
             {
-               //Enforce the type of the certificate provided by the peer
+               //The signature algorithm must be compatible with the key in the
+               //server's end-entity certificate (refer to RFC 5246, section 7.4.3)
                if(context->peerCertType == TLS_CERT_RSA_PSS_SIGN)
                {
                   //Verify RSA signature (RSASSA-PSS signature scheme)
@@ -1160,10 +1171,10 @@ __weak_func error_t tls12VerifyServerKeySignature(TlsContext *context,
 #endif
 #if (TLS_DSA_SIGN_SUPPORT == ENABLED)
             //DSA signature scheme?
-            if(signature->algorithm.signature == TLS_SIGN_ALGO_DSA &&
+            if(TLS_SIGN_ALGO(signScheme) == TLS_SIGN_ALGO_DSA &&
                context->peerCertType == TLS_CERT_DSS_SIGN)
             {
-               //DSA signature verification
+               //Verify DSA signature
                error = tlsVerifyDsaSignature(context, hashContext->digest,
                   hashAlgo->digestSize, signature->value,
                   ntohs(signature->length));
@@ -1172,10 +1183,10 @@ __weak_func error_t tls12VerifyServerKeySignature(TlsContext *context,
 #endif
 #if (TLS_ECDSA_SIGN_SUPPORT == ENABLED)
             //ECDSA signature scheme?
-            if(signature->algorithm.signature == TLS_SIGN_ALGO_ECDSA &&
+            if(TLS_SIGN_ALGO(signScheme) == TLS_SIGN_ALGO_ECDSA &&
                context->peerCertType == TLS_CERT_ECDSA_SIGN)
             {
-               //ECDSA signature verification
+               //Verify ECDSA signature
                error = tlsVerifyEcdsaSignature(context, hashContext->digest,
                   hashAlgo->digestSize, signature->value,
                   ntohs(signature->length));
@@ -1205,10 +1216,10 @@ __weak_func error_t tls12VerifyServerKeySignature(TlsContext *context,
    }
    else
 #endif
-#if (TLS_EDDSA_SIGN_SUPPORT == ENABLED)
-   //EdDSA signature scheme?
-   if(signature->algorithm.signature == TLS_SIGN_ALGO_ED25519 ||
-      signature->algorithm.signature == TLS_SIGN_ALGO_ED448)
+#if (TLS_ED25519_SIGN_SUPPORT == ENABLED)
+   //Ed25519 signature scheme?
+   if(signScheme == TLS_SIGN_SCHEME_ED25519 &&
+      context->peerCertType == TLS_CERT_ED25519_SIGN)
    {
       EddsaMessageChunk messageChunks[4];
 
@@ -1223,32 +1234,33 @@ __weak_func error_t tls12VerifyServerKeySignature(TlsContext *context,
       messageChunks[3].buffer = NULL;
       messageChunks[3].length = 0;
 
-#if (TLS_ED25519_SUPPORT == ENABLED)
-      //Ed25519 signature scheme?
-      if(signature->algorithm.signature == TLS_SIGN_ALGO_ED25519 &&
-         context->peerCertType == TLS_CERT_ED25519_SIGN)
-      {
-         //EdDSA signature verification
-         error = tlsVerifyEddsaSignature(context, messageChunks,
-            signature->value, ntohs(signature->length));
-      }
-      else
+      //Verify Ed25519 signature (PureEdDSA mode)
+      error = tlsVerifyEd25519Signature(context, messageChunks,
+         signature->value, ntohs(signature->length));
+   }
+   else
 #endif
-#if (TLS_ED448_SUPPORT == ENABLED)
-      //Ed448 signature scheme?
-      if(signature->algorithm.signature == TLS_SIGN_ALGO_ED448 &&
-         context->peerCertType == TLS_CERT_ED448_SIGN)
-      {
-         //EdDSA signature verification
-         error = tlsVerifyEddsaSignature(context, messageChunks,
-            signature->value, ntohs(signature->length));
-      }
-      else
-#endif
-      //Invalid signature scheme?
-      {
-         error = ERROR_INVALID_SIGNATURE;
-      }
+#if (TLS_ED448_SIGN_SUPPORT == ENABLED)
+   //Ed448 signature scheme?
+   if(signScheme == TLS_SIGN_SCHEME_ED448 &&
+      context->peerCertType == TLS_CERT_ED448_SIGN)
+   {
+      EddsaMessageChunk messageChunks[4];
+
+      //Data to be verified is run through the EdDSA algorithm without
+      //pre-hashing
+      messageChunks[0].buffer = context->clientRandom;
+      messageChunks[0].length = TLS_RANDOM_SIZE;
+      messageChunks[1].buffer = context->serverRandom;
+      messageChunks[1].length = TLS_RANDOM_SIZE;
+      messageChunks[2].buffer = params;
+      messageChunks[2].length = paramsLen;
+      messageChunks[3].buffer = NULL;
+      messageChunks[3].length = 0;
+
+      //Verify Ed448 signature (PureEdDSA mode)
+      error = tlsVerifyEd448Signature(context, messageChunks,
+         signature->value, ntohs(signature->length));
    }
    else
 #endif
@@ -1413,7 +1425,7 @@ error_t tlsSelectClientVersion(TlsContext *context,
    {
       //If a match is found, the client must abort the handshake with an
       //illegal_parameter alert
-      if(!osMemcmp(message->random + 24, tls11DowngradeRandom, 8))
+      if(osMemcmp(message->random + 24, tls11DowngradeRandom, 8) == 0)
          return ERROR_ILLEGAL_PARAMETER;
    }
 
@@ -1424,7 +1436,7 @@ error_t tlsSelectClientVersion(TlsContext *context,
    {
       //If a match is found, the client must abort the handshake with an
       //illegal_parameter alert
-      if(!osMemcmp(message->random + 24, tls12DowngradeRandom, 8))
+      if(osMemcmp(message->random + 24, tls12DowngradeRandom, 8) == 0)
          return ERROR_ILLEGAL_PARAMETER;
    }
 #endif
@@ -1455,7 +1467,7 @@ error_t tlsResumeSession(TlsContext *context, const uint8_t *sessionId,
    //Check whether the session ID matches the value that was supplied by the
    //client
    if(sessionIdLen != 0 && sessionIdLen == context->sessionIdLen &&
-      !osMemcmp(sessionId, context->sessionId, sessionIdLen))
+      osMemcmp(sessionId, context->sessionId, sessionIdLen) == 0)
    {
       //For resumed sessions, the selected cipher suite shall be the same as
       //the session being resumed

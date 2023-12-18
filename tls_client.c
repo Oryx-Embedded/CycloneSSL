@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
 //Switch to the appropriate trace level
@@ -47,7 +47,7 @@
 #include "tls_common.h"
 #include "tls_extensions.h"
 #include "tls_certificate.h"
-#include "tls_signature.h"
+#include "tls_sign_misc.h"
 #include "tls_key_material.h"
 #include "tls_transcript_hash.h"
 #include "tls_record.h"
@@ -315,7 +315,6 @@ error_t tlsFormatClientHello(TlsContext *context,
    error_t error;
    size_t n;
    uint8_t *p;
-   uint_t cipherSuiteTypes;
    TlsExtensionList *extensionList;
 
    //In TLS 1.3, the client indicates its version preferences in the
@@ -378,7 +377,7 @@ error_t tlsFormatClientHello(TlsContext *context,
 #endif
 
    //Format the list of cipher suites supported by the client
-   error = tlsFormatCipherSuites(context, &cipherSuiteTypes, p, &n);
+   error = tlsFormatCipherSuites(context, p, &n);
    //Any error to report?
    if(error)
       return error;
@@ -464,7 +463,7 @@ error_t tlsFormatClientHello(TlsContext *context,
 
    //A client that proposes ECC/FFDHE cipher suites in its ClientHello message
    //should send the SupportedGroups extension
-   error = tlsFormatSupportedGroupsExtension(context, cipherSuiteTypes, p, &n);
+   error = tlsFormatSupportedGroupsExtension(context, p, &n);
    //Any error to report?
    if(error)
       return error;
@@ -476,8 +475,7 @@ error_t tlsFormatClientHello(TlsContext *context,
 
    //A client that proposes ECC cipher suites in its ClientHello message
    //should send the EcPointFormats extension
-   error = tlsFormatClientEcPointFormatsExtension(context, cipherSuiteTypes,
-      p, &n);
+   error = tlsFormatClientEcPointFormatsExtension(context, p, &n);
    //Any error to report?
    if(error)
       return error;
@@ -488,7 +486,7 @@ error_t tlsFormatClientHello(TlsContext *context,
    p += n;
 
    //Include the SignatureAlgorithms extension only if TLS 1.2 is supported
-   error = tlsFormatSignAlgosExtension(context, cipherSuiteTypes, p, &n);
+   error = tlsFormatSignAlgosExtension(context, p, &n);
    //Any error to report?
    if(error)
       return error;
@@ -542,6 +540,21 @@ error_t tlsFormatClientHello(TlsContext *context,
    //In order to indicate the support of raw public keys, clients include the
    //ServerCertType extension in an extended ClientHello message
    error = tlsFormatServerCertTypeListExtension(context, p, &n);
+   //Any error to report?
+   if(error)
+      return error;
+
+   //Fix the length of the extension list
+   extensionList->length += (uint16_t) n;
+   //Point to the next field
+   p += n;
+#endif
+
+#if (TLS_ENCRYPT_THEN_MAC_SUPPORT == ENABLED)
+   //On connecting, the client includes the EncryptThenMac extension in its
+   //ClientHello if it wishes to use encrypt-then-MAC rather than the default
+   //MAC-then-encrypt (refer to RFC 7366, section 2)
+   error = tlsFormatClientEtmExtension(context, p, &n);
    //Any error to report?
    if(error)
       return error;
@@ -729,7 +742,9 @@ error_t tlsFormatClientHello(TlsContext *context,
 
       //Any extensions included in the ClientHello message?
       if(extensionList->length > 0)
+      {
          n += sizeof(TlsExtensionList) + extensionList->length;
+      }
 
       //Add a padding extension to ensure the ClientHello is never between
       //256 and 511 bytes in length
@@ -1180,6 +1195,14 @@ error_t tlsParseServerHello(TlsContext *context,
          return error;
 #endif
 
+#if (TLS_ENCRYPT_THEN_MAC_SUPPORT == ENABLED)
+      //Parse EncryptThenMac extension
+      error = tlsParseServerEtmExtension(context, extensions.encryptThenMac);
+      //Any error to report?
+      if(error)
+         return error;
+#endif
+
 #if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
       //Parse ExtendedMasterSecret extension
       error = tlsParseServerEmsExtension(context, extensions.extendedMasterSecret);
@@ -1508,8 +1531,8 @@ error_t tlsParseCertificateRequest(TlsContext *context,
    const uint8_t *p;
    const uint8_t *certTypes;
    const TlsCertAuthorities *certAuthorities;
-   const TlsSignHashAlgos *supportedSignAlgos;
-   const TlsSignHashAlgos *supportedCertSignAlgos;
+   const TlsSignSchemeList *signAlgoList;
+   const TlsSignSchemeList *certSignAlgoList;
 
    //Debug message
    TRACE_INFO("CertificateRequest message received (%" PRIuSIZE " bytes)...\r\n", length);
@@ -1589,16 +1612,16 @@ error_t tlsParseCertificateRequest(TlsContext *context,
       if(context->version == TLS_VERSION_1_2)
       {
          //Malformed CertificateRequest message?
-         if(length < sizeof(TlsSignHashAlgos))
+         if(length < sizeof(TlsSignSchemeList))
             return ERROR_DECODING_FAILED;
 
          //Point to the list of the hash/signature algorithm pairs
-         supportedSignAlgos = (TlsSignHashAlgos *) p;
+         signAlgoList = (TlsSignSchemeList *) p;
          //Remaining bytes to process
-         length -= sizeof(TlsSignHashAlgos);
+         length -= sizeof(TlsSignSchemeList);
 
          //Retrieve the length of the list
-         n = ntohs(supportedSignAlgos->length);
+         n = ntohs(signAlgoList->length);
          //Malformed CertificateRequest message?
          if(n > length)
             return ERROR_DECODING_FAILED;
@@ -1611,7 +1634,7 @@ error_t tlsParseCertificateRequest(TlsContext *context,
             return ERROR_DECODING_FAILED;
 
          //Point to the next field
-         p += sizeof(TlsSignHashAlgos) + n;
+         p += sizeof(TlsSignSchemeList) + n;
          //Remaining bytes to process
          length -= n;
       }
@@ -1619,11 +1642,11 @@ error_t tlsParseCertificateRequest(TlsContext *context,
       {
          //Implementations prior to TLS 1.2 do not include a list of supported
          //hash/signature algorithm pairs
-         supportedSignAlgos = NULL;
+         signAlgoList = NULL;
       }
 
       //List of signature algorithms that may appear in X.509 certificates
-      supportedCertSignAlgos = supportedSignAlgos;
+      certSignAlgoList = signAlgoList;
 
       //Malformed CertificateRequest message?
       if(length < sizeof(TlsCertAuthorities))
@@ -1700,18 +1723,18 @@ error_t tlsParseCertificateRequest(TlsContext *context,
 
       //Point to the list of the hash/signature algorithm pairs that
       //the server is able to verify
-      supportedSignAlgos = extensions.signAlgoList;
+      signAlgoList = extensions.signAlgoList;
 
       //If no SignatureAlgorithmsCert extension is present, then the
       //SignatureAlgorithms extension also applies to signatures appearing
       //in certificates (RFC 8446, section 4.2.3)
       if(extensions.certSignAlgoList != NULL)
       {
-         supportedCertSignAlgos = extensions.certSignAlgoList;
+         certSignAlgoList = extensions.certSignAlgoList;
       }
       else
       {
-         supportedCertSignAlgos = extensions.signAlgoList;
+         certSignAlgoList = extensions.signAlgoList;
       }
 
       //The CertificateAuthorities extension is used to indicate the CAs which
@@ -1739,17 +1762,16 @@ error_t tlsParseCertificateRequest(TlsContext *context,
       {
          //Check whether the current certificate is suitable
          acceptable = tlsIsCertificateAcceptable(context, &context->certs[j],
-            certTypes, certTypesLen, supportedSignAlgos, supportedCertSignAlgos,
-            NULL, certAuthorities);
+            certTypes, certTypesLen, NULL, certSignAlgoList, certAuthorities);
 
          //TLS 1.2 and TLS 1.3 require additional examinations
-         if(acceptable && context->version >= TLS_VERSION_1_2)
+         if(acceptable)
          {
             //The hash and signature algorithms used in the signature of the
             //CertificateVerify message must be one of those present in the
             //SupportedSignatureAlgorithms field
-            error = tlsSelectSignatureScheme(context, &context->certs[j],
-               supportedSignAlgos);
+            error = tlsSelectSignAlgo(context, &context->certs[j],
+               signAlgoList);
 
             //Check status code
             if(error)
@@ -1766,7 +1788,7 @@ error_t tlsParseCertificateRequest(TlsContext *context,
       }
 
       //The second pass relaxes the constraints
-      supportedCertSignAlgos = NULL;
+      certSignAlgoList = NULL;
       certAuthorities = NULL;
    }
 

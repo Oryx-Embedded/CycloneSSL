@@ -1,6 +1,6 @@
 /**
- * @file tls_extensions.h
- * @brief Parsing and checking of TLS extensions
+ * @file tls13_sign_generate.h
+ * @brief RSA/DSA/ECDSA/SM2/EdDSA signature generation (TLS 1.3)
  *
  * @section License
  *
@@ -28,8 +28,8 @@
  * @version 2.3.4
  **/
 
-#ifndef _TLS_EXTENSIONS_H
-#define _TLS_EXTENSIONS_H
+#ifndef _TLS13_SIGN_GENERATE_H
+#define _TLS13_SIGN_GENERATE_H
 
 //Dependencies
 #include "tls.h"
@@ -39,18 +39,24 @@
 extern "C" {
 #endif
 
-//TLS related functions
-error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
-   size_t length, TlsHelloExtensions *extensions);
+//TLS 1.3 related functions
+error_t tls13GenerateSignature(TlsContext *context, uint8_t *p,
+   size_t *length);
 
-error_t tlsCheckHelloExtensions(TlsMessageType msgType, uint16_t version,
-   TlsHelloExtensions *extensions);
+error_t tls13GenerateRsaPssSignature(TlsContext *context, const uint8_t *message,
+   size_t length, Tls13DigitalSignature *signature);
 
-error_t tlsCheckDuplicateExtension(uint16_t type, const uint8_t *p,
-   size_t length);
+error_t tls13GenerateEcdsaSignature(TlsContext *context, const uint8_t *message,
+   size_t length, Tls13DigitalSignature *signature);
 
-bool_t tlsIsAlpnProtocolSupported(TlsContext *context,
-   const char_t *protocol, size_t length);
+error_t tls13GenerateSm2Signature(TlsContext *context, const uint8_t *message,
+   size_t length, Tls13DigitalSignature *signature);
+
+error_t tls13GenerateEd25519Signature(TlsContext *context, const uint8_t *message,
+   size_t length, Tls13DigitalSignature *signature);
+
+error_t tls13GenerateEd448Signature(TlsContext *context, const uint8_t *message,
+   size_t length, Tls13DigitalSignature *signature);
 
 //C++ guard
 #ifdef __cplusplus

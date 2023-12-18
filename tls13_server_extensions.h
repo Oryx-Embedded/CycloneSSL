@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
 #ifndef _TLS13_SERVER_EXTENSIONS_H
@@ -56,7 +56,8 @@ error_t tls13FormatServerEarlyDataExtension(TlsContext *context,
    TlsMessageType msgType, uint8_t *p, size_t *written);
 
 error_t tls13ParseClientKeyShareExtension(TlsContext *context,
-   const Tls13KeyShareList *keyShareList);
+   const Tls13KeyShareList *keyShareList,
+   const TlsSupportedGroupList *groupList);
 
 error_t tls13ParsePskKeModesExtension(TlsContext *context,
    const Tls13PskKeModeList *pskKeModeList);

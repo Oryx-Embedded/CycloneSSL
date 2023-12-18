@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
 //Switch to the appropriate trace level
@@ -65,6 +65,7 @@ const uint16_t tlsSupportedGroups[] =
    TLS_GROUP_BRAINPOOLP256R1,
    TLS_GROUP_BRAINPOOLP384R1,
    TLS_GROUP_BRAINPOOLP512R1,
+   TLS_GROUP_SM2,
    TLS_GROUP_FFDHE2048,
    TLS_GROUP_FFDHE3072,
    TLS_GROUP_FFDHE4096,
@@ -286,12 +287,15 @@ error_t tlsFormatClientMaxFragLenExtension(TlsContext *context,
       case 512:
          extension->value[0] = TLS_MAX_FRAGMENT_LENGTH_512;
          break;
+
       case 1024:
          extension->value[0] = TLS_MAX_FRAGMENT_LENGTH_1024;
          break;
+
       case 2048:
          extension->value[0] = TLS_MAX_FRAGMENT_LENGTH_2048;
          break;
+
       default:
          extension->value[0] = TLS_MAX_FRAGMENT_LENGTH_4096;
          break;
@@ -374,14 +378,13 @@ error_t tlsFormatClientRecordSizeLimitExtension(TlsContext *context,
 /**
  * @brief Format SupportedGroups extension
  * @param[in] context Pointer to the TLS context
- * @param[in] cipherSuiteTypes Types of cipher suites proposed by the client
  * @param[in] p Output stream where to write the SupportedGroups extension
  * @param[out] written Total number of bytes that have been written
  * @return Error code
  **/
 
-error_t tlsFormatSupportedGroupsExtension(TlsContext *context,
-   uint_t cipherSuiteTypes, uint8_t *p, size_t *written)
+error_t tlsFormatSupportedGroupsExtension(TlsContext *context, uint8_t *p,
+   size_t *written)
 {
    size_t n = 0;
 
@@ -399,8 +402,6 @@ error_t tlsFormatSupportedGroupsExtension(TlsContext *context,
 
    //Point to the list of supported groups
    supportedGroupList = (TlsSupportedGroupList *) extension->value;
-   //The groups are ordered according to client's preferences
-   n = 0;
 
    //Any preferred ECDHE or FFDHE groups?
    if(context->numSupportedGroups > 0)
@@ -416,6 +417,9 @@ error_t tlsFormatSupportedGroupsExtension(TlsContext *context,
       numSupportedGroups = arraysize(tlsSupportedGroups);
    }
 
+   //The groups are ordered according to client's preferences
+   n = 0;
+
    //Loop through the list of named groups
    for(i = 0; i < numSupportedGroups; i++)
    {
@@ -423,12 +427,25 @@ error_t tlsFormatSupportedGroupsExtension(TlsContext *context,
       //Elliptic curve group?
       if(tlsGetCurveInfo(context, supportedGroups[i]) != NULL)
       {
-         //Any ECC cipher suite proposed by the client?
-         if((cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_ECC) != 0 ||
-            (cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_TLS13) != 0)
+         //SM2 elliptic curve?
+         if(supportedGroups[i] == TLS_GROUP_SM2)
          {
-            //Add the current named group to the list
-            supportedGroupList->value[n++] = htons(supportedGroups[i]);
+            //Any ShangMi cipher suite proposed by the client?
+            if((context->cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_SM) != 0)
+            {
+               //Add the current named group to the list
+               supportedGroupList->value[n++] = htons(supportedGroups[i]);
+            }
+         }
+         else
+         {
+            //Any ECDH cipher suite proposed by the client?
+            if((context->cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_ECDH) != 0 ||
+               (context->cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_TLS13) != 0)
+            {
+               //Add the current named group to the list
+               supportedGroupList->value[n++] = htons(supportedGroups[i]);
+            }
          }
       }
       else
@@ -437,9 +454,9 @@ error_t tlsFormatSupportedGroupsExtension(TlsContext *context,
       //Finite field group?
       if(tlsGetFfdheGroup(context, supportedGroups[i]) != NULL)
       {
-         //Any FFDHE cipher suite proposed by the client?
-         if((cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_FFDHE) != 0 ||
-            (cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_TLS13) != 0)
+         //Any Diffie-Hellman cipher suite proposed by the client?
+         if((context->cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_DH) != 0 ||
+            (context->cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_TLS13) != 0)
          {
             //Add the current named group to the list
             supportedGroupList->value[n++] = htons(supportedGroups[i]);
@@ -484,14 +501,13 @@ error_t tlsFormatSupportedGroupsExtension(TlsContext *context,
 /**
  * @brief Format EcPointFormats extension
  * @param[in] context Pointer to the TLS context
- * @param[in] cipherSuiteTypes Types of cipher suites proposed by the client
  * @param[in] p Output stream where to write the EcPointFormats extension
  * @param[out] written Total number of bytes that have been written
  * @return Error code
  **/
 
 error_t tlsFormatClientEcPointFormatsExtension(TlsContext *context,
-   uint_t cipherSuiteTypes, uint8_t *p, size_t *written)
+   uint8_t *p, size_t *written)
 {
    size_t n = 0;
 
@@ -504,7 +520,7 @@ error_t tlsFormatClientEcPointFormatsExtension(TlsContext *context,
    TLS_ECDHE_ECDSA_KE_SUPPORT == ENABLED || TLS_ECDHE_PSK_KE_SUPPORT == ENABLED)
       //A client that proposes ECC cipher suites in its ClientHello message
       //should send the EcPointFormats extension
-      if((cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_ECC) != 0)
+      if((context->cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_ECDH) != 0)
       {
          TlsExtension *extension;
          TlsEcPointFormatList *ecPointFormatList;
@@ -735,6 +751,51 @@ error_t tlsFormatServerCertTypeListExtension(TlsContext *context,
 
       //Compute the length, in bytes, of the ServerCertType extension
       n += sizeof(TlsExtension);
+   }
+#endif
+
+   //Total number of bytes that have been written
+   *written = n;
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
+ * @brief Format EncryptThenMac extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] p Output stream where to write the EncryptThenMac extension
+ * @param[out] written Total number of bytes that have been written
+ * @return Error code
+ **/
+
+error_t tlsFormatClientEtmExtension(TlsContext *context,
+   uint8_t *p, size_t *written)
+{
+   size_t n = 0;
+
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //In versions of TLS prior to TLS 1.3, this extension is used to negotiate
+   //encrypt-then-MAC construction rather than the default MAC-then-encrypt
+   if(context->versionMax >= TLS_VERSION_1_0 &&
+      context->versionMin <= TLS_VERSION_1_2)
+   {
+#if (TLS_ENCRYPT_THEN_MAC_SUPPORT == ENABLED)
+      TlsExtension *extension;
+
+      //Add the EncryptThenMac extension
+      extension = (TlsExtension *) p;
+      //Type of the extension
+      extension->type = HTONS(TLS_EXT_ENCRYPT_THEN_MAC);
+
+      //The extension data field of this extension shall be empty (refer to
+      //RFC 7366, section 2)
+      extension->length = HTONS(0);
+
+      //Compute the length, in bytes, of the EncryptThenMac extension
+      n = sizeof(TlsExtension);
+#endif
    }
 #endif
 
@@ -1039,15 +1100,19 @@ error_t tlsParseServerMaxFragLenExtension(TlsContext *context,
       case TLS_MAX_FRAGMENT_LENGTH_512:
          n = 512;
          break;
+
       case TLS_MAX_FRAGMENT_LENGTH_1024:
          n = 1024;
          break;
+
       case TLS_MAX_FRAGMENT_LENGTH_2048:
          n = 2048;
          break;
+
       case TLS_MAX_FRAGMENT_LENGTH_4096:
          n = 4096;
          break;
+
       default:
          n = 0;
          break;
@@ -1322,6 +1387,43 @@ error_t tlsParseServerCertTypeExtension(TlsContext *context,
       //With the ServerCertType extension in the ServerHello, the TLS server
       //indicates the certificate type carried in the certificate payload
       context->peerCertFormat = (TlsCertificateFormat) serverCertType->value[0];
+   }
+#endif
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
+ * @brief Parse EncryptThenMac extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] encryptThenMac Pointer to the EncryptThenMac extension
+ * @return Error code
+ **/
+
+error_t tlsParseServerEtmExtension(TlsContext *context,
+   const TlsExtension *encryptThenMac)
+{
+#if (TLS_ENCRYPT_THEN_MAC_SUPPORT == ENABLED)
+   //EncryptThenMac extension found?
+   if(encryptThenMac != NULL)
+   {
+      //If a server receives an encrypt-then-MAC request extension from a
+      //client and then selects a stream or AEAD ciphersuite, it must not send
+      //an encrypt-then-MAC response extension back to the client (refer to
+      //RFC 7366, section 3)
+      if(context->cipherSuite.cipherMode != CIPHER_MODE_CBC)
+         return ERROR_HANDSHAKE_FAILED;
+
+      //Use encrypt-then-MAC construction rather than the default
+      //MAC-then-encrypt
+      context->etmExtReceived = TRUE;
+   }
+   else
+   {
+      //Use default MAC-then-encrypt construction
+      context->etmExtReceived = FALSE;
    }
 #endif
 

@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
 //Switch to the appropriate trace level
@@ -140,6 +140,10 @@ error_t tls13SaveSessionTicket(const TlsContext *context,
    {
       session->ticketHashAlgo = TLS_HASH_ALGO_SHA384;
    }
+   else if(hashAlgo == tlsGetHashAlgo(TLS_HASH_ALGO_SM3))
+   {
+      session->ticketHashAlgo = TLS_HASH_ALGO_SM3;
+   }
    else
    {
       session->ticketHashAlgo = TLS_HASH_ALGO_NONE;
@@ -240,11 +244,15 @@ error_t tls13RestoreSessionTicket(TlsContext *context,
    //hash algorithm
    if(session->ticketHashAlgo == TLS_HASH_ALGO_SHA256)
    {
-      context->ticketPskLen = SHA256_DIGEST_SIZE;
+      context->ticketPskLen = 32;
    }
    else if(session->ticketHashAlgo == TLS_HASH_ALGO_SHA384)
    {
-      context->ticketPskLen = SHA384_DIGEST_SIZE;
+      context->ticketPskLen = 48;
+   }
+   else if(session->ticketHashAlgo == TLS_HASH_ALGO_SM3)
+   {
+      context->ticketPskLen = 32;
    }
    else
    {
@@ -495,6 +503,10 @@ error_t tls13VerifyTicket(TlsContext *context, const uint8_t *ticket,
       else if(hashAlgo == tlsGetHashAlgo(TLS_HASH_ALGO_SHA384))
       {
          context->ticketHashAlgo = TLS_HASH_ALGO_SHA384;
+      }
+      else if(hashAlgo == tlsGetHashAlgo(TLS_HASH_ALGO_SM3))
+      {
+         context->ticketHashAlgo = TLS_HASH_ALGO_SM3;
       }
       else
       {

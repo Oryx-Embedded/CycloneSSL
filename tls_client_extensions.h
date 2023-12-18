@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
 #ifndef _TLS_CLIENT_EXTENSIONS_H
@@ -52,11 +52,11 @@ error_t tlsFormatClientMaxFragLenExtension(TlsContext *context,
 error_t tlsFormatClientRecordSizeLimitExtension(TlsContext *context,
    uint8_t *p, size_t *written);
 
-error_t tlsFormatSupportedGroupsExtension(TlsContext *context,
-   uint_t cipherSuiteTypes, uint8_t *p, size_t *written);
+error_t tlsFormatSupportedGroupsExtension(TlsContext *context, uint8_t *p,
+   size_t *written);
 
 error_t tlsFormatClientEcPointFormatsExtension(TlsContext *context,
-   uint_t cipherSuiteTypes, uint8_t *p, size_t *written);
+   uint8_t *p, size_t *written);
 
 error_t tlsFormatClientAlpnExtension(TlsContext *context,
    uint8_t *p, size_t *written);
@@ -65,6 +65,9 @@ error_t tlsFormatClientCertTypeListExtension(TlsContext *context,
    uint8_t *p, size_t *written);
 
 error_t tlsFormatServerCertTypeListExtension(TlsContext *context,
+   uint8_t *p, size_t *written);
+
+error_t tlsFormatClientEtmExtension(TlsContext *context,
    uint8_t *p, size_t *written);
 
 error_t tlsFormatClientEmsExtension(TlsContext *context,
@@ -99,6 +102,9 @@ error_t tlsParseClientCertTypeExtension(TlsContext *context,
 
 error_t tlsParseServerCertTypeExtension(TlsContext *context,
    const TlsExtension *serverCertType);
+
+error_t tlsParseServerEtmExtension(TlsContext *context,
+   const TlsExtension *encryptThenMac);
 
 error_t tlsParseServerEmsExtension(TlsContext *context,
    const TlsExtension *extendedMasterSecret);

@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
 //Switch to the appropriate trace level
@@ -40,7 +40,8 @@
 #include "tls_common.h"
 #include "tls_extensions.h"
 #include "tls_certificate.h"
-#include "tls_signature.h"
+#include "tls_sign_generate.h"
+#include "tls_sign_misc.h"
 #include "tls_cache.h"
 #include "tls_ffdhe.h"
 #include "tls_record.h"
@@ -541,37 +542,40 @@ error_t tls12GenerateServerKeySignature(TlsContext *context,
    //Total number of bytes that have been written
    *written = 0;
 
+   //The algorithm field specifies the signature scheme
+   signature->algorithm = htons(context->signScheme);
+
 #if (TLS_RSA_SIGN_SUPPORT == ENABLED || TLS_RSA_PSS_SIGN_SUPPORT == ENABLED || \
    TLS_DSA_SIGN_SUPPORT == ENABLED || TLS_ECDSA_SIGN_SUPPORT == ENABLED)
    //RSA, DSA or ECDSA signature scheme?
-   if(context->signAlgo == TLS_SIGN_ALGO_RSA ||
-      context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA256 ||
-      context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA384 ||
-      context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA512 ||
-      context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA256 ||
-      context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA384 ||
-      context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA512 ||
-      context->signAlgo == TLS_SIGN_ALGO_DSA ||
-      context->signAlgo == TLS_SIGN_ALGO_ECDSA)
+   if(TLS_SIGN_ALGO(context->signScheme) == TLS_SIGN_ALGO_RSA ||
+      TLS_SIGN_ALGO(context->signScheme) == TLS_SIGN_ALGO_DSA ||
+      TLS_SIGN_ALGO(context->signScheme) == TLS_SIGN_ALGO_ECDSA ||
+      context->signScheme == TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA256 ||
+      context->signScheme == TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA384 ||
+      context->signScheme == TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA512 ||
+      context->signScheme == TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA256 ||
+      context->signScheme == TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA384 ||
+      context->signScheme == TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA512)
    {
       const HashAlgo *hashAlgo;
       HashContext *hashContext;
 
       //Retrieve the hash algorithm used for signing
-      if(context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA256 ||
-         context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA256)
+      if(context->signScheme == TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA256 ||
+         context->signScheme == TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA256)
       {
          //The hashing is intrinsic to the signature algorithm
          hashAlgo = tlsGetHashAlgo(TLS_HASH_ALGO_SHA256);
       }
-      else if(context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA384 ||
-         context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA384)
+      else if(context->signScheme == TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA384 ||
+         context->signScheme == TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA384)
       {
          //The hashing is intrinsic to the signature algorithm
          hashAlgo = tlsGetHashAlgo(TLS_HASH_ALGO_SHA384);
       }
-      else if(context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA512 ||
-         context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA512)
+      else if(context->signScheme == TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA512 ||
+         context->signScheme == TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA512)
       {
          //The hashing is intrinsic to the signature algorithm
          hashAlgo = tlsGetHashAlgo(TLS_HASH_ALGO_SHA512);
@@ -579,7 +583,7 @@ error_t tls12GenerateServerKeySignature(TlsContext *context,
       else
       {
          //Select the relevant hash algorithm
-         hashAlgo = tlsGetHashAlgo(context->signHashAlgo);
+         hashAlgo = tlsGetHashAlgo(TLS_HASH_ALGO(context->signScheme));
       }
 
       //Make sure the hash algorithm is supported
@@ -601,80 +605,33 @@ error_t tls12GenerateServerKeySignature(TlsContext *context,
 
 #if (TLS_RSA_SIGN_SUPPORT == ENABLED)
             //RSA signature scheme?
-            if(context->signAlgo == TLS_SIGN_ALGO_RSA)
+            if(TLS_SIGN_ALGO(context->signScheme) == TLS_SIGN_ALGO_RSA)
             {
-               RsaPrivateKey privateKey;
-
-               //Initialize RSA private key
-               rsaInitPrivateKey(&privateKey);
-
-               //Set the relevant signature algorithm
-               signature->algorithm.signature = TLS_SIGN_ALGO_RSA;
-               signature->algorithm.hash = context->signHashAlgo;
-
-               //Decode the PEM structure that holds the RSA private key
-               error = pemImportRsaPrivateKey(context->cert->privateKey,
-                  context->cert->privateKeyLen, context->cert->password,
-                  &privateKey);
-
-               //Check status code
-               if(!error)
-               {
-                  //Generate RSA signature (RSASSA-PKCS1-v1_5 signature scheme)
-                  error = rsassaPkcs1v15Sign(&privateKey, hashAlgo,
-                     hashContext->digest, signature->value, written);
-               }
-
-               //Release previously allocated resources
-               rsaFreePrivateKey(&privateKey);
+               //Sign the key exchange parameters using RSA
+               error = tlsGenerateRsaPkcs1Signature(context, hashAlgo,
+                  hashContext->digest, signature->value, written);
             }
             else
 #endif
 #if (TLS_RSA_PSS_SIGN_SUPPORT == ENABLED)
             //RSA-PSS signature scheme?
-            if(context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA256 ||
-               context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA384 ||
-               context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA512 ||
-               context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA256 ||
-               context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA384 ||
-               context->signAlgo == TLS_SIGN_ALGO_RSA_PSS_PSS_SHA512)
+            if(context->signScheme == TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA256 ||
+               context->signScheme == TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA384 ||
+               context->signScheme == TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA512 ||
+               context->signScheme == TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA256 ||
+               context->signScheme == TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA384 ||
+               context->signScheme == TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA512)
             {
-               RsaPrivateKey privateKey;
-
-               //Initialize RSA private key
-               rsaInitPrivateKey(&privateKey);
-
-               //Set the relevant signature algorithm
-               signature->algorithm.signature = context->signAlgo;
-               signature->algorithm.hash = TLS_HASH_ALGO_INTRINSIC;
-
-               //Decode the PEM structure that holds the RSA private key
-               error = pemImportRsaPrivateKey(context->cert->privateKey,
-                  context->cert->privateKeyLen, context->cert->password,
-                  &privateKey);
-
-               //Check status code
-               if(!error)
-               {
-                  //Generate RSA signature (RSASSA-PSS signature scheme)
-                  error = rsassaPssSign(context->prngAlgo, context->prngContext,
-                     &privateKey, hashAlgo, hashAlgo->digestSize,
-                     hashContext->digest, signature->value, written);
-               }
-
-               //Release previously allocated resources
-               rsaFreePrivateKey(&privateKey);
+               //Sign the key exchange parameters using RSA-PSS
+               error = tlsGenerateRsaPssSignature(context, hashAlgo,
+                  hashContext->digest, signature->value, written);
             }
             else
 #endif
 #if (TLS_DSA_SIGN_SUPPORT == ENABLED)
             //DSA signature scheme?
-            if(context->signAlgo == TLS_SIGN_ALGO_DSA)
+            if(TLS_SIGN_ALGO(context->signScheme) == TLS_SIGN_ALGO_DSA)
             {
-               //Set the relevant signature algorithm
-               signature->algorithm.signature = TLS_SIGN_ALGO_DSA;
-               signature->algorithm.hash = context->signHashAlgo;
-
                //Sign the key exchange parameters using DSA
                error = tlsGenerateDsaSignature(context, hashContext->digest,
                   hashAlgo->digestSize, signature->value, written);
@@ -683,12 +640,8 @@ error_t tls12GenerateServerKeySignature(TlsContext *context,
 #endif
 #if (TLS_ECDSA_SIGN_SUPPORT == ENABLED)
             //ECDSA signature scheme?
-            if(context->signAlgo == TLS_SIGN_ALGO_ECDSA)
+            if(TLS_SIGN_ALGO(context->signScheme) == TLS_SIGN_ALGO_ECDSA)
             {
-               //Set the relevant signature algorithm
-               signature->algorithm.signature = TLS_SIGN_ALGO_ECDSA;
-               signature->algorithm.hash = context->signHashAlgo;
-
                //Sign the key exchange parameters using ECDSA
                error = tlsGenerateEcdsaSignature(context, hashContext->digest,
                   hashAlgo->digestSize, signature->value, written);
@@ -718,15 +671,13 @@ error_t tls12GenerateServerKeySignature(TlsContext *context,
    }
    else
 #endif
-#if (TLS_EDDSA_SIGN_SUPPORT == ENABLED)
-   //EdDSA signature scheme?
-   if(context->signAlgo == TLS_SIGN_ALGO_ED25519 ||
-      context->signAlgo == TLS_SIGN_ALGO_ED448)
+#if (TLS_ED25519_SIGN_SUPPORT == ENABLED)
+   //Ed25519 signature scheme?
+   if(context->signScheme == TLS_SIGN_SCHEME_ED25519)
    {
       EddsaMessageChunk messageChunks[4];
 
-      //Data to be signed is run through the EdDSA algorithm without
-      //pre-hashing
+      //Data to be signed is run through the EdDSA algorithm without pre-hashing
       messageChunks[0].buffer = context->clientRandom;
       messageChunks[0].length = TLS_RANDOM_SIZE;
       messageChunks[1].buffer = context->serverRandom;
@@ -736,39 +687,31 @@ error_t tls12GenerateServerKeySignature(TlsContext *context,
       messageChunks[3].buffer = NULL;
       messageChunks[3].length = 0;
 
-#if (TLS_ED25519_SUPPORT == ENABLED)
-      //Ed25519 signature scheme?
-      if(context->signAlgo == TLS_SIGN_ALGO_ED25519)
-      {
-         //The hashing is intrinsic to the signature algorithm
-         signature->algorithm.signature = TLS_SIGN_ALGO_ED25519;
-         signature->algorithm.hash = TLS_HASH_ALGO_INTRINSIC;
-
-         //Sign the key exchange parameters using EdDSA
-         error = tlsGenerateEddsaSignature(context, messageChunks,
-            signature->value, written);
-      }
-      else
+      //Sign the key exchange parameters using Ed25519
+      error = tlsGenerateEd25519Signature(context, messageChunks,
+         signature->value, written);
+   }
+   else
 #endif
-#if (TLS_ED448_SUPPORT == ENABLED)
-      //Ed448 signature scheme?
-      if(context->signAlgo == TLS_SIGN_ALGO_ED448)
-      {
-         //The hashing is intrinsic to the signature algorithm
-         signature->algorithm.signature = TLS_SIGN_ALGO_ED448;
-         signature->algorithm.hash = TLS_HASH_ALGO_INTRINSIC;
+#if (TLS_ED448_SIGN_SUPPORT == ENABLED)
+   //Ed448 signature scheme?
+   if(context->signScheme == TLS_SIGN_SCHEME_ED448)
+   {
+      EddsaMessageChunk messageChunks[4];
 
-         //Sign the key exchange parameters using EdDSA
-         error = tlsGenerateEddsaSignature(context, messageChunks,
-            signature->value, written);
-      }
-      else
-#endif
-      //Invalid signature scheme?
-      {
-         //Report an error
-         error = ERROR_UNSUPPORTED_SIGNATURE_ALGO;
-      }
+      //Data to be signed is run through the EdDSA algorithm without pre-hashing
+      messageChunks[0].buffer = context->clientRandom;
+      messageChunks[0].length = TLS_RANDOM_SIZE;
+      messageChunks[1].buffer = context->serverRandom;
+      messageChunks[1].length = TLS_RANDOM_SIZE;
+      messageChunks[2].buffer = params;
+      messageChunks[2].length = paramsLen;
+      messageChunks[3].buffer = NULL;
+      messageChunks[3].length = 0;
+
+      //Sign the key exchange parameters using Ed448
+      error = tlsGenerateEd448Signature(context, messageChunks,
+         signature->value, written);
    }
    else
 #endif
@@ -1029,6 +972,14 @@ error_t tlsResumeStatefulSession(TlsContext *context, const uint8_t *sessionId,
             //Select the relevant cipher suite
             error = tlsSelectCipherSuite(context, session->cipherSuite);
          }
+
+         //Check status code
+         if(!error)
+         {
+            //Retrieve the type of the cipher suite presented by the client
+            context->cipherSuiteTypes = tlsGetCipherSuiteType(
+               session->cipherSuite);
+         }
       }
       else
       {
@@ -1184,6 +1135,10 @@ error_t tlsResumeStatelessSession(TlsContext *context, const uint8_t *sessionId,
             //Check status code
             if(!error)
             {
+               //Retrieve the type of the cipher suite presented by the client
+               context->cipherSuiteTypes = tlsGetCipherSuiteType(
+                  state->cipherSuite);
+
                //Restore master secret
                osMemcpy(context->masterSecret, state->secret,
                   TLS_MASTER_SECRET_SIZE);
@@ -1228,7 +1183,7 @@ error_t tlsResumeStatelessSession(TlsContext *context, const uint8_t *sessionId,
          //If the server successfully verifies the client's ticket, then it may
          //renew the ticket by including a NewSessionTicket handshake message
          //after the ServerHello
-         context->sessionTicketExtSent = FALSE;
+         context->sessionTicketExtSent = TRUE;
       }
       else
       {
@@ -1419,6 +1374,11 @@ error_t tlsNegotiateCipherSuite(TlsContext *context, const HashAlgo *hashAlgo,
                   //Check status code
                   if(!error)
                   {
+                     //Retrieve the type of the cipher suite presented by the
+                     //client
+                     context->cipherSuiteTypes = tlsGetCipherSuiteType(
+                        context->cipherSuite.identifier);
+
                      //Select the group to be used when performing (EC)DHE key
                      //exchange
                      error = tlsSelectGroup(context, extensions->supportedGroupList);
@@ -1459,6 +1419,10 @@ error_t tlsNegotiateCipherSuite(TlsContext *context, const HashAlgo *hashAlgo,
             //Check status code
             if(!error)
             {
+               //Retrieve the type of the cipher suite presented by the client
+               context->cipherSuiteTypes = tlsGetCipherSuiteType(
+                  context->cipherSuite.identifier);
+
                //Select the group to be used when performing (EC)DHE key exchange
                error = tlsSelectGroup(context, extensions->supportedGroupList);
             }
@@ -1580,7 +1544,11 @@ error_t tlsSelectEcdheGroup(TlsContext *context,
                if(context->supportedGroups[i] == namedGroup)
                {
                   //Acceptable elliptic curve found?
-                  if(tlsGetCurveInfo(context, namedGroup) != NULL)
+                  if(tlsGetCurveInfo(context, namedGroup) != NULL &&
+                     namedGroup != TLS_GROUP_BRAINPOOLP256R1_TLS13 &&
+                     namedGroup != TLS_GROUP_BRAINPOOLP384R1_TLS13 &&
+                     namedGroup != TLS_GROUP_BRAINPOOLP512R1_TLS13 &&
+                     namedGroup != TLS_GROUP_SM2)
                   {
                      //Save the named curve
                      context->namedGroup = namedGroup;
@@ -1600,7 +1568,11 @@ error_t tlsSelectEcdheGroup(TlsContext *context,
             namedGroup = ntohs(groupList->value[j]);
 
             //Acceptable elliptic curve found?
-            if(tlsGetCurveInfo(context, namedGroup) != NULL)
+            if(tlsGetCurveInfo(context, namedGroup) != NULL &&
+               namedGroup != TLS_GROUP_BRAINPOOLP256R1_TLS13 &&
+               namedGroup != TLS_GROUP_BRAINPOOLP384R1_TLS13 &&
+               namedGroup != TLS_GROUP_BRAINPOOLP512R1_TLS13 &&
+               namedGroup != TLS_GROUP_SM2)
             {
                //Save the named curve
                context->namedGroup = namedGroup;
@@ -1655,7 +1627,7 @@ error_t tlsSelectCertificate(TlsContext *context,
    bool_t acceptable;
    uint8_t certTypes[2];
    const TlsCertAuthorities *certAuthorities;
-   const TlsSignHashAlgos *supportedCertSignAlgos;
+   const TlsSignSchemeList *certSignAlgoList;
 
    //Initialize status code
    error = NO_ERROR;
@@ -1754,11 +1726,11 @@ error_t tlsSelectCertificate(TlsContext *context,
    //in certificates (RFC 8446, section 4.2.3)
    if(extensions->certSignAlgoList != NULL)
    {
-      supportedCertSignAlgos = extensions->certSignAlgoList;
+      certSignAlgoList = extensions->certSignAlgoList;
    }
    else
    {
-      supportedCertSignAlgos = extensions->signAlgoList;
+      certSignAlgoList = extensions->signAlgoList;
    }
 
    //Check whether a certificate is required
@@ -1775,8 +1747,8 @@ error_t tlsSelectCertificate(TlsContext *context,
          {
             //Check whether the current certificate is suitable
             acceptable = tlsIsCertificateAcceptable(context, &context->certs[j],
-               certTypes, n, extensions->signAlgoList, supportedCertSignAlgos,
-               extensions->supportedGroupList, certAuthorities);
+               certTypes, n, extensions->supportedGroupList, certSignAlgoList,
+               certAuthorities);
 
             //The certificate must be appropriate for the negotiated cipher
             //suite and any negotiated extensions
@@ -1784,7 +1756,7 @@ error_t tlsSelectCertificate(TlsContext *context,
             {
                //The hash algorithm to be used when generating signatures must
                //be one of those present in the SignatureAlgorithms extension
-               error = tlsSelectSignatureScheme(context, &context->certs[j],
+               error = tlsSelectSignAlgo(context, &context->certs[j],
                   extensions->signAlgoList);
 
                //Check status code
@@ -1798,7 +1770,7 @@ error_t tlsSelectCertificate(TlsContext *context,
          }
 
          //The second pass relaxes the constraints
-         supportedCertSignAlgos = NULL;
+         certSignAlgoList = NULL;
          certAuthorities = NULL;
       }
 

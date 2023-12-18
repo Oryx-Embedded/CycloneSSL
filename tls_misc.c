@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
 //Switch to the appropriate trace level
@@ -712,6 +712,13 @@ __weak_func error_t tlsInitEncryptionEngine(TlsContext *context,
    }
 #endif
 
+#if (TLS_ENCRYPT_THEN_MAC_SUPPORT == ENABLED)
+   //If an upgrade from MAC-then-encrypt to encrypt-then-MAC is negotiated,
+   //then the change will take place in the first message that follows the
+   //ChangeCipherSpec message (refer to RFC 7366, section 3.1)
+   encryptionEngine->encryptThenMac = context->etmExtReceived;
+#endif
+
    //Set appropriate length for MAC key, encryption key, authentication
    //tag and IV
    encryptionEngine->macKeyLen = cipherSuite->macKeyLen;
@@ -1163,7 +1170,7 @@ const char_t *tlsGetVersionName(uint16_t version)
  * @return Pointer to the hash algorithm
  **/
 
-const HashAlgo *tlsGetHashAlgo(uint8_t hashAlgoId)
+const HashAlgo *tlsGetHashAlgo(TlsHashAlgo hashAlgoId)
 {
    const HashAlgo *hashAlgo;
 
@@ -1204,6 +1211,12 @@ const HashAlgo *tlsGetHashAlgo(uint8_t hashAlgoId)
    //SHA-512 hash identifier?
    case TLS_HASH_ALGO_SHA512:
       hashAlgo = SHA512_HASH_ALGO;
+      break;
+#endif
+#if (TLS_SM3_SUPPORT == ENABLED)
+   //SM3 hash identifier?
+   case TLS_HASH_ALGO_SM3:
+      hashAlgo = SM3_HASH_ALGO;
       break;
 #endif
    //Unknown hash identifier?
@@ -1321,6 +1334,12 @@ const EcCurveInfo *tlsGetCurveInfo(TlsContext *context, uint16_t namedCurve)
    case TLS_GROUP_BRAINPOOLP512R1:
    case TLS_GROUP_BRAINPOOLP512R1_TLS13:
       curveInfo = ecGetCurveInfo(BRAINPOOLP512R1_OID, sizeof(BRAINPOOLP512R1_OID));
+      break;
+#endif
+#if (TLS_SM2_SUPPORT == ENABLED)
+   //SM2 elliptic curve?
+   case TLS_GROUP_SM2:
+      curveInfo = ecGetCurveInfo(SM2_OID, sizeof(SM2_OID));
       break;
 #endif
 #if (TLS_X25519_SUPPORT == ENABLED)
@@ -1481,6 +1500,13 @@ TlsNamedGroup tlsGetNamedCurve(const uint8_t *oid, size_t length)
    else if(!oidComp(oid, length, BRAINPOOLP512R1_OID, sizeof(BRAINPOOLP512R1_OID)))
    {
       namedCurve = TLS_GROUP_BRAINPOOLP512R1;
+   }
+#endif
+#if (TLS_SM2_SUPPORT == ENABLED)
+   //SM2 elliptic curve?
+   else if(!oidComp(oid, length, SM2_OID, sizeof(SM2_OID)))
+   {
+      namedCurve = TLS_GROUP_SM2;
    }
 #endif
    //Unknown identifier?

@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
 //Switch to the appropriate trace level
@@ -39,6 +39,7 @@
 
 //Dependencies
 #include "tls.h"
+#include "tls_cipher_suites.h"
 #include "tls_handshake.h"
 #include "tls_common.h"
 #include "tls_certificate.h"
@@ -92,6 +93,10 @@ TlsContext *tlsInit(void)
       context->encryptionEngine.version = TLS_MIN_VERSION;
 
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+      //A TLS 1.3 client may pregenerate key shares
+      context->cipherSuiteTypes = TLS_CIPHER_SUITE_TYPE_TLS13 |
+         TLS_CIPHER_SUITE_TYPE_SM;
+
       //Select default named group
       if(tls13IsGroupSupported(context, TLS_GROUP_ECDH_X25519))
       {
@@ -139,7 +144,8 @@ TlsContext *tlsInit(void)
       dsaInitPublicKey(&context->peerDsaPublicKey);
 #endif
 
-#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED || TLS_EDDSA_SIGN_SUPPORT == ENABLED)
+#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED || TLS_SM2_SIGN_SUPPORT == ENABLED || \
+   TLS_ED25519_SIGN_SUPPORT == ENABLED || TLS_ED448_SIGN_SUPPORT == ENABLED)
       //Initialize peer's EC domain parameters
       ecInitDomainParameters(&context->peerEcParams);
       //Initialize peer's EC public key
@@ -656,6 +662,40 @@ error_t tlsSetPreferredGroup(TlsContext *context, uint16_t group)
 
    //Save the preferred named group
    context->preferredGroup = group;
+
+   //Successful processing
+   return NO_ERROR;
+#else
+   //Not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
+}
+
+
+/**
+ * @brief Specify the list of allowed signature algorithms
+ * @param[in] context Pointer to the TLS context
+ * @param[in] groups List of signature algorithms (most preferred first). This
+ *   parameter is taken as reference
+ * @param[in] length Number of signature algorithms in the list
+ * @return Error code
+ **/
+
+error_t tlsSetSupportedSignAlgos(TlsContext *context,
+   const uint16_t *signAlgos, uint_t length)
+{
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+   //Invalid TLS context?
+   if(context == NULL)
+      return ERROR_INVALID_PARAMETER;
+
+   //Check parameters
+   if(signAlgos == NULL && length != 0)
+      return ERROR_INVALID_PARAMETER;
+
+   //Restrict the signature algorithms that can be used
+   context->supportedSignAlgos = signAlgos;
+   context->numSupportedSignAlgos = length;
 
    //Successful processing
    return NO_ERROR;
@@ -1238,8 +1278,7 @@ error_t tlsLoadCertificate(TlsContext *context, uint_t index,
    TlsCertDesc *cert;
    TlsCertificateType certType;
    TlsNamedGroup namedCurve;
-   TlsSignatureAlgo certSignAlgo;
-   TlsHashAlgo certHashAlgo;
+   TlsSignatureScheme certSignScheme;
 
    //Make sure the TLS context is valid
    if(context == NULL)
@@ -1304,8 +1343,7 @@ error_t tlsLoadCertificate(TlsContext *context, uint_t index,
                {
                   //Retrieve the signature algorithm that has been used to sign
                   //the certificate
-                  error = tlsGetCertificateSignAlgo(certInfo, &certSignAlgo,
-                     &certHashAlgo);
+                  error = tlsGetCertificateSignAlgo(certInfo, &certSignScheme);
                }
 
                //Release previously allocated memory
@@ -1340,8 +1378,7 @@ error_t tlsLoadCertificate(TlsContext *context, uint_t index,
       cert->privateKey = privateKey;
       cert->privateKeyLen = privateKeyLen;
       cert->type = certType;
-      cert->signAlgo = certSignAlgo;
-      cert->hashAlgo = certHashAlgo;
+      cert->signScheme = certSignScheme;
       cert->namedCurve = namedCurve;
 
       //The password if required only for encrypted private keys
@@ -2494,7 +2531,8 @@ void tlsFree(TlsContext *context)
       dsaFreePublicKey(&context->peerDsaPublicKey);
 #endif
 
-#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED || TLS_EDDSA_SIGN_SUPPORT == ENABLED)
+#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED || TLS_SM2_SIGN_SUPPORT == ENABLED || \
+   TLS_ED25519_SIGN_SUPPORT == ENABLED || TLS_ED448_SIGN_SUPPORT == ENABLED)
       //Release peer's EC domain parameters
       ecFreeDomainParameters(&context->peerEcParams);
       //Release peer's EC public key

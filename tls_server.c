@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
 //Switch to the appropriate trace level
@@ -46,7 +46,7 @@
 #include "tls_server_misc.h"
 #include "tls_common.h"
 #include "tls_extensions.h"
-#include "tls_signature.h"
+#include "tls_sign_misc.h"
 #include "tls_key_material.h"
 #include "tls_transcript_hash.h"
 #include "tls_cache.h"
@@ -640,6 +640,22 @@ error_t tlsFormatServerHello(TlsContext *context,
       p += n;
 #endif
 
+#if (TLS_ENCRYPT_THEN_MAC_SUPPORT == ENABLED)
+      //On connecting, the client includes the EncryptThenMac extension in
+      //its ClientHello if it wishes to use encrypt-then-MAC rather than the
+      //default MAC-then-encrypt. If the server is capable of meeting this
+      //requirement, it responds with an EncryptThenMac in its ServerHello
+      error = tlsFormatServerEtmExtension(context, p, &n);
+      //Any error to report?
+      if(error)
+         return error;
+
+      //Fix the length of the extension list
+      extensionList->length += (uint16_t) n;
+      //Point to the next field
+      p += n;
+#endif
+
 #if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
       //If a server implementing RFC 7627 receives the ExtendedMasterSecret
       //extension, it must include the extension in its ServerHello message
@@ -918,110 +934,27 @@ error_t tlsFormatCertificateRequest(TlsContext *context,
       //TLS 1.2 currently selected?
       if(context->version == TLS_VERSION_1_2)
       {
-         TlsSignHashAlgos *supportedSignAlgos;
+         //The supported_signature_algorithms list contains the hash/signature
+         //algorithm pairs that the server is able to verify. Servers can
+         //minimize the computation cost by offering a restricted set of digest
+         //algorithms
+         error = tlsFormatSupportedSignAlgos(context, p + *length, &n);
 
-         //Point to the list of the hash/signature algorithm pairs that the server
-         //is able to verify. Servers can minimize the computation cost by offering
-         //a restricted set of digest algorithms
-         supportedSignAlgos = PTR_OFFSET(message, *length);
-
-         //Enumerate the hash/signature algorithm pairs in descending
-         //order of preference
-         n = 0;
-
-#if (TLS_SHA256_SUPPORT == ENABLED)
-         //The hash algorithm used for PRF operations can also be used for signing
-         if(context->cipherSuite.prfHashAlgo == SHA256_HASH_ALGO)
+         //Check status code
+         if(!error)
          {
-#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED)
-            //ECDSA signature algorithm with SHA-256
-            supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
-            supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA256;
-#endif
-#if (TLS_RSA_PSS_SIGN_SUPPORT == ENABLED)
-            //Check whether the X.509 parser supports RSA-PSS signatures
-            if(x509IsSignAlgoSupported(X509_SIGN_ALGO_RSA_PSS))
-            {
-               //RSASSA-PSS PSS signature algorithm with SHA-256
-               supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA_PSS_PSS_SHA256;
-               supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
-            }
-#endif
-#if (TLS_RSA_PSS_SIGN_SUPPORT == ENABLED)
-            //RSASSA-PSS RSAE signature algorithm with SHA-256
-            supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA256;
-            supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
-#endif
-#if (TLS_RSA_SIGN_SUPPORT == ENABLED)
-            //RSASSA-PKCS1-v1_5 signature algorithm with SHA-256
-            supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
-            supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA256;
-#endif
-#if (TLS_DSA_SIGN_SUPPORT == ENABLED)
-            //DSA signature algorithm with SHA-256
-            supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_DSA;
-            supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA256;
-#endif
+            //Adjust the length of the message
+            *length += n;
          }
-#endif
-
-#if (TLS_SHA384_SUPPORT == ENABLED)
-         //The hash algorithm used for PRF operations can also be used for signing
-         if(context->cipherSuite.prfHashAlgo == SHA384_HASH_ALGO)
-         {
-#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED)
-            //ECDSA signature algorithm with SHA-384
-            supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
-            supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA384;
-#endif
-#if (TLS_RSA_PSS_SIGN_SUPPORT == ENABLED)
-            //Check whether the X.509 parser supports RSA-PSS signatures
-            if(x509IsSignAlgoSupported(X509_SIGN_ALGO_RSA_PSS))
-            {
-               //RSASSA-PSS PSS signature algorithm with SHA-384
-               supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA_PSS_PSS_SHA384;
-               supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
-            }
-#endif
-#if (TLS_RSA_PSS_SIGN_SUPPORT == ENABLED)
-            //RSASSA-PSS RSAE signature algorithm with SHA-384
-            supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA_PSS_RSAE_SHA384;
-            supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_INTRINSIC;
-#endif
-#if (TLS_RSA_SIGN_SUPPORT == ENABLED)
-            //RSASSA-PKCS1-v1_5 signature algorithm with SHA-384
-            supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
-            supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA384;
-#endif
-         }
-#endif
-
-#if (TLS_SHA1_SUPPORT == ENABLED)
-#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED)
-         //ECDSA signature algorithm with SHA-1
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_ECDSA;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA1;
-#endif
-#if (TLS_RSA_SIGN_SUPPORT == ENABLED)
-         //RSASSA-PKCS1-v1_5 signature algorithm with SHA-1
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_RSA;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA1;
-#endif
-#if (TLS_DSA_SIGN_SUPPORT == ENABLED)
-         //DSA signature algorithm with SHA-1
-         supportedSignAlgos->value[n].signature = TLS_SIGN_ALGO_DSA;
-         supportedSignAlgos->value[n++].hash = TLS_HASH_ALGO_SHA1;
-#endif
-#endif
-         //Fix the length of the list
-         supportedSignAlgos->length = htons(n * sizeof(TlsSignHashAlgo));
-         //Adjust the length of the message
-         *length += sizeof(TlsSignHashAlgos) + n * sizeof(TlsSignHashAlgo);
       }
 
-      //The certificate_authorities list contains the distinguished names of
-      //acceptable certificate authorities, represented in DER-encoded format
-      error = tlsFormatCertAuthorities(context, p + *length, &n);
+      //Check status code
+      if(!error)
+      {
+         //The certificate_authorities list contains the distinguished names of
+         //acceptable certificate authorities, represented in DER-encoded format
+         error = tlsFormatCertAuthorities(context, p + *length, &n);
+      }
 
       //Check status code
       if(!error)
@@ -1062,9 +995,10 @@ error_t tlsFormatCertificateRequest(TlsContext *context,
       //Adjust the length of the message
       *length += sizeof(TlsExtensionList);
 
-      //The SignatureAlgorithms extension must be specified
-      error = tlsFormatSignAlgosExtension(context, TLS_CIPHER_SUITE_TYPE_ECC,
-         p, &n);
+      //The SignatureAlgorithms extension contains the list of signature
+      //algorithms which the server would accept (refer to RFC 8446,
+      //section 4.3.2)
+      error = tlsFormatSignAlgosExtension(context, p, &n);
 
 #if (TLS_SIGN_ALGOS_CERT_SUPPORT == ENABLED)
       //Check status code
@@ -1552,6 +1486,17 @@ error_t tlsParseClientHello(TlsContext *context,
       //may send the EcPointFormats extension
       error = tlsParseClientEcPointFormatsExtension(context,
          extensions.ecPointFormatList);
+      //Any error to report?
+      if(error)
+         return error;
+#endif
+
+#if (TLS_ENCRYPT_THEN_MAC_SUPPORT == ENABLED)
+      //On connecting, the client includes the EncryptThenMac extension in
+      //its ClientHello if it wishes to use encrypt-then-MAC rather than the
+      //default MAC-then-encrypt (refer to RFC 7366, section 2)
+      error = tlsParseClientEtmExtension(context,
+         extensions.encryptThenMac);
       //Any error to report?
       if(error)
          return error;

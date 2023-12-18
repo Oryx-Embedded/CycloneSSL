@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
 //Switch to the appropriate trace level
@@ -110,8 +110,8 @@ error_t tls13FormatSelectedGroupExtension(TlsContext *context,
 {
    size_t n = 0;
 
-#if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_ECDHE_KE_SUPPORT == ENABLED || \
-   TLS13_PSK_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
+#if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
+   TLS13_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
    //Check whether the selected ECDHE or FFDHE group is valid
    if(context->namedGroup != TLS_GROUP_NONE)
    {
@@ -157,8 +157,8 @@ error_t tls13FormatServerKeyShareExtension(TlsContext *context,
 {
    size_t n = 0;
 
-#if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_ECDHE_KE_SUPPORT == ENABLED || \
-   TLS13_PSK_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
+#if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
+   TLS13_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
    //If using (EC)DHE key establishment, servers offer exactly one
    //KeyShareEntry in the ServerHello
    if(context->keyExchMethod == TLS13_KEY_EXCH_DHE ||
@@ -184,21 +184,6 @@ error_t tls13FormatServerKeyShareExtension(TlsContext *context,
       //negotiated key exchange
       keyShareEntry->group = htons(context->namedGroup);
 
-#if (TLS13_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
-      //ECDHE key exchange method?
-      if(context->keyExchMethod == TLS13_KEY_EXCH_ECDHE ||
-         context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE)
-      {
-         //ECDHE parameters are encoded in the opaque key_exchange field of
-         //the KeyShareEntry
-         error = ecExport(&context->ecdhContext.params,
-            &context->ecdhContext.qa.q, keyShareEntry->keyExchange, &n);
-         //Any error to report?
-         if(error)
-            return error;
-      }
-      else
-#endif
 #if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED)
       //DHE key exchange method?
       if(context->keyExchMethod == TLS13_KEY_EXCH_DHE ||
@@ -213,6 +198,21 @@ error_t tls13FormatServerKeyShareExtension(TlsContext *context,
          //and padded to the left with zeros to the size of p in bytes
          error = mpiExport(&context->dhContext.ya,
             keyShareEntry->keyExchange, n, MPI_FORMAT_BIG_ENDIAN);
+         //Any error to report?
+         if(error)
+            return error;
+      }
+      else
+#endif
+#if (TLS13_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
+      //ECDHE key exchange method?
+      if(context->keyExchMethod == TLS13_KEY_EXCH_ECDHE ||
+         context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE)
+      {
+         //ECDHE parameters are encoded in the opaque key_exchange field of
+         //the KeyShareEntry
+         error = ecExport(&context->ecdhContext.params,
+            &context->ecdhContext.qa.q, keyShareEntry->keyExchange, &n);
          //Any error to report?
          if(error)
             return error;
@@ -370,14 +370,16 @@ error_t tls13FormatServerEarlyDataExtension(TlsContext *context,
  * @brief Parse KeyShare extension
  * @param[in] context Pointer to the TLS context
  * @param[in] keyShareList Pointer to the KeyShare extension
+ * @param[in] groupList Pointer to the SupportedGroups extension
  * @return Error code
  **/
 
 error_t tls13ParseClientKeyShareExtension(TlsContext *context,
-   const Tls13KeyShareList *keyShareList)
+   const Tls13KeyShareList *keyShareList,
+   const TlsSupportedGroupList *groupList)
 {
-#if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_ECDHE_KE_SUPPORT == ENABLED || \
-   TLS13_PSK_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
+#if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
+   TLS13_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
    //KeyShare extension found?
    if(keyShareList != NULL)
    {
@@ -413,6 +415,11 @@ error_t tls13ParseClientKeyShareExtension(TlsContext *context,
          //Malformed extension?
          if(length < (sizeof(Tls13KeyShareEntry) + n))
             return ERROR_DECODING_FAILED;
+
+         //Each KeyShareEntry value must correspond to a group offered in the
+         //SupportedGroups extension (refer to RFC 8446, section 4.2.8)
+         if(!tls13IsGroupOffered(ntohs(keyShareEntry->group), groupList))
+            return ERROR_ILLEGAL_PARAMETER;
 
          //Initial or updated ClientHello?
          if(context->state == TLS_STATE_CLIENT_HELLO)

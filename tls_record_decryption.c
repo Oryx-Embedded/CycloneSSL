@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
 //Switch to the appropriate trace level
@@ -305,6 +305,27 @@ __weak_func error_t tlsDecryptCbcRecord(TlsContext *context,
    //Point to the hash algorithm
    hashAlgo = decryptionEngine->hashAlgo;
 
+#if (TLS_ENCRYPT_THEN_MAC_SUPPORT == ENABLED)
+   //Encrypt-then-MAC construction?
+   if(decryptionEngine->encryptThenMac)
+   {
+      //Verify message authentication code
+      error = tlsVerifyMessageAuthCode(context, decryptionEngine, record);
+      //Any error to report?
+      if(error)
+         return error;
+
+      //Calculate the minimum acceptable length of the ciphertext
+      n = cipherAlgo->blockSize;;
+   }
+   else
+#endif
+   //MAC-then-Encrypt construction?
+   {
+      //Calculate the minimum acceptable length of the ciphertext
+      n = MAX(cipherAlgo->blockSize, hashAlgo->digestSize + 1);
+   }
+
    //Get the length of the ciphertext
    length = tlsGetRecordLength(context, record);
    //Point to the payload
@@ -313,9 +334,6 @@ __weak_func error_t tlsDecryptCbcRecord(TlsContext *context,
    //Debug message
    TRACE_DEBUG("Record to be decrypted (%" PRIuSIZE " bytes):\r\n", length);
    TRACE_DEBUG_ARRAY("  ", record, length + sizeof(TlsRecord));
-
-   //Calculate the minimum acceptable length of the ciphertext
-   n = MAX(cipherAlgo->blockSize, hashAlgo->digestSize + 1);
 
    //TLS 1.1 and 1.2 use an explicit IV
    if(decryptionEngine->version >= TLS_VERSION_1_1)
@@ -356,29 +374,42 @@ __weak_func error_t tlsDecryptCbcRecord(TlsContext *context,
 
    //Actual length of the payload
    n = length - paddingLen - 1;
-   //Maximum possible length of the payload
-   m = length - 1;
 
-   //Extract the MAC from the TLS record
-   bad |= tlsExtractMac(decryptionEngine, data, n, m, mac);
+#if (TLS_ENCRYPT_THEN_MAC_SUPPORT == ENABLED)
+   //Encrypt-then-MAC construction?
+   if(decryptionEngine->encryptThenMac)
+   {
+      //Fix the length field of the TLS record
+      tlsSetRecordLength(context, record, n);
+   }
+   else
+#endif
+   //MAC-then-Encrypt construction?
+   {
+      //Maximum possible length of the payload
+      m = length - 1;
 
-   //Fix the length of the padding string if the format of the plaintext
-   //is not valid
-   paddingLen = CRYPTO_SELECT_32(paddingLen, 0, bad);
+      //Extract the MAC from the TLS record
+      bad |= tlsExtractMac(decryptionEngine, data, n, m, mac);
 
-   //Actual length of the plaintext data
-   n = length - hashAlgo->digestSize - paddingLen - 1;
-   //Maximum possible length of the plaintext data
-   m = length - hashAlgo->digestSize - 1;
+      //Fix the length of the padding string if the format of the plaintext
+      //is not valid
+      paddingLen = CRYPTO_SELECT_32(paddingLen, 0, bad);
 
-   //Fix the length field of the TLS record
-   tlsSetRecordLength(context, record, n);
+      //Actual length of the plaintext data
+      n = length - hashAlgo->digestSize - paddingLen - 1;
+      //Maximum possible length of the plaintext data
+      m = length - hashAlgo->digestSize - 1;
 
-   //TLS uses a HMAC construction
-   bad |= tlsVerifyMac(context, decryptionEngine, record, data, n, m, mac);
+      //Fix the length field of the TLS record
+      tlsSetRecordLength(context, record, n);
 
-   //Increment sequence number
-   tlsIncSequenceNumber(&decryptionEngine->seqNum);
+      //TLS uses a HMAC construction
+      bad |= tlsVerifyMac(context, decryptionEngine, record, data, n, m, mac);
+
+      //Increment sequence number
+      tlsIncSequenceNumber(&decryptionEngine->seqNum);
+   }
 
    //Return status code
    return bad ? ERROR_BAD_RECORD_MAC : NO_ERROR;

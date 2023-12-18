@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.2
+ * @version 2.3.4
  **/
 
 #ifndef _TLS_SERVER_EXTENSIONS_H
@@ -61,6 +61,9 @@ error_t tlsFormatClientCertTypeExtension(TlsContext *context,
 error_t tlsFormatServerCertTypeExtension(TlsContext *context,
    uint8_t *p, size_t *written);
 
+error_t tlsFormatServerEtmExtension(TlsContext *context,
+   uint8_t *p, size_t *written);
+
 error_t tlsFormatServerEmsExtension(TlsContext *context,
    uint8_t *p, size_t *written);
 
@@ -93,6 +96,9 @@ error_t tlsParseClientCertTypeListExtension(TlsContext *context,
 
 error_t tlsParseServerCertTypeListExtension(TlsContext *context,
    const TlsCertTypeList *serverCertTypeList);
+
+error_t tlsParseClientEtmExtension(TlsContext *context,
+   const TlsExtension *encryptThenMac);
 
 error_t tlsParseClientEmsExtension(TlsContext *context,
    const TlsExtension *extendedMasterSecret);
