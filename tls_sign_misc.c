@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2022-2023 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2022-2024 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneIPSEC Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.4
+ * @version 2.4.0
  **/
 
 //Switch to the appropriate trace level
@@ -129,7 +129,7 @@ error_t tlsSelectSignAlgo(TlsContext *context, const TlsCertDesc *cert,
                   //the end-entity certificate (refer to RFC 5246, section 7.4.3)
                   if(tlsIsSignAlgoAcceptable(context, signScheme, cert))
                   {
-                     //Check wether the signature algorithm is supported
+                     //Check whether the signature algorithm is supported
                      if(tlsIsSignAlgoSupported(context, signScheme))
                      {
                         context->signScheme = (TlsSignatureScheme) signScheme;
@@ -154,7 +154,7 @@ error_t tlsSelectSignAlgo(TlsContext *context, const TlsCertDesc *cert,
                //end-entity certificate (refer to RFC 5246, section 7.4.3)
                if(tlsIsSignAlgoAcceptable(context, signScheme, cert))
                {
-                  //Check wether the signature algorithm is supported
+                  //Check whether the signature algorithm is supported
                   if(tlsIsSignAlgoSupported(context, signScheme))
                   {
                      context->signScheme = (TlsSignatureScheme) signScheme;
@@ -198,7 +198,7 @@ error_t tlsSelectSignAlgo(TlsContext *context, const TlsCertDesc *cert,
                signScheme = TLS_SIGN_SCHEME_NONE;
             }
 
-            //Check wether the signature algorithm is supported
+            //Check whether the signature algorithm is supported
             if(tlsIsSignAlgoSupported(context, signScheme))
             {
                context->signScheme = (TlsSignatureScheme) signScheme;
@@ -1154,6 +1154,7 @@ bool_t tlsIsCertSignAlgoSupported(uint16_t signScheme)
       acceptable = x509IsSignAlgoSupported(X509_SIGN_ALGO_RSA_PSS) &&
          x509IsHashAlgoSupported(X509_HASH_ALGO_SHA512);
    }
+#if (EC_SUPPORT == ENABLED)
    else if(signScheme == TLS_SIGN_SCHEME_ECDSA_BP256R1_TLS13_SHA256)
    {
       //ECDSA signature algorithm with brainpoolP256 curve and SHA-256
@@ -1175,6 +1176,7 @@ bool_t tlsIsCertSignAlgoSupported(uint16_t signScheme)
          x509IsHashAlgoSupported(X509_HASH_ALGO_SHA512) &&
          x509IsCurveSupported(BRAINPOOLP512R1_OID, sizeof(BRAINPOOLP512R1_OID));
    }
+#endif
    else if(signScheme == TLS_SIGN_SCHEME_SM2SIG_SM3)
    {
       //SM2 signature algorithm

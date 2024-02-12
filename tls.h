@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2023 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2024 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.3.4
+ * @version 2.4.0
  **/
 
 #ifndef _TLS_H
@@ -81,13 +81,13 @@ struct _TlsEncryptionEngine;
 #endif
 
 //Version string
-#define CYCLONE_SSL_VERSION_STRING "2.3.4"
+#define CYCLONE_SSL_VERSION_STRING "2.4.0"
 //Major version
 #define CYCLONE_SSL_MAJOR_VERSION 2
 //Minor version
-#define CYCLONE_SSL_MINOR_VERSION 3
+#define CYCLONE_SSL_MINOR_VERSION 4
 //Revision number
-#define CYCLONE_SSL_REV_NUMBER 4
+#define CYCLONE_SSL_REV_NUMBER 0
 
 //TLS version numbers
 #define SSL_VERSION_3_0 0x0300
@@ -238,7 +238,7 @@ struct _TlsEncryptionEngine;
 
 //Secure renegotiation support
 #ifndef TLS_SECURE_RENEGOTIATION_SUPPORT
-   #define TLS_SECURE_RENEGOTIATION_SUPPORT DISABLED
+   #define TLS_SECURE_RENEGOTIATION_SUPPORT ENABLED
 #elif (TLS_SECURE_RENEGOTIATION_SUPPORT != ENABLED && TLS_SECURE_RENEGOTIATION_SUPPORT != DISABLED)
    #error TLS_SECURE_RENEGOTIATION_SUPPORT parameter is not valid
 #endif
