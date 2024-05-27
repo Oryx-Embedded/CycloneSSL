@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.0
+ * @version 2.4.2
  **/
 
 //Switch to the appropriate trace level
@@ -488,7 +488,6 @@ error_t tlsGenerateRsaPkcs1Signature(TlsContext *context,
  * @param[in] context Pointer to the TLS context
  * @param[in] hashAlgo Hash function used to digest the message
  * @param[in] digest Digest of the message to be signed
- * @param[in] digestLen Length in octets of the digest
  * @param[out] signature Resulting signature
  * @param[out] signatureLen Length of the resulting signature
  * @return Error code

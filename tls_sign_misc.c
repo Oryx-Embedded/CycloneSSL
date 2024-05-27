@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.0
+ * @version 2.4.2
  **/
 
 //Switch to the appropriate trace level
@@ -467,6 +467,7 @@ bool_t tlsIsSignAlgoOffered(uint16_t signScheme,
  *   end-entity certificate
  * @param[in] context Pointer to the TLS context
  * @param[in] signScheme Signature scheme
+ * @param[in] cert End entity certificate
  * @return TRUE if the signature algorithm is compatible, else FALSE
  **/
 

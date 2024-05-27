@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.0
+ * @version 2.4.2
  **/
 
 //Switch to the appropriate trace level
@@ -515,7 +515,11 @@ __weak_func error_t tlsParseCertificateList(TlsContext *context,
             error = x509CheckNameConstraints(subjectName, issuerCertInfo);
             //Should the application reject the certificate?
             if(error)
-               return ERROR_BAD_CERTIFICATE;
+            {
+               //Report an error
+               error = ERROR_BAD_CERTIFICATE;
+               break;
+            }
 
             //Check the version of the certificate
             if(issuerCertInfo->tbsCert.version < X509_VERSION_3)

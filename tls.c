@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.0
+ * @version 2.4.2
  **/
 
 //Switch to the appropriate trace level
@@ -675,7 +675,7 @@ error_t tlsSetPreferredGroup(TlsContext *context, uint16_t group)
 /**
  * @brief Specify the list of allowed signature algorithms
  * @param[in] context Pointer to the TLS context
- * @param[in] groups List of signature algorithms (most preferred first). This
+ * @param[in] signAlgos List of signature algorithms (most preferred first). This
  *   parameter is taken as reference
  * @param[in] length Number of signature algorithms in the list
  * @return Error code

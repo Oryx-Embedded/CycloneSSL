@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.0
+ * @version 2.4.2
  **/
 
 #ifndef _TLS_H
@@ -81,13 +81,13 @@ struct _TlsEncryptionEngine;
 #endif
 
 //Version string
-#define CYCLONE_SSL_VERSION_STRING "2.4.0"
+#define CYCLONE_SSL_VERSION_STRING "2.4.2"
 //Major version
 #define CYCLONE_SSL_MAJOR_VERSION 2
 //Minor version
 #define CYCLONE_SSL_MINOR_VERSION 4
 //Revision number
-#define CYCLONE_SSL_REV_NUMBER 0
+#define CYCLONE_SSL_REV_NUMBER 2
 
 //TLS version numbers
 #define SSL_VERSION_3_0 0x0300
