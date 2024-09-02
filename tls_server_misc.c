@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.2
+ * @version 2.4.4
  **/
 
 //Switch to the appropriate trace level
@@ -675,7 +675,7 @@ error_t tls12GenerateServerKeySignature(TlsContext *context,
    //Ed25519 signature scheme?
    if(context->signScheme == TLS_SIGN_SCHEME_ED25519)
    {
-      EddsaMessageChunk messageChunks[4];
+      DataChunk messageChunks[4];
 
       //Data to be signed is run through the EdDSA algorithm without pre-hashing
       messageChunks[0].buffer = context->clientRandom;
@@ -697,7 +697,7 @@ error_t tls12GenerateServerKeySignature(TlsContext *context,
    //Ed448 signature scheme?
    if(context->signScheme == TLS_SIGN_SCHEME_ED448)
    {
-      EddsaMessageChunk messageChunks[4];
+      DataChunk messageChunks[4];
 
       //Data to be signed is run through the EdDSA algorithm without pre-hashing
       messageChunks[0].buffer = context->clientRandom;
@@ -919,7 +919,7 @@ error_t tlsResumeStatefulSession(TlsContext *context, const uint8_t *sessionId,
             //A server that implements this extension must not accept the
             //request to resume the session if the ServerName extension contains
             //a different name (refer to RFC 6066, section 3)
-            if(osStrcmp(session->serverName, context->serverName))
+            if(osStrcmp(session->serverName, context->serverName) != 0)
             {
                //Instead, the server proceeds with a full handshake to establish
                //a new session
@@ -1548,7 +1548,7 @@ error_t tlsSelectEcdheGroup(TlsContext *context,
                      namedGroup != TLS_GROUP_BRAINPOOLP256R1_TLS13 &&
                      namedGroup != TLS_GROUP_BRAINPOOLP384R1_TLS13 &&
                      namedGroup != TLS_GROUP_BRAINPOOLP512R1_TLS13 &&
-                     namedGroup != TLS_GROUP_SM2)
+                     namedGroup != TLS_GROUP_CURVE_SM2)
                   {
                      //Save the named curve
                      context->namedGroup = namedGroup;
@@ -1572,7 +1572,7 @@ error_t tlsSelectEcdheGroup(TlsContext *context,
                namedGroup != TLS_GROUP_BRAINPOOLP256R1_TLS13 &&
                namedGroup != TLS_GROUP_BRAINPOOLP384R1_TLS13 &&
                namedGroup != TLS_GROUP_BRAINPOOLP512R1_TLS13 &&
-               namedGroup != TLS_GROUP_SM2)
+               namedGroup != TLS_GROUP_CURVE_SM2)
             {
                //Save the named curve
                context->namedGroup = namedGroup;

@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.2
+ * @version 2.4.4
  **/
 
 //Switch to the appropriate trace level
@@ -513,7 +513,7 @@ error_t tlsGenerateRsaPssSignature(TlsContext *context,
    {
       //Generate RSA signature (RSASSA-PSS signature scheme)
       error = rsassaPssSign(context->prngAlgo, context->prngContext,
-         &privateKey, hashAlgo, hashAlgo->digestSize,digest, signature,
+         &privateKey, hashAlgo, hashAlgo->digestSize, digest, signature,
          signatureLen);
    }
 
@@ -669,15 +669,15 @@ error_t tlsGenerateEcdsaSignature(TlsContext *context, const uint8_t *digest,
 /**
  * @brief Generate Ed25519 signature
  * @param[in] context Pointer to the TLS context
- * @param[in] messageChunks Collection of chunks representing the message to
- *   be signed
+ * @param[in] messageChunks Array of data chunks representing the message
+ *   to be signed
  * @param[out] signature Resulting signature
  * @param[out] signatureLen Length of the resulting signature
  * @return Error code
  **/
 
 error_t tlsGenerateEd25519Signature(TlsContext *context,
-   const EddsaMessageChunk *messageChunks, uint8_t *signature,
+   const DataChunk *messageChunks, uint8_t *signature,
    size_t *signatureLen)
 {
 #if (TLS_ED25519_SIGN_SUPPORT == ENABLED)
@@ -731,15 +731,15 @@ error_t tlsGenerateEd25519Signature(TlsContext *context,
 /**
  * @brief Generate Ed448 signature
  * @param[in] context Pointer to the TLS context
- * @param[in] messageChunks Collection of chunks representing the message to
- *   be signed
+ * @param[in] messageChunks Array of data chunks representing the message
+ *   to be signed
  * @param[out] signature Resulting signature
  * @param[out] signatureLen Length of the resulting signature
  * @return Error code
  **/
 
 error_t tlsGenerateEd448Signature(TlsContext *context,
-   const EddsaMessageChunk *messageChunks, uint8_t *signature,
+   const DataChunk *messageChunks, uint8_t *signature,
    size_t *signatureLen)
 {
 #if (TLS_ED448_SIGN_SUPPORT == ENABLED)

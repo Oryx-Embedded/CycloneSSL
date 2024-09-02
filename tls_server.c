@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.2
+ * @version 2.4.4
  **/
 
 //Switch to the appropriate trace level
@@ -294,7 +294,8 @@ error_t tlsSendCertificateRequest(TlsContext *context)
          context->keyExchMethod == TLS_KEY_EXCH_ECDHE_ECDSA ||
          context->keyExchMethod == TLS_KEY_EXCH_RSA_PSK ||
          context->keyExchMethod == TLS13_KEY_EXCH_DHE ||
-         context->keyExchMethod == TLS13_KEY_EXCH_ECDHE)
+         context->keyExchMethod == TLS13_KEY_EXCH_ECDHE ||
+         context->keyExchMethod == TLS13_KEY_EXCH_HYBRID)
       {
          //Point to the buffer where to format the message
          message = (TlsCertificateRequest *) (context->txBuffer + context->txBufferLen);
@@ -1201,7 +1202,7 @@ error_t tlsParseClientHello(TlsContext *context,
          //Check whether secure renegotiation is enabled
          if(context->secureRenegoEnabled)
          {
-            //Make sure the secure_renegociation flag is set
+            //Make sure the secure_renegotiation flag is set
             if(!context->secureRenegoFlag)
             {
                //If the connection's secure_renegotiation flag is set to

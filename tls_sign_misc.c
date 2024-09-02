@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.2
+ * @version 2.4.4
  **/
 
 //Switch to the appropriate trace level
@@ -320,7 +320,7 @@ error_t tlsFormatSignAlgosCertExtension(TlsContext *context,
       for(i = 0; i < arraysize(tlsSupportedSignAlgos); i++)
       {
          //Check whether the signature algorithm can be used for X.509
-         //certificate validation 
+         //certificate validation
          if(tlsIsCertSignAlgoSupported(tlsSupportedSignAlgos[i]))
          {
             //Add the current signature algorithm to the list
@@ -1000,7 +1000,7 @@ bool_t tlsIsSignAlgoSupported(TlsContext *context, uint16_t signScheme)
 
 /**
  * @brief Check whether a signature algorithm can be used for X.509
- *   certificate validation 
+ *   certificate validation
  * @param[in] signScheme Signature scheme
  * @return TRUE if the signature algorithm is supported, else FALSE
  **/

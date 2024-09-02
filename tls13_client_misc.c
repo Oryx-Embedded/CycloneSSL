@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.2
+ * @version 2.4.4
  **/
 
 //Switch to the appropriate trace level
@@ -110,7 +110,7 @@ error_t tls13ComputePskBinders(TlsContext *context, const void *clientHello,
    error = NO_ERROR;
 
 #if (TLS13_PSK_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
-   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
+   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
    //Check whether the ClientHello message contains a PreSharedKey extension
    if(identityList != NULL && binderList != NULL)
    {

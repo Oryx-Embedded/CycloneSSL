@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.2
+ * @version 2.4.4
  **/
 
 //Switch to the appropriate trace level
@@ -165,7 +165,8 @@ error_t tls13SendEncryptedExtensions(TlsContext *context)
       //PSK key exchange method?
       if(context->keyExchMethod == TLS13_KEY_EXCH_PSK ||
          context->keyExchMethod == TLS13_KEY_EXCH_PSK_DHE ||
-         context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE)
+         context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE ||
+         context->keyExchMethod == TLS13_KEY_EXCH_PSK_HYBRID)
       {
          //As the server is authenticating via a PSK, it does not send a
          //Certificate or a CertificateVerify message

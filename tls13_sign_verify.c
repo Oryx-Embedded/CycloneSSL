@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.2
+ * @version 2.4.4
  **/
 
 //Switch to the appropriate trace level
@@ -472,7 +472,7 @@ error_t tls13VerifyEd25519Signature(TlsContext *context, const uint8_t *message,
 {
 #if (TLS_ED25519_SIGN_SUPPORT == ENABLED)
    error_t error;
-   EddsaMessageChunk messageChunks[2];
+   DataChunk messageChunks[2];
 
    //The signature algorithm must be compatible with the key in the sender's
    //end-entity certificate (refer to RFC 8446, section 4.4.3)
@@ -517,7 +517,7 @@ error_t tls13VerifyEd448Signature(TlsContext *context, const uint8_t *message,
 {
 #if (TLS_ED448_SIGN_SUPPORT == ENABLED)
    error_t error;
-   EddsaMessageChunk messageChunks[2];
+   DataChunk messageChunks[2];
 
    //The signature algorithm must be compatible with the key in the sender's
    //end-entity certificate (refer to RFC 8446, section 4.4.3)

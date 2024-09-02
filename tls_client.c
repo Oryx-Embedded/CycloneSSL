@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.2
+ * @version 2.4.4
  **/
 
 //Switch to the appropriate trace level
@@ -890,7 +890,7 @@ error_t tlsParseHelloRequest(TlsContext *context,
    if(context->state == TLS_STATE_APPLICATION_DATA)
    {
 #if (TLS_SECURE_RENEGOTIATION_SUPPORT == ENABLED)
-      //Check whether the secure_renegociation flag is set
+      //Check whether the secure_renegotiation flag is set
       if(context->secureRenegoEnabled && context->secureRenegoFlag)
       {
          //Release existing session ticket, if any
@@ -1465,6 +1465,8 @@ error_t tlsParseServerKeyExchange(TlsContext *context,
       else
 #endif
       {
+         //Just for sanity
+         (void) params;
          //Report an error
          error = ERROR_INVALID_VERSION;
       }
@@ -1562,7 +1564,8 @@ error_t tlsParseCertificateRequest(TlsContext *context,
    }
    else if(context->keyExchMethod == TLS13_KEY_EXCH_PSK ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_DHE ||
-      context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE)
+      context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE ||
+      context->keyExchMethod == TLS13_KEY_EXCH_PSK_HYBRID)
    {
       //Servers which are authenticating with a PSK must not send the
       //CertificateRequest message in the main handshake

@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.2
+ * @version 2.4.4
  **/
 
 //Switch to the appropriate trace level
@@ -330,6 +330,56 @@ error_t tls13GenerateKeyShare(TlsContext *context, uint16_t namedGroup)
    }
    else
 #endif
+#if (TLS13_HYBRID_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
+   //Hybrid key exchange method?
+   if(tls13IsHybridKeMethodSupported(context, namedGroup))
+   {
+      const EcCurveInfo *curveInfo;
+      const KemAlgo *kemAlgo;
+
+      //Retrieve the traditional and the next-gen algorithms to be used
+      curveInfo = tls13GetTraditionalAlgo(context, namedGroup);
+      kemAlgo = tls13GetNextGenAlgo(context, namedGroup);
+
+      //Valid algorithms?
+      if(curveInfo != NULL && kemAlgo != NULL)
+      {
+         //Save the named group
+         context->namedGroup = namedGroup;
+
+         //Load EC domain parameters
+         error = ecLoadDomainParameters(&context->ecdhContext.params, curveInfo);
+
+         //Check status code
+         if(!error)
+         {
+            //DH key exchange can be modeled as a KEM, with KeyGen corresponding
+            //to selecting an exponent x as the secret key and computing the
+            //public key g^x
+            error = ecdhGenerateKeyPair(&context->ecdhContext, context->prngAlgo,
+               context->prngContext);
+         }
+
+         //Check status code
+         if(!error)
+         {
+            //Initialize KEM context
+            kemFree(&context->kemContext);
+            kemInit(&context->kemContext, kemAlgo);
+
+            //Generate a public key pk and a secret key sk
+            error = kemGenerateKeyPair(&context->kemContext, context->prngAlgo,
+               context->prngContext);
+         }
+      }
+      else
+      {
+         //Unsupported hybrid key exchange method
+         error = ERROR_ILLEGAL_PARAMETER;
+      }
+   }
+   else
+#endif
    //Unknown group?
    {
       //Report an error
@@ -434,6 +484,188 @@ error_t tls13GenerateSharedSecret(TlsContext *context, const uint8_t *keyShare,
 
    //Return status code
    return error;
+}
+
+
+/**
+ * @brief Encapsulation algorithm
+ * @param[in] context Pointer to the TLS context
+ * @param[in] keyShare Pointer to the client's key share
+ * @param[in] length Length of the client's key share, in bytes
+ * @return Error code
+ **/
+
+error_t tls13Encapsulate(TlsContext *context, uint16_t namedGroup,
+   const uint8_t *keyShare, size_t length)
+{
+#if (TLS13_HYBRID_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
+   error_t error;
+   const EcCurveInfo *curveInfo;
+   const KemAlgo *kemAlgo;
+
+   //Retrieve the traditional and the next-gen algorithms to be used
+   curveInfo = tls13GetTraditionalAlgo(context, namedGroup);
+   kemAlgo = tls13GetNextGenAlgo(context, namedGroup);
+
+   //Valid algorithms?
+   if(curveInfo != NULL && kemAlgo != NULL)
+   {
+      //The client's share is a fixed-size concatenation of the ECDH ephemeral
+      //key share and the pk outputs of the KEM KeyGen algorithm
+      if(length > kemAlgo->publicKeySize)
+      {
+         //Save the named group
+         context->namedGroup = namedGroup;
+
+         //Initialize KEM context
+         kemFree(&context->kemContext);
+         kemInit(&context->kemContext, kemAlgo);
+
+         //Load EC domain parameters
+         error = ecLoadDomainParameters(&context->ecdhContext.params,
+            curveInfo);
+
+         //Check status code
+         if(!error)
+         {
+            //DH key exchange can be modeled as a KEM, with encapsulation
+            //corresponding to selecting an exponent y, computing the ciphertext
+            //g^y and the shared secret g^(xy)
+            error = ecdhGenerateKeyPair(&context->ecdhContext,
+               context->prngAlgo, context->prngContext);
+         }
+
+         //Check status code
+         if(!error)
+         {
+            //The ECDHE share is the serialized value of the uncompressed ECDH
+            //point representation
+            error = ecImport(&context->ecdhContext.params,
+               &context->ecdhContext.qb.q, keyShare,
+               length - kemAlgo->publicKeySize);
+         }
+
+         //Check status code
+         if(!error)
+         {
+            //Verify client's public key
+            error = ecdhCheckPublicKey(&context->ecdhContext.params,
+               &context->ecdhContext.qb.q);
+         }
+
+         //Check status code
+         if(!error)
+         {
+            //Compute the shared secret g^(xy)
+            error = ecdhComputeSharedSecret(&context->ecdhContext,
+               context->premasterSecret, TLS_PREMASTER_SECRET_SIZE,
+               &context->premasterSecretLen);
+         }
+
+         //Check status code
+         if(!error)
+         {
+            //The encapsulation algorithm takes as input a public key pk and
+            //outputs a ciphertext ct and shared secret ss
+            error = kemLoadPublicKey(&context->kemContext,
+               keyShare + length - kemAlgo->publicKeySize);
+         }
+      }
+      else
+      {
+         //The length of the key share is not valid
+         error = ERROR_ILLEGAL_PARAMETER;
+      }
+   }
+   else
+   {
+      //Unsupported hybrid key exchange method
+      error = ERROR_ILLEGAL_PARAMETER;
+   }
+
+   //Return status code
+   return error;
+#else
+   //Hybrid key exchange is not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
+}
+
+
+/**
+ * @brief Decapsulation algorithm
+ * @param[in] context Pointer to the TLS context
+ * @param[in] keyShare Pointer to the server's key share
+ * @param[in] length Length of the client's key share, in bytes
+ * @return Error code
+ **/
+
+error_t tls13Decapsulate(TlsContext *context, const uint8_t *keyShare,
+   size_t length)
+{
+#if (TLS13_HYBRID_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
+   error_t error;
+   size_t n;
+
+   //Get the length of the KEM ciphertext
+   n = context->kemContext.kemAlgo->ciphertextSize;
+
+   //The server's share is a fixed-size concatenation of the ECDH ephemeral
+   //key share and the ct outputs of the KEM Encaps algorithm
+   if(length > n)
+   {
+      //The ECDHE share is the serialized value of the uncompressed ECDH point
+      //representation
+      error = ecImport(&context->ecdhContext.params, &context->ecdhContext.qb.q,
+         keyShare, length - n);
+
+      //Check status code
+      if(!error)
+      {
+         //Verify server's public key
+         error = ecdhCheckPublicKey(&context->ecdhContext.params,
+            &context->ecdhContext.qb.q);
+      }
+
+      //Check status code
+      if(!error)
+      {
+         //DH key exchange can be modeled as a KEM, with decapsulation
+         //corresponding to computing the shared secret g^(xy)
+         error = ecdhComputeSharedSecret(&context->ecdhContext,
+            context->premasterSecret, TLS_PREMASTER_SECRET_SIZE,
+            &context->premasterSecretLen);
+      }
+
+      //Check status code
+      if(!error)
+      {
+         //The decapsulation algorithm takes as input a secret key sk and
+         //ciphertext ct and outputs a shared secret ss
+         error = kemDecapsulate(&context->kemContext, keyShare + length - n,
+            context->premasterSecret + context->premasterSecretLen);
+      }
+
+      //Check status code
+      if(!error)
+      {
+         //The two shared secrets are concatenated together and used as the
+         //shared secret in the existing TLS 1.3 key schedule
+         context->premasterSecretLen += context->kemContext.kemAlgo->sharedSecretSize;
+      }
+   }
+   else
+   {
+      //The length of the key share is not valid
+      error = ERROR_ILLEGAL_PARAMETER;
+   }
+
+   //Return status code
+   return error;
+#else
+   //Hybrid key exchange is not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
 }
 
 
@@ -580,12 +812,16 @@ bool_t tls13IsGroupSupported(TlsContext *context, uint16_t namedGroup)
    //Initialize flag
    acceptable = FALSE;
 
-   //Check whether the FFDHE or ECDHE group is supported
+   //Check whether the specified named group is supported
    if(tls13IsFfdheGroupSupported(context, namedGroup))
    {
       acceptable = TRUE;
    }
    else if(tls13IsEcdheGroupSupported(context, namedGroup))
+   {
+      acceptable = TRUE;
+   }
+   else if(tls13IsHybridKeMethodSupported(context, namedGroup))
    {
       acceptable = TRUE;
    }
@@ -658,8 +894,8 @@ bool_t tls13IsEcdheGroupSupported(TlsContext *context, uint16_t namedGroup)
    if(namedGroup == TLS_GROUP_SECP256R1 ||
       namedGroup == TLS_GROUP_SECP384R1 ||
       namedGroup == TLS_GROUP_SECP521R1 ||
-      namedGroup == TLS_GROUP_ECDH_X25519 ||
-      namedGroup == TLS_GROUP_ECDH_X448 ||
+      namedGroup == TLS_GROUP_X25519 ||
+      namedGroup == TLS_GROUP_X448 ||
       namedGroup == TLS_GROUP_BRAINPOOLP256R1_TLS13 ||
       namedGroup == TLS_GROUP_BRAINPOOLP384R1_TLS13 ||
       namedGroup == TLS_GROUP_BRAINPOOLP512R1_TLS13)
@@ -674,7 +910,7 @@ bool_t tls13IsEcdheGroupSupported(TlsContext *context, uint16_t namedGroup)
          }
       }
    }
-   else if(namedGroup == TLS_GROUP_SM2)
+   else if(namedGroup == TLS_GROUP_CURVE_SM2)
    {
       //Any ShangMi cipher suite proposed by the client?
       if((context->cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_SM) != 0)
@@ -694,6 +930,168 @@ bool_t tls13IsEcdheGroupSupported(TlsContext *context, uint16_t namedGroup)
 
    //Return TRUE is the named group is supported
    return acceptable;
+}
+
+
+/**
+ * @brief Check whether a given hybrid key exchange method is supported
+ * @param[in] context Pointer to the TLS context
+ * @param[in] namedGroup Named group
+ * @return TRUE is the hybrid key exchange is supported, else FALSE
+ **/
+
+bool_t tls13IsHybridKeMethodSupported(TlsContext *context, uint16_t namedGroup)
+{
+   bool_t acceptable;
+
+   //Initialize flag
+   acceptable = FALSE;
+
+#if (TLS13_HYBRID_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
+   //Hybrid key exchange method?
+   if(namedGroup == TLS_GROUP_X25519_KYBER768_DRAFT00 ||
+      namedGroup == TLS_GROUP_SECP256R1_KYBER768_DRAFT00)
+   {
+      //Any TLS 1.3 cipher suite proposed by the client?
+      if((context->cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_TLS13) != 0)
+      {
+         //Check whether the hybrid key exchange method is supported
+         if(tls13GetTraditionalAlgo(context, namedGroup) != NULL &&
+            tls13GetNextGenAlgo(context, namedGroup) != NULL)
+         {
+            acceptable = TRUE;
+         }
+      }
+   }
+   else
+   {
+      //Unknown group
+   }
+#endif
+
+   //Return TRUE is the named group is supported
+   return acceptable;
+}
+
+
+/**
+ * @brief Get the traditional algorithm used by the hybrid key exchange method
+ * @param[in] context Pointer to the TLS context
+ * @param[in] namedGroup Hybrid key exchange method
+ * @return Traditional algorithm
+ **/
+
+const EcCurveInfo *tls13GetTraditionalAlgo(TlsContext *context,
+   uint16_t namedGroup)
+{
+   const EcCurveInfo *curveInfo;
+
+   //Default elliptic curve domain parameters
+   curveInfo = NULL;
+
+#if (TLS13_HYBRID_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
+   //Check hybrid key exchange method
+   switch(namedGroup)
+   {
+#if (TLS_SECP256R1_SUPPORT == ENABLED)
+   //secp256r1 elliptic curve?
+   case TLS_GROUP_SECP256R1_KYBER768_DRAFT00:
+      curveInfo = ecGetCurveInfo(SECP256R1_OID, sizeof(SECP256R1_OID));
+      break;
+#endif
+#if (TLS_X25519_SUPPORT == ENABLED)
+   //Curve25519 elliptic curve?
+   case TLS_GROUP_X25519_KYBER768_DRAFT00:
+      curveInfo = ecGetCurveInfo(X25519_OID, sizeof(X25519_OID));
+      break;
+#endif
+   //Unknown group?
+   default:
+      curveInfo = NULL;
+      break;
+   }
+
+   //Restrict the use of certain algorithms
+   if(context->numSupportedGroups > 0)
+   {
+      uint_t i;
+
+      //Loop through the list of allowed named groups
+      for(i = 0; i < context->numSupportedGroups; i++)
+      {
+         //Compare named groups
+         if(context->supportedGroups[i] == namedGroup)
+            break;
+      }
+
+      //Check whether the use of the algorithm is restricted
+      if(i >= context->numSupportedGroups)
+      {
+         curveInfo = NULL;
+      }
+   }
+#endif
+
+   //Return elliptic curve domain parameters, if any
+   return curveInfo;
+}
+
+
+/**
+ * @brief Get the next-gen algorithm used by the hybrid key exchange method
+ * @param[in] context Pointer to the TLS context
+ * @param[in] namedGroup Hybrid key exchange method
+ * @return Next-gen algorithm
+ **/
+
+const KemAlgo *tls13GetNextGenAlgo(TlsContext *context,
+   uint16_t namedGroup)
+{
+   const KemAlgo *kemAlgo;
+
+   //Default KEM algorithm
+   kemAlgo = NULL;
+
+#if (TLS13_HYBRID_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
+   //Check hybrid key exchange method
+   switch(namedGroup)
+   {
+#if (TLS_MLKEM768_SUPPORT == ENABLED)
+   //ML-KEM-768 key encapsulation mechanism?
+   case TLS_GROUP_SECP256R1_KYBER768_DRAFT00:
+   case TLS_GROUP_X25519_KYBER768_DRAFT00:
+      kemAlgo = MLKEM768_KEM_ALGO;
+      break;
+#endif
+   //Unknown group?
+   default:
+      kemAlgo = NULL;
+      break;
+   }
+
+   //Restrict the use of certain algorithms
+   if(context->numSupportedGroups > 0)
+   {
+      uint_t i;
+
+      //Loop through the list of allowed named groups
+      for(i = 0; i < context->numSupportedGroups; i++)
+      {
+         //Compare named groups
+         if(context->supportedGroups[i] == namedGroup)
+            break;
+      }
+
+      //Check whether the use of the algorithm is restricted
+      if(i >= context->numSupportedGroups)
+      {
+         kemAlgo = NULL;
+      }
+   }
+#endif
+
+   //Return KEM algorithm, if any
+   return kemAlgo;
 }
 
 

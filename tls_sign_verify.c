@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.2
+ * @version 2.4.4
  **/
 
 //Switch to the appropriate trace level
@@ -607,7 +607,7 @@ error_t tlsVerifyEcdsaSignature(TlsContext *context, const uint8_t *digest,
 /**
  * @brief Verify Ed25519 signature
  * @param[in] context Pointer to the TLS context
- * @param[in] messageChunks Collection of chunks representing the message
+ * @param[in] messageChunks Array of data chunks representing the message
  *   whose signature is to be verified
  * @param[in] signature Signature to be verified
  * @param[in] signatureLen Length of the signature to be verified
@@ -615,7 +615,7 @@ error_t tlsVerifyEcdsaSignature(TlsContext *context, const uint8_t *digest,
  **/
 
 error_t tlsVerifyEd25519Signature(TlsContext *context,
-   const EddsaMessageChunk *messageChunks, const uint8_t *signature,
+   const DataChunk *messageChunks, const uint8_t *signature,
    size_t signatureLen)
 {
 #if (TLS_ED25519_SIGN_SUPPORT == ENABLED)
@@ -655,7 +655,7 @@ error_t tlsVerifyEd25519Signature(TlsContext *context,
 /**
  * @brief Verify Ed448 signature
  * @param[in] context Pointer to the TLS context
- * @param[in] messageChunks Collection of chunks representing the message
+ * @param[in] messageChunks Array of data chunks representing the message
  *   whose signature is to be verified
  * @param[in] signature Signature to be verified
  * @param[in] signatureLen Length of the signature to be verified
@@ -663,7 +663,7 @@ error_t tlsVerifyEd25519Signature(TlsContext *context,
  **/
 
 error_t tlsVerifyEd448Signature(TlsContext *context,
-   const EddsaMessageChunk *messageChunks, const uint8_t *signature,
+   const DataChunk *messageChunks, const uint8_t *signature,
    size_t signatureLen)
 {
 #if (TLS_ED448_SIGN_SUPPORT == ENABLED)

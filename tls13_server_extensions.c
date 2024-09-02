@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.2
+ * @version 2.4.4
  **/
 
 //Switch to the appropriate trace level
@@ -111,7 +111,8 @@ error_t tls13FormatSelectedGroupExtension(TlsContext *context,
    size_t n = 0;
 
 #if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
-   TLS13_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
+   TLS13_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || \
+   TLS13_HYBRID_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
    //Check whether the selected ECDHE or FFDHE group is valid
    if(context->namedGroup != TLS_GROUP_NONE)
    {
@@ -158,13 +159,16 @@ error_t tls13FormatServerKeyShareExtension(TlsContext *context,
    size_t n = 0;
 
 #if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
-   TLS13_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
+   TLS13_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || \
+   TLS13_HYBRID_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
    //If using (EC)DHE key establishment, servers offer exactly one
    //KeyShareEntry in the ServerHello
    if(context->keyExchMethod == TLS13_KEY_EXCH_DHE ||
       context->keyExchMethod == TLS13_KEY_EXCH_ECDHE ||
+      context->keyExchMethod == TLS13_KEY_EXCH_HYBRID ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_DHE ||
-      context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE)
+      context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE ||
+      context->keyExchMethod == TLS13_KEY_EXCH_PSK_HYBRID)
    {
       error_t error;
       TlsExtension *extension;
@@ -219,6 +223,38 @@ error_t tls13FormatServerKeyShareExtension(TlsContext *context,
       }
       else
 #endif
+#if (TLS13_HYBRID_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
+      //Hybrid key exchange method?
+      if(context->keyExchMethod == TLS13_KEY_EXCH_HYBRID ||
+         context->keyExchMethod == TLS13_KEY_EXCH_PSK_HYBRID)
+      {
+         //The server ECDHE share is the serialized value of the uncompressed
+         //ECDH point representation
+         error = ecExport(&context->ecdhContext.params,
+            &context->ecdhContext.qa.q, keyShareEntry->keyExchange, &n);
+         //Any error to report?
+         if(error)
+            return error;
+
+         //The server share is the Kyber's ciphertext returned from the
+         //Encapsulate step represented as an octet string
+         error = kemEncapsulate(&context->kemContext, context->prngAlgo,
+            context->prngContext, keyShareEntry->keyExchange + n,
+            context->premasterSecret + context->premasterSecretLen);
+         //Any error to report?
+         if(error)
+            return error;
+
+         //The server's share is a fixed-size concatenation of ECDHE share and
+         //Kyber's ciphertext returned from encapsulation
+         n += context->kemContext.kemAlgo->ciphertextSize;
+
+         //Finally, the shared secret is a concatenation of the ECDHE and the
+         //Kyber shared secrets
+         context->premasterSecretLen += context->kemContext.kemAlgo->sharedSecretSize;
+      }
+      else
+#endif
       //Unknown key exchange method?
       {
          //Report an error
@@ -260,11 +296,12 @@ error_t tls13FormatServerPreSharedKeyExtension(TlsContext *context,
    size_t n = 0;
 
 #if (TLS13_PSK_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
-   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
+   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
    //PSK key exchange method?
    if(context->keyExchMethod == TLS13_KEY_EXCH_PSK ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_DHE ||
-      context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE)
+      context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE ||
+      context->keyExchMethod == TLS13_KEY_EXCH_PSK_HYBRID)
    {
       TlsExtension *extension;
 
@@ -379,12 +416,14 @@ error_t tls13ParseClientKeyShareExtension(TlsContext *context,
    const TlsSupportedGroupList *groupList)
 {
 #if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
-   TLS13_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
+   TLS13_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || \
+   TLS13_HYBRID_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
    //KeyShare extension found?
    if(keyShareList != NULL)
    {
       error_t error;
       bool_t acceptable;
+      uint16_t namedGroup;
       size_t n;
       size_t length;
       const uint8_t *p;
@@ -449,22 +488,51 @@ error_t tls13ParseClientKeyShareExtension(TlsContext *context,
       //Acceptable ECDHE or FFDHE group found?
       if(acceptable)
       {
-         //Generate an ephemeral key pair
-         error = tls13GenerateKeyShare(context, ntohs(keyShareEntry->group));
-         //Any error to report?
-         if(error)
-            return error;
+         //Convert the named group to host byte order
+         namedGroup = ntohs(keyShareEntry->group);
 
-         //Compute (EC)DHE shared secret
-         error = tls13GenerateSharedSecret(context, keyShareEntry->keyExchange,
-            ntohs(keyShareEntry->length));
-         //Any error to report?
-         if(error)
-            return error;
-
-         //Elliptic curve group?
-         if(tls13IsEcdheGroupSupported(context, context->namedGroup))
+         //Finite field group?
+         if(tls13IsFfdheGroupSupported(context, namedGroup))
          {
+            //Generate an ephemeral key pair
+            error = tls13GenerateKeyShare(context, namedGroup);
+            //Any error to report?
+            if(error)
+               return error;
+
+            //Compute DHE shared secret
+            error = tls13GenerateSharedSecret(context,
+               keyShareEntry->keyExchange, ntohs(keyShareEntry->length));
+            //Any error to report?
+            if(error)
+               return error;
+
+            //DHE key exchange mechanism provides forward secrecy
+            if(context->keyExchMethod == TLS13_KEY_EXCH_PSK)
+            {
+               context->keyExchMethod = TLS13_KEY_EXCH_PSK_DHE;
+            }
+            else
+            {
+               context->keyExchMethod = TLS13_KEY_EXCH_DHE;
+            }
+         }
+         //Elliptic curve group?
+         else if(tls13IsEcdheGroupSupported(context, namedGroup))
+         {
+            //Generate an ephemeral key pair
+            error = tls13GenerateKeyShare(context, namedGroup);
+            //Any error to report?
+            if(error)
+               return error;
+
+            //Compute ECDHE shared secret
+            error = tls13GenerateSharedSecret(context,
+               keyShareEntry->keyExchange, ntohs(keyShareEntry->length));
+            //Any error to report?
+            if(error)
+               return error;
+
             //ECDHE key exchange mechanism provides forward secrecy
             if(context->keyExchMethod == TLS13_KEY_EXCH_PSK)
             {
@@ -475,17 +543,25 @@ error_t tls13ParseClientKeyShareExtension(TlsContext *context,
                context->keyExchMethod = TLS13_KEY_EXCH_ECDHE;
             }
          }
-         //Finite field group?
-         else if(tls13IsFfdheGroupSupported(context, context->namedGroup))
+         //Hybrid key exchange method?
+         else if(tls13IsHybridKeMethodSupported(context, namedGroup))
          {
-            //DHE key exchange mechanism provides forward secrecy
+            //Encapsulation algorithm
+            error = tls13Encapsulate(context, namedGroup,
+               keyShareEntry->keyExchange, ntohs(keyShareEntry->length));
+            //Any error to report?
+            if(error)
+               return error;
+
+            //Hybrid key exchange makes use of two key exchange algorithms
+            //based on different cryptographic assumptions
             if(context->keyExchMethod == TLS13_KEY_EXCH_PSK)
             {
-               context->keyExchMethod = TLS13_KEY_EXCH_PSK_DHE;
+               context->keyExchMethod = TLS13_KEY_EXCH_PSK_HYBRID;
             }
             else
             {
-               context->keyExchMethod = TLS13_KEY_EXCH_DHE;
+               context->keyExchMethod = TLS13_KEY_EXCH_HYBRID;
             }
          }
          //Unknown group?
@@ -541,7 +617,8 @@ error_t tls13ParsePskKeModesExtension(TlsContext *context,
    //PSK key exchange method?
    if(context->keyExchMethod == TLS13_KEY_EXCH_PSK ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_DHE ||
-      context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE)
+      context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE ||
+      context->keyExchMethod == TLS13_KEY_EXCH_PSK_HYBRID)
    {
       //PskKeyExchangeModes extension found?
       if(pskKeModeList != NULL)
@@ -565,14 +642,16 @@ error_t tls13ParsePskKeModesExtension(TlsContext *context,
             }
             else
 #endif
-#if (TLS13_PSK_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
+#if (TLS13_PSK_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || \
+   TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
             //PSK with (EC)DHE key establishment?
             if(pskKeModeList->value[i] == TLS_PSK_KEY_EXCH_MODE_PSK_DHE_KE)
             {
                //Servers must not select a key exchange mode that is not listed
                //by the client
                if(context->keyExchMethod == TLS13_KEY_EXCH_PSK_DHE ||
-                  context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE)
+                  context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE ||
+                  context->keyExchMethod == TLS13_KEY_EXCH_PSK_HYBRID)
                {
                   error = NO_ERROR;
                }
@@ -621,7 +700,7 @@ error_t tls13ParseClientPreSharedKeyExtension(TlsContext *context,
    const Tls13PskIdentityList *identityList, const Tls13PskBinderList *binderList)
 {
  #if (TLS13_PSK_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
-   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
+   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
    //PreSharedKey extension found?
    if(identityList != NULL && binderList != NULL)
    {

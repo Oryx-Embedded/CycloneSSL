@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.2
+ * @version 2.4.4
  **/
 
 //Switch to the appropriate trace level
@@ -98,9 +98,9 @@ TlsContext *tlsInit(void)
          TLS_CIPHER_SUITE_TYPE_SM;
 
       //Select default named group
-      if(tls13IsGroupSupported(context, TLS_GROUP_ECDH_X25519))
+      if(tls13IsGroupSupported(context, TLS_GROUP_X25519))
       {
-         context->preferredGroup = TLS_GROUP_ECDH_X25519;
+         context->preferredGroup = TLS_GROUP_X25519;
       }
       else if(tls13IsGroupSupported(context, TLS_GROUP_SECP256R1))
       {
@@ -129,9 +129,14 @@ TlsContext *tlsInit(void)
       dhInit(&context->dhContext);
 #endif
 
-#if (TLS_ECDH_SUPPORT == ENABLED)
+#if (TLS_ECDH_SUPPORT == ENABLED || TLS_HYBRID_SUPPORT == ENABLED)
       //Initialize ECDH context
       ecdhInit(&context->ecdhContext);
+#endif
+
+#if (TLS_HYBRID_SUPPORT == ENABLED)
+      //Initialize KEM context
+      kemInit(&context->kemContext, NULL);
 #endif
 
 #if (TLS_RSA_SUPPORT == ENABLED)
@@ -2516,9 +2521,14 @@ void tlsFree(TlsContext *context)
       dhFree(&context->dhContext);
 #endif
 
-#if (TLS_ECDH_SUPPORT == ENABLED)
+#if (TLS_ECDH_SUPPORT == ENABLED || TLS_HYBRID_SUPPORT == ENABLED)
       //Release ECDH context
       ecdhFree(&context->ecdhContext);
+#endif
+
+#if (TLS_HYBRID_SUPPORT == ENABLED)
+      //Release KEM context
+      kemFree(&context->kemContext);
 #endif
 
 #if (TLS_RSA_SUPPORT == ENABLED)

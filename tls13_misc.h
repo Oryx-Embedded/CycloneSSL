@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.2
+ * @version 2.4.4
  **/
 
 #ifndef _TLS13_MISC_H
@@ -38,32 +38,46 @@
    #error TLS13_DHE_KE_SUPPORT parameter is not valid
 #endif
 
-//ECDHE key establishment
+//ECDHE key exchange support
 #ifndef TLS13_ECDHE_KE_SUPPORT
    #define TLS13_ECDHE_KE_SUPPORT ENABLED
 #elif (TLS13_ECDHE_KE_SUPPORT != ENABLED && TLS13_ECDHE_KE_SUPPORT != DISABLED)
    #error TLS13_ECDHE_KE_SUPPORT parameter is not valid
 #endif
 
-//PSK-only key establishment
+//Hybrid key exchange support
+#ifndef TLS13_HYBRID_KE_SUPPORT
+   #define TLS13_HYBRID_KE_SUPPORT DISABLED
+#elif (TLS13_HYBRID_KE_SUPPORT != ENABLED && TLS13_HYBRID_KE_SUPPORT != DISABLED)
+   #error TLS13_HYBRID_KE_SUPPORT parameter is not valid
+#endif
+
+//PSK-only key exchange support
 #ifndef TLS13_PSK_KE_SUPPORT
    #define TLS13_PSK_KE_SUPPORT DISABLED
 #elif (TLS13_PSK_KE_SUPPORT != ENABLED && TLS13_PSK_KE_SUPPORT != DISABLED)
    #error TLS13_PSK_KE_SUPPORT parameter is not valid
 #endif
 
-//PSK with DHE key establishment
+//PSK with DHE key exchange support
 #ifndef TLS13_PSK_DHE_KE_SUPPORT
    #define TLS13_PSK_DHE_KE_SUPPORT ENABLED
 #elif (TLS13_PSK_DHE_KE_SUPPORT != ENABLED && TLS13_PSK_DHE_KE_SUPPORT != DISABLED)
    #error TLS13_PSK_DHE_KE_SUPPORT parameter is not valid
 #endif
 
-//PSK with ECDHE key establishment
+//PSK with ECDHE key exchange support
 #ifndef TLS13_PSK_ECDHE_KE_SUPPORT
    #define TLS13_PSK_ECDHE_KE_SUPPORT ENABLED
 #elif (TLS13_PSK_ECDHE_KE_SUPPORT != ENABLED && TLS13_PSK_ECDHE_KE_SUPPORT != DISABLED)
    #error TLS13_PSK_ECDHE_KE_SUPPORT parameter is not valid
+#endif
+
+//PSK with hybrid key exchange support
+#ifndef TLS13_PSK_HYBRID_KE_SUPPORT
+   #define TLS13_PSK_HYBRID_KE_SUPPORT DISABLED
+#elif (TLS13_PSK_HYBRID_KE_SUPPORT != ENABLED && TLS13_PSK_HYBRID_KE_SUPPORT != DISABLED)
+   #error TLS13_PSK_HYBRID_KE_SUPPORT parameter is not valid
 #endif
 
 //Early data support
@@ -374,6 +388,12 @@ error_t tls13GenerateKeyShare(TlsContext *context, uint16_t namedGroup);
 error_t tls13GenerateSharedSecret(TlsContext *context, const uint8_t *keyShare,
    size_t length);
 
+error_t tls13Encapsulate(TlsContext *context, uint16_t namedGroup,
+   const uint8_t *keyShare, size_t length);
+
+error_t tls13Decapsulate(TlsContext *context, const uint8_t *keyShare,
+   size_t length);
+
 error_t tls13ComputeMac(TlsContext *context, TlsEncryptionEngine *encryptionEngine,
    void *record, const uint8_t *data, size_t dataLen, uint8_t *mac);
 
@@ -384,6 +404,13 @@ bool_t tls13IsPskValid(TlsContext *context);
 bool_t tls13IsGroupSupported(TlsContext *context, uint16_t namedGroup);
 bool_t tls13IsFfdheGroupSupported(TlsContext *context, uint16_t namedGroup);
 bool_t tls13IsEcdheGroupSupported(TlsContext *context, uint16_t namedGroup);
+bool_t tls13IsHybridKeMethodSupported(TlsContext *context, uint16_t namedGroup);
+
+const EcCurveInfo *tls13GetTraditionalAlgo(TlsContext *context,
+   uint16_t namedGroup);
+
+const KemAlgo *tls13GetNextGenAlgo(TlsContext *context,
+   uint16_t namedGroup);
 
 error_t tls13CheckDuplicateKeyShare(uint16_t namedGroup, const uint8_t *p,
    size_t length);

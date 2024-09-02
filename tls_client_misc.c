@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.2
+ * @version 2.4.4
  **/
 
 //Switch to the appropriate trace level
@@ -751,7 +751,7 @@ error_t tlsParseServerKeyParams(TlsContext *context, const uint8_t *p,
          if(context->namedGroup == TLS_GROUP_BRAINPOOLP256R1_TLS13 ||
             context->namedGroup == TLS_GROUP_BRAINPOOLP384R1_TLS13 ||
             context->namedGroup == TLS_GROUP_BRAINPOOLP512R1_TLS13 ||
-            context->namedGroup == TLS_GROUP_SM2)
+            context->namedGroup == TLS_GROUP_CURVE_SM2)
          {
             //These elliptic curves do not apply to any older versions of TLS
             error = ERROR_ILLEGAL_PARAMETER;
@@ -1031,10 +1031,10 @@ __weak_func error_t tls12VerifyServerKeySignature(TlsContext *context,
    const Tls12DigitalSignature *signature, size_t length,
    const uint8_t *params, size_t paramsLen, size_t *consumed)
 {
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    error_t error;
    TlsSignatureScheme signScheme;
 
-#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //Initialize status code
    error = NO_ERROR;
 
@@ -1221,7 +1221,7 @@ __weak_func error_t tls12VerifyServerKeySignature(TlsContext *context,
    if(signScheme == TLS_SIGN_SCHEME_ED25519 &&
       context->peerCertType == TLS_CERT_ED25519_SIGN)
    {
-      EddsaMessageChunk messageChunks[4];
+      DataChunk messageChunks[4];
 
       //Data to be verified is run through the EdDSA algorithm without
       //pre-hashing
@@ -1245,7 +1245,7 @@ __weak_func error_t tls12VerifyServerKeySignature(TlsContext *context,
    if(signScheme == TLS_SIGN_SCHEME_ED448 &&
       context->peerCertType == TLS_CERT_ED448_SIGN)
    {
-      EddsaMessageChunk messageChunks[4];
+      DataChunk messageChunks[4];
 
       //Data to be verified is run through the EdDSA algorithm without
       //pre-hashing
@@ -1272,13 +1272,13 @@ __weak_func error_t tls12VerifyServerKeySignature(TlsContext *context,
 
    //Total number of bytes that have been consumed
    *consumed = sizeof(Tls12DigitalSignature) + ntohs(signature->length);
-#else
-   //Not implemented
-   error = ERROR_NOT_IMPLEMENTED;
-#endif
 
    //Return status code
    return error;
+#else
+   //Not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
 }
 
 

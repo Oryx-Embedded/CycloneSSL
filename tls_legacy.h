@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.2
+ * @version 2.4.4
  **/
 
 #ifndef _TLS_LEGACY_H
@@ -134,5 +134,8 @@
       #define TLS_ED448_SIGN SUPPORT DISABLED
    #endif
 #endif
+
+#define TLS_GROUP_ECDH_X25519 TLS_GROUP_X25519
+#define TLS_GROUP_ECDH_X448 TLS_GROUP_X448
 
 #endif

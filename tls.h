@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.2
+ * @version 2.4.4
  **/
 
 #ifndef _TLS_H
@@ -41,10 +41,6 @@ struct _TlsEncryptionEngine;
 
 //Dependencies
 #include "core/crypto.h"
-#include "tls_config.h"
-#include "tls_legacy.h"
-#include "tls13_misc.h"
-#include "dtls_misc.h"
 #include "mac/hmac.h"
 #include "aead/aead_algorithms.h"
 #include "pkc/key_exch_algorithms.h"
@@ -52,6 +48,10 @@ struct _TlsEncryptionEngine;
 #include "pkc/dsa.h"
 #include "ecc/ecdsa.h"
 #include "pkix/x509_common.h"
+#include "tls_config.h"
+#include "tls_legacy.h"
+#include "tls13_misc.h"
+#include "dtls_misc.h"
 
 
 /*
@@ -81,13 +81,13 @@ struct _TlsEncryptionEngine;
 #endif
 
 //Version string
-#define CYCLONE_SSL_VERSION_STRING "2.4.2"
+#define CYCLONE_SSL_VERSION_STRING "2.4.4"
 //Major version
 #define CYCLONE_SSL_MAJOR_VERSION 2
 //Minor version
 #define CYCLONE_SSL_MINOR_VERSION 4
 //Revision number
-#define CYCLONE_SSL_REV_NUMBER 2
+#define CYCLONE_SSL_REV_NUMBER 4
 
 //TLS version numbers
 #define SSL_VERSION_3_0 0x0300
@@ -719,6 +719,13 @@ struct _TlsEncryptionEngine;
    #error TLS_X448_SUPPORT parameter is not valid
 #endif
 
+//ML-KEM-768 key encapsulation method
+#ifndef TLS_MLKEM768_SUPPORT
+   #define TLS_MLKEM768_SUPPORT DISABLED
+#elif (TLS_MLKEM768_SUPPORT != ENABLED && TLS_MLKEM768_SUPPORT != DISABLED)
+   #error TLS_MLKEM768_SUPPORT parameter is not valid
+#endif
+
 //Certificate key usage verification
 #ifndef TLS_CERT_KEY_USAGE_SUPPORT
    #define TLS_CERT_KEY_USAGE_SUPPORT ENABLED
@@ -851,7 +858,7 @@ struct _TlsEncryptionEngine;
    #define tlsFreeMem(p) osFreeMem(p)
 #endif
 
-//Support for Diffie-Hellman?
+//Support for Diffie-Hellman key exchange?
 #if ((TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2) && \
    (TLS_DH_ANON_KE_SUPPORT == ENABLED || TLS_DHE_RSA_KE_SUPPORT == ENABLED || \
    TLS_DHE_DSS_KE_SUPPORT == ENABLED || TLS_DHE_PSK_KE_SUPPORT == ENABLED))
@@ -863,7 +870,7 @@ struct _TlsEncryptionEngine;
    #define TLS_DH_SUPPORT DISABLED
 #endif
 
-//Support for ECDH?
+//Support for ECDH key exchange?
 #if ((TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2) && \
    (TLS_ECDH_ANON_KE_SUPPORT == ENABLED || TLS_ECDHE_RSA_KE_SUPPORT == ENABLED || \
    TLS_ECDHE_ECDSA_KE_SUPPORT == ENABLED || TLS_ECDHE_PSK_KE_SUPPORT == ENABLED))
@@ -873,6 +880,14 @@ struct _TlsEncryptionEngine;
    #define TLS_ECDH_SUPPORT ENABLED
 #else
    #define TLS_ECDH_SUPPORT DISABLED
+#endif
+
+//Support for hybrid key exchange?
+#if ((TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3) && \
+   (TLS13_HYBRID_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED))
+   #define TLS_HYBRID_SUPPORT ENABLED
+#else
+   #define TLS_HYBRID_SUPPORT DISABLED
 #endif
 
 //Support for RSA?
@@ -895,7 +910,7 @@ struct _TlsEncryptionEngine;
    #define TLS_PSK_SUPPORT ENABLED
 #elif ((TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3) && \
    (TLS13_PSK_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
-   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED))
+   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED))
    #define TLS_PSK_SUPPORT ENABLED
 #else
    #define TLS_PSK_SUPPORT DISABLED
@@ -1121,30 +1136,32 @@ typedef enum
 
 typedef enum
 {
-   TLS_KEY_EXCH_NONE        = 0,
-   TLS_KEY_EXCH_RSA         = 1,
-   TLS_KEY_EXCH_DH_RSA      = 2,
-   TLS_KEY_EXCH_DHE_RSA     = 3,
-   TLS_KEY_EXCH_DH_DSS      = 4,
-   TLS_KEY_EXCH_DHE_DSS     = 5,
-   TLS_KEY_EXCH_DH_ANON     = 6,
-   TLS_KEY_EXCH_ECDH_RSA    = 7,
-   TLS_KEY_EXCH_ECDHE_RSA   = 8,
-   TLS_KEY_EXCH_ECDH_ECDSA  = 9,
-   TLS_KEY_EXCH_ECDHE_ECDSA = 10,
-   TLS_KEY_EXCH_ECDH_ANON   = 11,
-   TLS_KEY_EXCH_PSK         = 12,
-   TLS_KEY_EXCH_RSA_PSK     = 13,
-   TLS_KEY_EXCH_DHE_PSK     = 14,
-   TLS_KEY_EXCH_ECDHE_PSK   = 15,
-   TLS_KEY_EXCH_SRP_SHA     = 16,
-   TLS_KEY_EXCH_SRP_SHA_RSA = 17,
-   TLS_KEY_EXCH_SRP_SHA_DSS = 18,
-   TLS13_KEY_EXCH_DHE       = 19,
-   TLS13_KEY_EXCH_ECDHE     = 20,
-   TLS13_KEY_EXCH_PSK       = 21,
-   TLS13_KEY_EXCH_PSK_DHE   = 22,
-   TLS13_KEY_EXCH_PSK_ECDHE = 23
+   TLS_KEY_EXCH_NONE         = 0,
+   TLS_KEY_EXCH_RSA          = 1,
+   TLS_KEY_EXCH_DH_RSA       = 2,
+   TLS_KEY_EXCH_DHE_RSA      = 3,
+   TLS_KEY_EXCH_DH_DSS       = 4,
+   TLS_KEY_EXCH_DHE_DSS      = 5,
+   TLS_KEY_EXCH_DH_ANON      = 6,
+   TLS_KEY_EXCH_ECDH_RSA     = 7,
+   TLS_KEY_EXCH_ECDHE_RSA    = 8,
+   TLS_KEY_EXCH_ECDH_ECDSA   = 9,
+   TLS_KEY_EXCH_ECDHE_ECDSA  = 10,
+   TLS_KEY_EXCH_ECDH_ANON    = 11,
+   TLS_KEY_EXCH_PSK          = 12,
+   TLS_KEY_EXCH_RSA_PSK      = 13,
+   TLS_KEY_EXCH_DHE_PSK      = 14,
+   TLS_KEY_EXCH_ECDHE_PSK    = 15,
+   TLS_KEY_EXCH_SRP_SHA      = 16,
+   TLS_KEY_EXCH_SRP_SHA_RSA  = 17,
+   TLS_KEY_EXCH_SRP_SHA_DSS  = 18,
+   TLS13_KEY_EXCH_DHE        = 19,
+   TLS13_KEY_EXCH_ECDHE      = 20,
+   TLS13_KEY_EXCH_HYBRID     = 21,
+   TLS13_KEY_EXCH_PSK        = 22,
+   TLS13_KEY_EXCH_PSK_DHE    = 23,
+   TLS13_KEY_EXCH_PSK_ECDHE  = 24,
+   TLS13_KEY_EXCH_PSK_HYBRID = 25
 } TlsKeyExchMethod;
 
 
@@ -1379,8 +1396,8 @@ typedef enum
    TLS_GROUP_BRAINPOOLP256R1            = 26,    //RFC 7027
    TLS_GROUP_BRAINPOOLP384R1            = 27,    //RFC 7027
    TLS_GROUP_BRAINPOOLP512R1            = 28,    //RFC 7027
-   TLS_GROUP_ECDH_X25519                = 29,    //RFC 8422
-   TLS_GROUP_ECDH_X448                  = 30,    //RFC 8422
+   TLS_GROUP_X25519                     = 29,    //RFC 8422
+   TLS_GROUP_X448                       = 30,    //RFC 8422
    TLS_GROUP_BRAINPOOLP256R1_TLS13      = 31,    //RFC 8734
    TLS_GROUP_BRAINPOOLP384R1_TLS13      = 32,    //RFC 8734
    TLS_GROUP_BRAINPOOLP512R1_TLS13      = 33,    //RFC 8734
@@ -1391,7 +1408,7 @@ typedef enum
    TLS_GROUP_GC512A                     = 38,    //RFC 9189
    TLS_GROUP_GC512B                     = 39,    //RFC 9189
    TLS_GROUP_GC512C                     = 40,    //RFC 9189
-   TLS_GROUP_SM2                        = 41,    //RFC 8998
+   TLS_GROUP_CURVE_SM2                  = 41,    //RFC 8998
    TLS_GROUP_FFDHE2048                  = 256,   //RFC 7919
    TLS_GROUP_FFDHE3072                  = 257,   //RFC 7919
    TLS_GROUP_FFDHE4096                  = 258,   //RFC 7919
@@ -2335,9 +2352,13 @@ struct _TlsContext
    DhContext dhContext;                      ///<Diffie-Hellman context
 #endif
 
-#if (TLS_ECDH_SUPPORT == ENABLED)
+#if (TLS_ECDH_SUPPORT == ENABLED || TLS_HYBRID_SUPPORT == ENABLED)
    EcdhContext ecdhContext;                  ///<ECDH context
    bool_t ecPointFormatsExtReceived;         ///<The EcPointFormats extension has been received
+#endif
+
+#if (TLS_HYBRID_SUPPORT == ENABLED)
+   KemContext kemContext;                    ///<KEM context
 #endif
 
 #if (TLS_RSA_SUPPORT == ENABLED)

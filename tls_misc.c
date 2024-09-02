@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.2
+ * @version 2.4.4
  **/
 
 //Switch to the appropriate trace level
@@ -1338,19 +1338,19 @@ const EcCurveInfo *tlsGetCurveInfo(TlsContext *context, uint16_t namedCurve)
 #endif
 #if (TLS_SM2_SUPPORT == ENABLED)
    //SM2 elliptic curve?
-   case TLS_GROUP_SM2:
+   case TLS_GROUP_CURVE_SM2:
       curveInfo = ecGetCurveInfo(SM2_OID, sizeof(SM2_OID));
       break;
 #endif
 #if (TLS_X25519_SUPPORT == ENABLED)
    //Curve25519 elliptic curve?
-   case TLS_GROUP_ECDH_X25519:
+   case TLS_GROUP_X25519:
       curveInfo = ecGetCurveInfo(X25519_OID, sizeof(X25519_OID));
       break;
 #endif
 #if (TLS_X448_SUPPORT == ENABLED)
    //Curve448 elliptic curve?
-   case TLS_GROUP_ECDH_X448:
+   case TLS_GROUP_X448:
       curveInfo = ecGetCurveInfo(X448_OID, sizeof(X448_OID));
       break;
 #endif
@@ -1506,7 +1506,7 @@ TlsNamedGroup tlsGetNamedCurve(const uint8_t *oid, size_t length)
    //SM2 elliptic curve?
    else if(!oidComp(oid, length, SM2_OID, sizeof(SM2_OID)))
    {
-      namedCurve = TLS_GROUP_SM2;
+      namedCurve = TLS_GROUP_CURVE_SM2;
    }
 #endif
    //Unknown identifier?
@@ -1611,6 +1611,10 @@ bool_t tlsCheckDnsHostname(const char_t *name, size_t length)
       else if(name[i] >= 'a' && name[i] <= 'z')
       {
          //Valid character
+      }
+      else if(name[i] == '_')
+      {
+         //In practice, DNS allows underscores to be used in hostnames
       }
       else
       {

@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.2
+ * @version 2.4.4
  **/
 
 //Switch to the appropriate trace level
@@ -1220,7 +1220,7 @@ error_t tlsGetCertificateType(const X509CertInfo *certInfo,
 
          //The only valid elliptic curve for the SM2 signature algorithm is
          //curveSM2 (refer to RFC 8446, section 3.2.1)
-         *namedCurve = TLS_GROUP_SM2;
+         *namedCurve = TLS_GROUP_CURVE_SM2;
       }
       else
       {
@@ -1713,7 +1713,8 @@ error_t tlsReadSubjectPublicKey(TlsContext *context,
             }
          }
          else if(context->keyExchMethod == TLS13_KEY_EXCH_DHE ||
-            context->keyExchMethod == TLS13_KEY_EXCH_ECDHE)
+            context->keyExchMethod == TLS13_KEY_EXCH_ECDHE ||
+            context->keyExchMethod == TLS13_KEY_EXCH_HYBRID)
          {
             //TLS 1.3 removes support for DSA certificates
             if(context->peerCertType != TLS_CERT_RSA_SIGN &&
@@ -1784,7 +1785,8 @@ error_t tlsCheckKeyUsage(const X509CertInfo *certInfo,
             keyExchMethod == TLS_KEY_EXCH_ECDHE_RSA ||
             keyExchMethod == TLS_KEY_EXCH_ECDHE_ECDSA ||
             keyExchMethod == TLS13_KEY_EXCH_DHE ||
-            keyExchMethod == TLS13_KEY_EXCH_ECDHE)
+            keyExchMethod == TLS13_KEY_EXCH_ECDHE ||
+            keyExchMethod == TLS13_KEY_EXCH_HYBRID)
          {
             //The digitalSignature bit must be asserted when the subject public
             //key is used for verifying digital signatures, other than signatures

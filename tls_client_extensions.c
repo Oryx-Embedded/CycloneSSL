@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.2
+ * @version 2.4.4
  **/
 
 //Switch to the appropriate trace level
@@ -47,8 +47,10 @@
 //List of supported ECDHE or FFDHE groups
 const uint16_t tlsSupportedGroups[] =
 {
-   TLS_GROUP_ECDH_X25519,
-   TLS_GROUP_ECDH_X448,
+   TLS_GROUP_X25519_KYBER768_DRAFT00,
+   TLS_GROUP_SECP256R1_KYBER768_DRAFT00,
+   TLS_GROUP_X25519,
+   TLS_GROUP_X448,
    TLS_GROUP_SECP160R1,
    TLS_GROUP_SECP160R2,
    TLS_GROUP_SECP192K1,
@@ -65,7 +67,7 @@ const uint16_t tlsSupportedGroups[] =
    TLS_GROUP_BRAINPOOLP256R1,
    TLS_GROUP_BRAINPOOLP384R1,
    TLS_GROUP_BRAINPOOLP512R1,
-   TLS_GROUP_SM2,
+   TLS_GROUP_CURVE_SM2,
    TLS_GROUP_FFDHE2048,
    TLS_GROUP_FFDHE3072,
    TLS_GROUP_FFDHE4096,
@@ -388,7 +390,8 @@ error_t tlsFormatSupportedGroupsExtension(TlsContext *context, uint8_t *p,
 {
    size_t n = 0;
 
-#if (TLS_ECDH_SUPPORT == ENABLED || TLS_FFDHE_SUPPORT == ENABLED)
+#if (TLS_ECDH_SUPPORT == ENABLED || TLS_FFDHE_SUPPORT == ENABLED || \
+   TLS_HYBRID_SUPPORT == ENABLED)
    uint_t i;
    uint_t numSupportedGroups;
    const uint16_t *supportedGroups;
@@ -423,12 +426,26 @@ error_t tlsFormatSupportedGroupsExtension(TlsContext *context, uint8_t *p,
    //Loop through the list of named groups
    for(i = 0; i < numSupportedGroups; i++)
    {
+#if (TLS_FFDHE_SUPPORT == ENABLED)
+      //Finite field group?
+      if(tlsGetFfdheGroup(context, supportedGroups[i]) != NULL)
+      {
+         //Any Diffie-Hellman cipher suite proposed by the client?
+         if((context->cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_DH) != 0 ||
+            (context->cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_TLS13) != 0)
+         {
+            //Add the current named group to the list
+            supportedGroupList->value[n++] = htons(supportedGroups[i]);
+         }
+      }
+      else
+#endif
 #if (TLS_ECDH_SUPPORT == ENABLED)
       //Elliptic curve group?
       if(tlsGetCurveInfo(context, supportedGroups[i]) != NULL)
       {
          //SM2 elliptic curve?
-         if(supportedGroups[i] == TLS_GROUP_SM2)
+         if(supportedGroups[i] == TLS_GROUP_CURVE_SM2)
          {
             //Any ShangMi cipher suite proposed by the client?
             if((context->cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_SM) != 0)
@@ -450,13 +467,13 @@ error_t tlsFormatSupportedGroupsExtension(TlsContext *context, uint8_t *p,
       }
       else
 #endif
-#if (TLS_FFDHE_SUPPORT == ENABLED)
-      //Finite field group?
-      if(tlsGetFfdheGroup(context, supportedGroups[i]) != NULL)
+#if (TLS_HYBRID_SUPPORT == ENABLED)
+      //Hybrid key exchange method?
+      if(tls13GetTraditionalAlgo(context, supportedGroups[i]) != NULL &&
+         tls13GetNextGenAlgo(context, supportedGroups[i]) != NULL)
       {
-         //Any Diffie-Hellman cipher suite proposed by the client?
-         if((context->cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_DH) != 0 ||
-            (context->cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_TLS13) != 0)
+         //Any TLS 1.3 cipher suite proposed by the client?
+         if((context->cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_TLS13) != 0)
          {
             //Add the current named group to the list
             supportedGroupList->value[n++] = htons(supportedGroups[i]);

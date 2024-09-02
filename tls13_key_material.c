@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.2
+ * @version 2.4.4
  **/
 
 //Switch to the appropriate trace level
@@ -342,10 +342,12 @@ error_t tls13GenerateHandshakeTrafficKeys(TlsContext *context)
    if(hash == NULL)
       return ERROR_FAILURE;
 
-#if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_ECDHE_KE_SUPPORT == ENABLED)
+#if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_ECDHE_KE_SUPPORT == ENABLED || \
+   TLS13_HYBRID_KE_SUPPORT == ENABLED)
    //(EC)DHE key exchange method?
    if(context->keyExchMethod == TLS13_KEY_EXCH_DHE ||
-      context->keyExchMethod == TLS13_KEY_EXCH_ECDHE)
+      context->keyExchMethod == TLS13_KEY_EXCH_ECDHE ||
+      context->keyExchMethod == TLS13_KEY_EXCH_HYBRID)
    {
       //If PSK is not in use, IKM is a string of Hash-lengths bytes set to 0
       osMemset(context->secret, 0, hash->digestSize);
@@ -357,11 +359,12 @@ error_t tls13GenerateHandshakeTrafficKeys(TlsContext *context)
    else
 #endif
 #if (TLS13_PSK_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
-   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
+   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
    //PSK-only or PSK with (EC)DHE key exchange method?
    if(context->keyExchMethod == TLS13_KEY_EXCH_PSK ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_DHE ||
-      context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE)
+      context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE ||
+      context->keyExchMethod == TLS13_KEY_EXCH_PSK_HYBRID)
    {
       //Although PSKs can be established out of band, PSKs can also be
       //established in a previous connection
@@ -691,7 +694,8 @@ error_t tls13GenerateServerAppTrafficKeys(TlsContext *context)
          //PSK key exchange method?
          if(context->keyExchMethod == TLS13_KEY_EXCH_PSK ||
             context->keyExchMethod == TLS13_KEY_EXCH_PSK_DHE ||
-            context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE)
+            context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE ||
+            context->keyExchMethod == TLS13_KEY_EXCH_PSK_HYBRID)
          {
             //Send a Finished message to the server
             tlsChangeState(context, TLS_STATE_CLIENT_FINISHED);
@@ -708,7 +712,8 @@ error_t tls13GenerateServerAppTrafficKeys(TlsContext *context)
       //PSK key exchange method?
       if(context->keyExchMethod == TLS13_KEY_EXCH_PSK ||
          context->keyExchMethod == TLS13_KEY_EXCH_PSK_DHE ||
-         context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE)
+         context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE ||
+         context->keyExchMethod == TLS13_KEY_EXCH_PSK_HYBRID)
       {
          //Wait for a Finished message from the client
          tlsChangeState(context, TLS_STATE_CLIENT_FINISHED);

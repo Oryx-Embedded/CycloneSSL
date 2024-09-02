@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.2
+ * @version 2.4.4
  **/
 
 //Switch to the appropriate trace level
@@ -149,7 +149,8 @@ error_t tls13NegotiateCipherSuite(TlsContext *context, const void *clientHello,
    {
       //Check key exchange method
       if(context->keyExchMethod == TLS13_KEY_EXCH_DHE ||
-         context->keyExchMethod == TLS13_KEY_EXCH_ECDHE)
+         context->keyExchMethod == TLS13_KEY_EXCH_ECDHE ||
+         context->keyExchMethod == TLS13_KEY_EXCH_HYBRID)
       {
          //Check whether the client supports session resumption with a PSK
          error = tls13ParsePskKeModesExtension(context,
@@ -160,7 +161,8 @@ error_t tls13NegotiateCipherSuite(TlsContext *context, const void *clientHello,
       }
       else if(context->keyExchMethod == TLS13_KEY_EXCH_PSK ||
          context->keyExchMethod == TLS13_KEY_EXCH_PSK_DHE ||
-         context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE)
+         context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE ||
+         context->keyExchMethod == TLS13_KEY_EXCH_PSK_HYBRID)
       {
          //Servers must not select a key exchange mode that is not listed by
          //the client in the PskKeyExchangeModes extension
@@ -211,7 +213,8 @@ error_t tls13SelectGroup(TlsContext *context,
    context->namedGroup = TLS_GROUP_NONE;
 
 #if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
-   TLS13_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
+   TLS13_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || \
+   TLS13_HYBRID_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
    //Valid SupportedGroups extension?
    if(groupList != NULL)
    {
@@ -272,7 +275,7 @@ error_t tls13SelectGroup(TlsContext *context,
 
 
 /**
- * @brief Check whether a group is offered in the SupportedGroups extension 
+ * @brief Check whether a group is offered in the SupportedGroups extension
  * @param[in] namedGroup Named group
  * @param[in] groupList List of named groups supported by the client
  * @return TRUE if the group is offered in the SupportedGroups extension,
@@ -329,7 +332,7 @@ error_t tls13VerifyPskBinder(TlsContext *context, const void *clientHello,
    const Tls13PskBinderList *binderList, int_t selectedIdentity)
 {
 #if (TLS13_PSK_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
-   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
+   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
    error_t error;
    int_t i;
    size_t n;

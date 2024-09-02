@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.2
+ * @version 2.4.4
  **/
 
 //Switch to the appropriate trace level
@@ -533,7 +533,7 @@ error_t tls13ParseEncryptedExtensions(TlsContext *context,
             if(context->selectedProtocol != NULL && context->ticketAlpn != NULL)
             {
                //Compare the selected ALPN protocol against the expected value
-               if(osStrcmp(context->selectedProtocol, context->ticketAlpn))
+               if(osStrcmp(context->selectedProtocol, context->ticketAlpn) != 0)
                {
                   //The selected ALPN protocol is not acceptable
                   return ERROR_HANDSHAKE_FAILED;
@@ -566,7 +566,8 @@ error_t tls13ParseEncryptedExtensions(TlsContext *context,
    //PSK key exchange method?
    if(context->keyExchMethod == TLS13_KEY_EXCH_PSK ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_DHE ||
-      context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE)
+      context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE ||
+      context->keyExchMethod == TLS13_KEY_EXCH_PSK_HYBRID)
    {
       //As the server is authenticating via a PSK, it does not send a
       //Certificate or a CertificateVerify message
