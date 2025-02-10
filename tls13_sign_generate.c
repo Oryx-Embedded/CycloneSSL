@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2024 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2025 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.4
+ * @version 2.5.0
  **/
 
 //Switch to the appropriate trace level
@@ -357,43 +357,33 @@ error_t tls13GenerateSm2Signature(TlsContext *context, const uint8_t *message,
 #if (TLS_SM2_SIGN_SUPPORT == ENABLED)
    error_t error;
    size_t n;
-   EcDomainParameters params;
    EcPrivateKey privateKey;
    EcdsaSignature sm2Signature;
 
-   //Initialize EC domain parameters
-   ecInitDomainParameters(&params);
    //Initialize EC private key
    ecInitPrivateKey(&privateKey);
    //Initialize SM2 signature
    ecdsaInitSignature(&sm2Signature);
 
-   //Decode the PEM structure that holds the EC domain parameters
-   error = pemImportEcParameters(context->cert->privateKey,
-      context->cert->privateKeyLen, &params);
-
-   //Check status code
-   if(!error)
-   {
-      //Decode the PEM structure that holds the EC private key
-      error = pemImportEcPrivateKey(context->cert->privateKey,
-         context->cert->privateKeyLen, context->cert->password, &privateKey);
-   }
+   //Decode the PEM structure that holds the EC private key
+   error = pemImportEcPrivateKey(&privateKey, context->cert->privateKey,
+      context->cert->privateKeyLen, context->cert->password);
 
    //Check status code
    if(!error)
    {
       //Generate SM2 signature
       error = sm2GenerateSignature(context->prngAlgo, context->prngContext,
-         &params, &privateKey, SM3_HASH_ALGO, SM2_TLS13_ID,
-         osStrlen(SM2_TLS13_ID), message, length, &sm2Signature);
+         &privateKey, SM3_HASH_ALGO, SM2_TLS13_ID, osStrlen(SM2_TLS13_ID),
+         message, length, &sm2Signature);
    }
 
    //Check status code
    if(!error)
    {
       //Encode the resulting (R, S) integer pair using ASN.1
-      error = ecdsaWriteSignature(&sm2Signature, signature->value, &n);
+      error = ecdsaExportSignature(&sm2Signature, signature->value, &n,
+         ECDSA_SIGNATURE_FORMAT_ASN1);
    }
 
    //Check status code
@@ -404,6 +394,7 @@ error_t tls13GenerateSm2Signature(TlsContext *context, const uint8_t *message,
    }
 
    //Release previously allocated resources
+   ecFreePrivateKey(&privateKey);
    ecdsaFreeSignature(&sm2Signature);
 
    //Return status code
@@ -430,17 +421,15 @@ error_t tls13GenerateEd25519Signature(TlsContext *context, const uint8_t *messag
 #if (TLS_ED25519_SIGN_SUPPORT == ENABLED)
    error_t error;
    size_t n;
-   DataChunk messageChunks[2];
+   DataChunk messageChunks[1];
 
    //Data to be signed is run through the EdDSA algorithm without pre-hashing
    messageChunks[0].buffer = message;
    messageChunks[0].length = length;
-   messageChunks[1].buffer = NULL;
-   messageChunks[1].length = 0;
 
    //Generate Ed25519 signature in PureEdDSA mode
    error = tlsGenerateEd25519Signature(context, messageChunks,
-      signature->value, &n);
+      arraysize(messageChunks), signature->value, &n);
 
    //Check status code
    if(!error)
@@ -473,17 +462,15 @@ error_t tls13GenerateEd448Signature(TlsContext *context, const uint8_t *message,
 #if (TLS_ED448_SIGN_SUPPORT == ENABLED)
    error_t error;
    size_t n;
-   DataChunk messageChunks[2];
+   DataChunk messageChunks[1];
 
    //Data to be signed is run through the EdDSA algorithm without pre-hashing
    messageChunks[0].buffer = message;
    messageChunks[0].length = length;
-   messageChunks[1].buffer = NULL;
-   messageChunks[1].length = 0;
 
    //Generate Ed448 signature in PureEdDSA mode
    error = tlsGenerateEd448Signature(context, messageChunks,
-      signature->value, &n);
+      arraysize(messageChunks), signature->value, &n);
 
    //Check status code
    if(!error)

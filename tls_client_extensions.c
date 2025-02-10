@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2024 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2025 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.4
+ * @version 2.5.0
  **/
 
 //Switch to the appropriate trace level
@@ -47,8 +47,9 @@
 //List of supported ECDHE or FFDHE groups
 const uint16_t tlsSupportedGroups[] =
 {
-   TLS_GROUP_X25519_KYBER768_DRAFT00,
-   TLS_GROUP_SECP256R1_KYBER768_DRAFT00,
+   TLS_GROUP_X25519_MLKEM768,
+   TLS_GROUP_SECP256R1_MLKEM768,
+   TLS_GROUP_SECP384R1_MLKEM1024,
    TLS_GROUP_X25519,
    TLS_GROUP_X448,
    TLS_GROUP_SECP160R1,
@@ -72,7 +73,10 @@ const uint16_t tlsSupportedGroups[] =
    TLS_GROUP_FFDHE3072,
    TLS_GROUP_FFDHE4096,
    TLS_GROUP_FFDHE6144,
-   TLS_GROUP_FFDHE8192
+   TLS_GROUP_FFDHE8192,
+   TLS_GROUP_MLKEM512,
+   TLS_GROUP_MLKEM768,
+   TLS_GROUP_MLKEM1024
 };
 
 
@@ -391,7 +395,7 @@ error_t tlsFormatSupportedGroupsExtension(TlsContext *context, uint8_t *p,
    size_t n = 0;
 
 #if (TLS_ECDH_SUPPORT == ENABLED || TLS_FFDHE_SUPPORT == ENABLED || \
-   TLS_HYBRID_SUPPORT == ENABLED)
+   TLS_MLKEM_SUPPORT == ENABLED || TLS_HYBRID_SUPPORT == ENABLED)
    uint_t i;
    uint_t numSupportedGroups;
    const uint16_t *supportedGroups;
@@ -442,7 +446,7 @@ error_t tlsFormatSupportedGroupsExtension(TlsContext *context, uint8_t *p,
 #endif
 #if (TLS_ECDH_SUPPORT == ENABLED)
       //Elliptic curve group?
-      if(tlsGetCurveInfo(context, supportedGroups[i]) != NULL)
+      if(tlsGetCurve(context, supportedGroups[i]) != NULL)
       {
          //SM2 elliptic curve?
          if(supportedGroups[i] == TLS_GROUP_CURVE_SM2)
@@ -463,6 +467,19 @@ error_t tlsFormatSupportedGroupsExtension(TlsContext *context, uint8_t *p,
                //Add the current named group to the list
                supportedGroupList->value[n++] = htons(supportedGroups[i]);
             }
+         }
+      }
+      else
+#endif
+#if (TLS_MLKEM_SUPPORT == ENABLED)
+      //ML-KEM key exchange method?
+      if(tls13GetMlkemAlgo(context, supportedGroups[i]) != NULL)
+      {
+         //Any TLS 1.3 cipher suite proposed by the client?
+         if((context->cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_TLS13) != 0)
+         {
+            //Add the current named group to the list
+            supportedGroupList->value[n++] = htons(supportedGroups[i]);
          }
       }
       else

@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2024 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2025 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.4
+ * @version 2.5.0
  **/
 
 //Switch to the appropriate trace level
@@ -315,6 +315,7 @@ error_t tls13VerifyEcdsaSignature(TlsContext *context, const uint8_t *message,
    error_t error;
    TlsSignatureScheme signScheme;
    const HashAlgo *hashAlgo;
+   const EcCurve *curve;
 
    //The algorithm field specifies the signature scheme
    signScheme = (TlsSignatureScheme) ntohs(signature->algorithm);
@@ -323,44 +324,47 @@ error_t tls13VerifyEcdsaSignature(TlsContext *context, const uint8_t *message,
    //end-entity certificate (refer to RFC 8446, section 4.4.3)
    if(context->peerCertType == TLS_CERT_ECDSA_SIGN)
    {
+      //Get elliptic curve parameters
+      curve = context->peerEcPublicKey.curve;
+
       //Retrieve the hash algorithm used for signing
-      if(context->peerEcParams.name == NULL)
+      if(curve == NULL)
       {
          //Invalid signature scheme
          hashAlgo = NULL;
       }
       else if(signScheme == TLS_SIGN_SCHEME_ECDSA_SECP256R1_SHA256 &&
-         osStrcmp(context->peerEcParams.name, "secp256r1") == 0)
+         osStrcmp(curve->name, "secp256r1") == 0)
       {
          //Select SHA-256 hash algorithm
          hashAlgo = tlsGetHashAlgo(TLS_HASH_ALGO_SHA256);
       }
       else if(signScheme == TLS_SIGN_SCHEME_ECDSA_SECP384R1_SHA384 &&
-         osStrcmp(context->peerEcParams.name, "secp384r1") == 0)
+         osStrcmp(curve->name, "secp384r1") == 0)
       {
          //Select SHA-384 hash algorithm
          hashAlgo = tlsGetHashAlgo(TLS_HASH_ALGO_SHA384);
       }
       else if(signScheme == TLS_SIGN_SCHEME_ECDSA_SECP521R1_SHA512 &&
-         osStrcmp(context->peerEcParams.name, "secp521r1") == 0)
+         osStrcmp(curve->name, "secp521r1") == 0)
       {
          //Select SHA-512 hash algorithm
          hashAlgo = tlsGetHashAlgo(TLS_HASH_ALGO_SHA512);
       }
       else if(signScheme == TLS_SIGN_SCHEME_ECDSA_BP256R1_TLS13_SHA256 &&
-         osStrcmp(context->peerEcParams.name, "brainpoolP256r1") == 0)
+         osStrcmp(curve->name, "brainpoolP256r1") == 0)
       {
          //Select SHA-256 hash algorithm
          hashAlgo = tlsGetHashAlgo(TLS_HASH_ALGO_SHA256);
       }
       else if(signScheme == TLS_SIGN_SCHEME_ECDSA_BP384R1_TLS13_SHA384 &&
-         osStrcmp(context->peerEcParams.name, "brainpoolP384r1") == 0)
+         osStrcmp(curve->name, "brainpoolP384r1") == 0)
       {
          //Select SHA-384 hash algorithm
          hashAlgo = tlsGetHashAlgo(TLS_HASH_ALGO_SHA384);
       }
       else if(signScheme == TLS_SIGN_SCHEME_ECDSA_BP512R1_TLS13_SHA512 &&
-         osStrcmp(context->peerEcParams.name, "brainpoolP512r1") == 0)
+         osStrcmp(curve->name, "brainpoolP512r1") == 0)
       {
          //Select SHA-512 hash algorithm
          hashAlgo = tlsGetHashAlgo(TLS_HASH_ALGO_SHA512);
@@ -428,16 +432,17 @@ error_t tls13VerifySm2Signature(TlsContext *context, const uint8_t *message,
       ecdsaInitSignature(&sm2Signature);
 
       //Read the ASN.1 encoded SM2 signature
-      error = ecdsaReadSignature(signature->value, ntohs(signature->length),
-         &sm2Signature);
+      error = ecdsaImportSignature(&sm2Signature,
+         context->peerEcPublicKey.curve, signature->value,
+         ntohs(signature->length), ECDSA_SIGNATURE_FORMAT_ASN1);
 
       //Check status code
       if(!error)
       {
          //Verify SM2 signature
-         error = sm2VerifySignature(&context->peerEcParams,
-            &context->peerEcPublicKey, SM3_HASH_ALGO, SM2_TLS13_ID,
-            osStrlen(SM2_TLS13_ID), message, length, &sm2Signature);
+         error = sm2VerifySignature(&context->peerEcPublicKey, SM3_HASH_ALGO,
+            SM2_TLS13_ID, osStrlen(SM2_TLS13_ID), message, length,
+            &sm2Signature);
       }
 
       //Free previously allocated resources
@@ -472,7 +477,7 @@ error_t tls13VerifyEd25519Signature(TlsContext *context, const uint8_t *message,
 {
 #if (TLS_ED25519_SIGN_SUPPORT == ENABLED)
    error_t error;
-   DataChunk messageChunks[2];
+   DataChunk messageChunks[1];
 
    //The signature algorithm must be compatible with the key in the sender's
    //end-entity certificate (refer to RFC 8446, section 4.4.3)
@@ -481,12 +486,10 @@ error_t tls13VerifyEd25519Signature(TlsContext *context, const uint8_t *message,
       //Data to be verified is run through the EdDSA algorithm without pre-hashing
       messageChunks[0].buffer = message;
       messageChunks[0].length = length;
-      messageChunks[1].buffer = NULL;
-      messageChunks[1].length = 0;
 
       //Verify Ed25519 signature (PureEdDSA mode)
       error = tlsVerifyEd25519Signature(context, messageChunks,
-         signature->value, ntohs(signature->length));
+         arraysize(messageChunks), signature->value, ntohs(signature->length));
    }
    else
    {
@@ -517,7 +520,7 @@ error_t tls13VerifyEd448Signature(TlsContext *context, const uint8_t *message,
 {
 #if (TLS_ED448_SIGN_SUPPORT == ENABLED)
    error_t error;
-   DataChunk messageChunks[2];
+   DataChunk messageChunks[1];
 
    //The signature algorithm must be compatible with the key in the sender's
    //end-entity certificate (refer to RFC 8446, section 4.4.3)
@@ -526,12 +529,10 @@ error_t tls13VerifyEd448Signature(TlsContext *context, const uint8_t *message,
       //Data to be verified is run through the EdDSA algorithm without pre-hashing
       messageChunks[0].buffer = message;
       messageChunks[0].length = length;
-      messageChunks[1].buffer = NULL;
-      messageChunks[1].length = 0;
 
       //Verify Ed448 signature (PureEdDSA mode)
       error = tlsVerifyEd448Signature(context, messageChunks,
-         signature->value, ntohs(signature->length));
+         arraysize(messageChunks), signature->value, ntohs(signature->length));
    }
    else
    {

@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2024 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2025 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.4
+ * @version 2.5.0
  **/
 
 //Switch to the appropriate trace level
@@ -356,7 +356,11 @@ __weak_func error_t tlsParseCertificateList(TlsContext *context,
       if(error)
       {
          //Report an error
+#if (TLS_MAX_EMPTY_RECORDS > 0)
          error = ERROR_DECODING_FAILED;
+#else
+         error = ERROR_BAD_CERTIFICATE;
+#endif
          break;
       }
 
@@ -394,7 +398,7 @@ __weak_func error_t tlsParseCertificateList(TlsContext *context,
             if(certType == TLS_CERT_ECDSA_SIGN)
             {
                //Make sure the elliptic curve is supported
-               if(tlsGetCurveInfo(context, namedCurve) == NULL)
+               if(tlsGetCurve(context, namedCurve) == NULL)
                {
                   error = ERROR_BAD_CERTIFICATE;
                   break;
@@ -1171,7 +1175,7 @@ error_t tlsGetCertificateType(const X509CertInfo *certInfo,
 
 #if (TLS_RSA_SIGN_SUPPORT == ENABLED || TLS_RSA_PSS_SIGN_SUPPORT == ENABLED)
    //RSA public key?
-   if(!oidComp(oid, oidLen, RSA_ENCRYPTION_OID, sizeof(RSA_ENCRYPTION_OID)))
+   if(OID_COMP(oid, oidLen, RSA_ENCRYPTION_OID) == 0)
    {
       //Save certificate type
       *certType = TLS_CERT_RSA_SIGN;
@@ -1182,7 +1186,7 @@ error_t tlsGetCertificateType(const X509CertInfo *certInfo,
 #endif
 #if (TLS_RSA_PSS_SIGN_SUPPORT == ENABLED)
    //RSA-PSS public key?
-   if(!oidComp(oid, oidLen, RSASSA_PSS_OID, sizeof(RSASSA_PSS_OID)))
+   if(OID_COMP(oid, oidLen, RSASSA_PSS_OID) == 0)
    {
       //Save certificate type
       *certType = TLS_CERT_RSA_PSS_SIGN;
@@ -1193,7 +1197,7 @@ error_t tlsGetCertificateType(const X509CertInfo *certInfo,
 #endif
 #if (TLS_DSA_SIGN_SUPPORT == ENABLED)
    //DSA public key?
-   if(!oidComp(oid, oidLen, DSA_OID, sizeof(DSA_OID)))
+   if(OID_COMP(oid, oidLen, DSA_OID) == 0)
    {
       //Save certificate type
       *certType = TLS_CERT_DSS_SIGN;
@@ -1204,7 +1208,7 @@ error_t tlsGetCertificateType(const X509CertInfo *certInfo,
 #endif
 #if (TLS_ECDSA_SIGN_SUPPORT == ENABLED || TLS_SM2_SIGN_SUPPORT == ENABLED)
    //EC public key?
-   if(!oidComp(oid, oidLen, EC_PUBLIC_KEY_OID, sizeof(EC_PUBLIC_KEY_OID)))
+   if(OID_COMP(oid, oidLen, EC_PUBLIC_KEY_OID) == 0)
    {
       const X509EcParameters *params;
 
@@ -1212,8 +1216,8 @@ error_t tlsGetCertificateType(const X509CertInfo *certInfo,
       params = &certInfo->tbsCert.subjectPublicKeyInfo.ecParams;
 
       //SM2 elliptic curve?
-      if(!oidComp(params->namedCurve.value, params->namedCurve.length,
-         SM2_OID, sizeof(SM2_OID)))
+      if(OID_COMP(params->namedCurve.value, params->namedCurve.length,
+         SM2_OID) == 0)
       {
          //Save certificate type
          *certType = TLS_CERT_SM2_SIGN;
@@ -1237,7 +1241,7 @@ error_t tlsGetCertificateType(const X509CertInfo *certInfo,
 #endif
 #if (TLS_ED25519_SIGN_SUPPORT == ENABLED)
    //Ed25519 public key?
-   if(!oidComp(oid, oidLen, ED25519_OID, sizeof(ED25519_OID)))
+   if(OID_COMP(oid, oidLen, ED25519_OID) == 0)
    {
       //Save certificate type
       *certType = TLS_CERT_ED25519_SIGN;
@@ -1248,7 +1252,7 @@ error_t tlsGetCertificateType(const X509CertInfo *certInfo,
 #endif
 #if (TLS_ED448_SIGN_SUPPORT == ENABLED)
    //Ed448 public key?
-   if(!oidComp(oid, oidLen, ED448_OID, sizeof(ED448_OID)))
+   if(OID_COMP(oid, oidLen, ED448_OID) == 0)
    {
       //Save certificate type
       *certType = TLS_CERT_ED448_SIGN;
@@ -1291,32 +1295,27 @@ error_t tlsGetCertificateSignAlgo(const X509CertInfo *certInfo,
 
 #if (RSA_SUPPORT == ENABLED)
    //RSA signature algorithm?
-   if(!oidComp(oid, oidLen, MD5_WITH_RSA_ENCRYPTION_OID,
-      sizeof(MD5_WITH_RSA_ENCRYPTION_OID)))
+   if(OID_COMP(oid, oidLen, MD5_WITH_RSA_ENCRYPTION_OID) == 0)
    {
       //RSA with MD5 signature algorithm
       *signScheme = TLS_SIGN_SCHEME(TLS_SIGN_ALGO_RSA, TLS_HASH_ALGO_MD5);
    }
-   else if(!oidComp(oid, oidLen, SHA1_WITH_RSA_ENCRYPTION_OID,
-      sizeof(SHA1_WITH_RSA_ENCRYPTION_OID)))
+   else if(OID_COMP(oid, oidLen, SHA1_WITH_RSA_ENCRYPTION_OID) == 0)
    {
       //RSA with SHA-1 signature algorithm
       *signScheme = TLS_SIGN_SCHEME(TLS_SIGN_ALGO_RSA, TLS_HASH_ALGO_SHA1);
    }
-   else if(!oidComp(oid, oidLen, SHA256_WITH_RSA_ENCRYPTION_OID,
-      sizeof(SHA256_WITH_RSA_ENCRYPTION_OID)))
+   else if(OID_COMP(oid, oidLen, SHA256_WITH_RSA_ENCRYPTION_OID) == 0)
    {
       //RSA with SHA-256 signature algorithm
       *signScheme = TLS_SIGN_SCHEME(TLS_SIGN_ALGO_RSA, TLS_HASH_ALGO_SHA256);
    }
-   else if(!oidComp(oid, oidLen, SHA384_WITH_RSA_ENCRYPTION_OID,
-      sizeof(SHA384_WITH_RSA_ENCRYPTION_OID)))
+   else if(OID_COMP(oid, oidLen, SHA384_WITH_RSA_ENCRYPTION_OID) == 0)
    {
       //RSA with SHA-384 signature algorithm
       *signScheme = TLS_SIGN_SCHEME(TLS_SIGN_ALGO_RSA, TLS_HASH_ALGO_SHA384);
    }
-   else if(!oidComp(oid, oidLen, SHA512_WITH_RSA_ENCRYPTION_OID,
-      sizeof(SHA512_WITH_RSA_ENCRYPTION_OID)))
+   else if(OID_COMP(oid, oidLen, SHA512_WITH_RSA_ENCRYPTION_OID) == 0)
    {
       //RSA with SHA-512 signature algorithm
       *signScheme = TLS_SIGN_SCHEME(TLS_SIGN_ALGO_RSA, TLS_HASH_ALGO_SHA512);
@@ -1325,7 +1324,7 @@ error_t tlsGetCertificateSignAlgo(const X509CertInfo *certInfo,
 #endif
 #if (RSA_SUPPORT == ENABLED && X509_RSA_PSS_SUPPORT == ENABLED)
    //RSA-PSS signature algorithm?
-   if(!oidComp(oid, oidLen, RSASSA_PSS_OID, sizeof(RSASSA_PSS_OID)))
+   if(OID_COMP(oid, oidLen, RSASSA_PSS_OID) == 0)
    {
       //Get the OID of the hash algorithm
       oid = certInfo->signatureAlgo.rsaPssParams.hashAlgo.value;
@@ -1333,7 +1332,7 @@ error_t tlsGetCertificateSignAlgo(const X509CertInfo *certInfo,
 
 #if (SHA256_SUPPORT == ENABLED)
       //SHA-256 hash algorithm identifier?
-      if(!oidComp(oid, oidLen, SHA256_OID, sizeof(SHA256_OID)))
+      if(OID_COMP(oid, oidLen, SHA256_OID) == 0)
       {
          //RSA-PSS with SHA-256 signature algorithm
          *signScheme = TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA256;
@@ -1342,7 +1341,7 @@ error_t tlsGetCertificateSignAlgo(const X509CertInfo *certInfo,
 #endif
 #if (SHA384_SUPPORT == ENABLED)
       //SHA-384 hash algorithm identifier?
-      if(!oidComp(oid, oidLen, SHA384_OID, sizeof(SHA384_OID)))
+      if(OID_COMP(oid, oidLen, SHA384_OID) == 0)
       {
          //RSA-PSS with SHA-384 signature algorithm
          *signScheme = TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA384;
@@ -1351,7 +1350,7 @@ error_t tlsGetCertificateSignAlgo(const X509CertInfo *certInfo,
 #endif
 #if (SHA512_SUPPORT == ENABLED)
       //SHA-512 hash algorithm identifier?
-      if(!oidComp(oid, oidLen, SHA512_OID, sizeof(SHA512_OID)))
+      if(OID_COMP(oid, oidLen, SHA512_OID) == 0)
       {
          //RSA-PSS with SHA-512 signature algorithm
          *signScheme = TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA512;
@@ -1368,20 +1367,17 @@ error_t tlsGetCertificateSignAlgo(const X509CertInfo *certInfo,
 #endif
 #if (DSA_SUPPORT == ENABLED)
    //DSA signature algorithm?
-   if(!oidComp(oid, oidLen, DSA_WITH_SHA1_OID,
-      sizeof(DSA_WITH_SHA1_OID)))
+   if(OID_COMP(oid, oidLen, DSA_WITH_SHA1_OID) == 0)
    {
       //DSA with SHA-1 signature algorithm
       *signScheme = TLS_SIGN_SCHEME(TLS_SIGN_ALGO_DSA, TLS_HASH_ALGO_SHA1);
    }
-   else if(!oidComp(oid, oidLen, DSA_WITH_SHA224_OID,
-      sizeof(DSA_WITH_SHA224_OID)))
+   else if(OID_COMP(oid, oidLen, DSA_WITH_SHA224_OID) == 0)
    {
       //DSA with SHA-224 signature algorithm
       *signScheme = TLS_SIGN_SCHEME(TLS_SIGN_ALGO_DSA, TLS_HASH_ALGO_SHA224);
    }
-   else if(!oidComp(oid, oidLen, DSA_WITH_SHA256_OID,
-      sizeof(DSA_WITH_SHA256_OID)))
+   else if(OID_COMP(oid, oidLen, DSA_WITH_SHA256_OID) == 0)
    {
       //DSA with SHA-256 signature algorithm
       *signScheme = TLS_SIGN_SCHEME(TLS_SIGN_ALGO_DSA, TLS_HASH_ALGO_SHA256);
@@ -1390,32 +1386,27 @@ error_t tlsGetCertificateSignAlgo(const X509CertInfo *certInfo,
 #endif
 #if (ECDSA_SUPPORT == ENABLED)
    //ECDSA signature algorithm?
-   if(!oidComp(oid, oidLen, ECDSA_WITH_SHA1_OID,
-      sizeof(ECDSA_WITH_SHA1_OID)))
+   if(OID_COMP(oid, oidLen, ECDSA_WITH_SHA1_OID) == 0)
    {
       //ECDSA with SHA-1 signature algorithm
       *signScheme = TLS_SIGN_SCHEME(TLS_SIGN_ALGO_ECDSA, TLS_HASH_ALGO_SHA1);
    }
-   else if(!oidComp(oid, oidLen, ECDSA_WITH_SHA224_OID,
-      sizeof(ECDSA_WITH_SHA224_OID)))
+   else if(OID_COMP(oid, oidLen, ECDSA_WITH_SHA224_OID) == 0)
    {
       //ECDSA with SHA-224 signature algorithm
       *signScheme = TLS_SIGN_SCHEME(TLS_SIGN_ALGO_ECDSA, TLS_HASH_ALGO_SHA224);
    }
-   else if(!oidComp(oid, oidLen, ECDSA_WITH_SHA256_OID,
-      sizeof(ECDSA_WITH_SHA256_OID)))
+   else if(OID_COMP(oid, oidLen, ECDSA_WITH_SHA256_OID) == 0)
    {
       //ECDSA with SHA-256 signature algorithm
       *signScheme = TLS_SIGN_SCHEME(TLS_SIGN_ALGO_ECDSA, TLS_HASH_ALGO_SHA256);
    }
-   else if(!oidComp(oid, oidLen, ECDSA_WITH_SHA384_OID,
-      sizeof(ECDSA_WITH_SHA384_OID)))
+   else if(OID_COMP(oid, oidLen, ECDSA_WITH_SHA384_OID) == 0)
    {
       //ECDSA with SHA-384 signature algorithm
       *signScheme = TLS_SIGN_SCHEME(TLS_SIGN_ALGO_ECDSA, TLS_HASH_ALGO_SHA384);
    }
-   else if(!oidComp(oid, oidLen, ECDSA_WITH_SHA512_OID,
-      sizeof(ECDSA_WITH_SHA512_OID)))
+   else if(OID_COMP(oid, oidLen, ECDSA_WITH_SHA512_OID) == 0)
    {
       //ECDSA with SHA-512 signature algorithm
       *signScheme = TLS_SIGN_SCHEME(TLS_SIGN_ALGO_ECDSA, TLS_HASH_ALGO_SHA512);
@@ -1424,7 +1415,7 @@ error_t tlsGetCertificateSignAlgo(const X509CertInfo *certInfo,
 #endif
 #if (SM2_SUPPORT == ENABLED)
    //SM2 signature algorithm?
-   if(!oidComp(oid, oidLen, SM2_WITH_SM3_OID, sizeof(SM2_WITH_SM3_OID)))
+   if(OID_COMP(oid, oidLen, SM2_WITH_SM3_OID) == 0)
    {
       //SM2 with SM3 signature algorithm
       *signScheme = TLS_SIGN_SCHEME_SM2SIG_SM3;
@@ -1433,7 +1424,7 @@ error_t tlsGetCertificateSignAlgo(const X509CertInfo *certInfo,
 #endif
 #if (ED25519_SUPPORT == ENABLED)
    //Ed25519 signature algorithm?
-   if(!oidComp(oid, oidLen, ED25519_OID, sizeof(ED25519_OID)))
+   if(OID_COMP(oid, oidLen, ED25519_OID) == 0)
    {
       //Ed25519 signature algorithm
       *signScheme = TLS_SIGN_SCHEME_ED25519;
@@ -1442,7 +1433,7 @@ error_t tlsGetCertificateSignAlgo(const X509CertInfo *certInfo,
 #endif
 #if (ED448_SUPPORT == ENABLED)
    //Ed448 signature algorithm?
-   if(!oidComp(oid, oidLen, ED448_OID, sizeof(ED448_OID)))
+   if(OID_COMP(oid, oidLen, ED448_OID) == 0)
    {
       //Ed448 signature algorithm
       *signScheme = TLS_SIGN_SCHEME_ED448;
@@ -1480,14 +1471,14 @@ error_t tlsReadSubjectPublicKey(TlsContext *context,
 
 #if (TLS_RSA_SIGN_SUPPORT == ENABLED || TLS_RSA_PSS_SIGN_SUPPORT == ENABLED)
    //RSA public key?
-   if(!oidComp(oid, oidLen, RSA_ENCRYPTION_OID, sizeof(RSA_ENCRYPTION_OID)) ||
-      !oidComp(oid, oidLen, RSASSA_PSS_OID, sizeof(RSASSA_PSS_OID)))
+   if(OID_COMP(oid, oidLen, RSA_ENCRYPTION_OID) == 0 ||
+      OID_COMP(oid, oidLen, RSASSA_PSS_OID) == 0)
    {
       uint_t k;
 
       //Import the RSA public key
-      error = x509ImportRsaPublicKey(subjectPublicKeyInfo,
-         &context->peerRsaPublicKey);
+      error = x509ImportRsaPublicKey(&context->peerRsaPublicKey,
+         subjectPublicKeyInfo);
 
       //Check status code
       if(!error)
@@ -1508,12 +1499,12 @@ error_t tlsReadSubjectPublicKey(TlsContext *context,
       if(!error)
       {
          //RSA or RSA-PSS certificate?
-         if(!oidComp(oid, oidLen, RSA_ENCRYPTION_OID, sizeof(RSA_ENCRYPTION_OID)))
+         if(OID_COMP(oid, oidLen, RSA_ENCRYPTION_OID) == 0)
          {
             //The certificate contains a valid RSA public key
             context->peerCertType = TLS_CERT_RSA_SIGN;
          }
-         else if(!oidComp(oid, oidLen, RSASSA_PSS_OID, sizeof(RSASSA_PSS_OID)))
+         else if(OID_COMP(oid, oidLen, RSASSA_PSS_OID) == 0)
          {
             //The certificate contains a valid RSA-PSS public key
             context->peerCertType = TLS_CERT_RSA_PSS_SIGN;
@@ -1529,13 +1520,13 @@ error_t tlsReadSubjectPublicKey(TlsContext *context,
 #endif
 #if (TLS_DSA_SIGN_SUPPORT == ENABLED)
    //DSA public key?
-   if(!oidComp(oid, oidLen, DSA_OID, sizeof(DSA_OID)))
+   if(OID_COMP(oid, oidLen, DSA_OID) == 0)
    {
       uint_t k;
 
       //Import the DSA public key
-      error = x509ImportDsaPublicKey(subjectPublicKeyInfo,
-         &context->peerDsaPublicKey);
+      error = x509ImportDsaPublicKey(&context->peerDsaPublicKey,
+         subjectPublicKeyInfo);
 
       //Check status code
       if(!error)
@@ -1562,42 +1553,18 @@ error_t tlsReadSubjectPublicKey(TlsContext *context,
 #endif
 #if (TLS_ECDSA_SIGN_SUPPORT == ENABLED || TLS_SM2_SIGN_SUPPORT == ENABLED)
    //EC public key?
-   if(!oidComp(oid, oidLen, EC_PUBLIC_KEY_OID, sizeof(EC_PUBLIC_KEY_OID)))
+   if(OID_COMP(oid, oidLen, EC_PUBLIC_KEY_OID) == 0)
    {
-      const EcCurveInfo *curveInfo;
-
-      //Retrieve EC domain parameters
-      curveInfo = x509GetCurveInfo(subjectPublicKeyInfo->ecParams.namedCurve.value,
-         subjectPublicKeyInfo->ecParams.namedCurve.length);
-
-      //Make sure the specified elliptic curve is supported
-      if(curveInfo != NULL)
-      {
-         //Load EC domain parameters
-         error = ecLoadDomainParameters(&context->peerEcParams, curveInfo);
-
-         //Check status code
-         if(!error)
-         {
-            //Retrieve the EC public key
-            error = ecImport(&context->peerEcParams, &context->peerEcPublicKey.q,
-               subjectPublicKeyInfo->ecPublicKey.q.value,
-               subjectPublicKeyInfo->ecPublicKey.q.length);
-         }
-      }
-      else
-      {
-         //The specified elliptic curve is not supported
-         error = ERROR_BAD_CERTIFICATE;
-      }
+      //Import the EC public key
+      error = x509ImportEcPublicKey(&context->peerEcPublicKey,
+         subjectPublicKeyInfo);
 
       //Check status code
       if(!error)
       {
          //SM2 elliptic curve?
-         if(!oidComp(subjectPublicKeyInfo->ecParams.namedCurve.value,
-            subjectPublicKeyInfo->ecParams.namedCurve.length, SM2_OID,
-            sizeof(SM2_OID)))
+         if(OID_COMP(subjectPublicKeyInfo->ecParams.namedCurve.value,
+            subjectPublicKeyInfo->ecParams.namedCurve.length, SM2_OID) == 0)
          {
             //The certificate contains a valid SM2 public key
             context->peerCertType = TLS_CERT_SM2_SIGN;
@@ -1613,45 +1580,23 @@ error_t tlsReadSubjectPublicKey(TlsContext *context,
 #endif
 #if (TLS_ED25519_SIGN_SUPPORT == ENABLED || TLS_ED448_SIGN_SUPPORT == ENABLED)
    //Ed25519 or Ed448 public key?
-   if(!oidComp(oid, oidLen, ED25519_OID, sizeof(ED25519_OID)) ||
-      !oidComp(oid, oidLen, ED448_OID, sizeof(ED448_OID)))
+   if(OID_COMP(oid, oidLen, ED25519_OID) == 0 ||
+      OID_COMP(oid, oidLen, ED448_OID) == 0)
    {
-      const EcCurveInfo *curveInfo;
-
-      //Retrieve EC domain parameters
-      curveInfo = x509GetCurveInfo(oid, oidLen);
-
-      //Make sure the specified elliptic curve is supported
-      if(curveInfo != NULL)
-      {
-         //Load EC domain parameters
-         error = ecLoadDomainParameters(&context->peerEcParams, curveInfo);
-
-         //Check status code
-         if(!error)
-         {
-            //Retrieve the EC public key
-            error = ecImport(&context->peerEcParams, &context->peerEcPublicKey.q,
-               subjectPublicKeyInfo->ecPublicKey.q.value,
-               subjectPublicKeyInfo->ecPublicKey.q.length);
-         }
-      }
-      else
-      {
-         //The specified elliptic curve is not supported
-         error = ERROR_BAD_CERTIFICATE;
-      }
+      //Import the EdDSA public key
+      error = x509ImportEddsaPublicKey(&context->peerEddsaPublicKey,
+         subjectPublicKeyInfo);
 
       //Check status code
       if(!error)
       {
          //Ed25519 or Ed448 certificate?
-         if(!oidComp(oid, oidLen, ED25519_OID, sizeof(ED25519_OID)))
+         if(OID_COMP(oid, oidLen, ED25519_OID) == 0)
          {
             //The certificate contains a valid Ed25519 public key
             context->peerCertType = TLS_CERT_ED25519_SIGN;
          }
-         else if(!oidComp(oid, oidLen, ED448_OID, sizeof(ED448_OID)))
+         else if(OID_COMP(oid, oidLen, ED448_OID) == 0)
          {
             //The certificate contains a valid Ed448 public key
             context->peerCertType = TLS_CERT_ED448_SIGN;
@@ -1714,6 +1659,7 @@ error_t tlsReadSubjectPublicKey(TlsContext *context,
          }
          else if(context->keyExchMethod == TLS13_KEY_EXCH_DHE ||
             context->keyExchMethod == TLS13_KEY_EXCH_ECDHE ||
+            context->keyExchMethod == TLS13_KEY_EXCH_MLKEM ||
             context->keyExchMethod == TLS13_KEY_EXCH_HYBRID)
          {
             //TLS 1.3 removes support for DSA certificates
@@ -1786,6 +1732,7 @@ error_t tlsCheckKeyUsage(const X509CertInfo *certInfo,
             keyExchMethod == TLS_KEY_EXCH_ECDHE_ECDSA ||
             keyExchMethod == TLS13_KEY_EXCH_DHE ||
             keyExchMethod == TLS13_KEY_EXCH_ECDHE ||
+            keyExchMethod == TLS13_KEY_EXCH_MLKEM ||
             keyExchMethod == TLS13_KEY_EXCH_HYBRID)
          {
             //The digitalSignature bit must be asserted when the subject public

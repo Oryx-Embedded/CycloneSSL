@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2024 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2025 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.4
+ * @version 2.5.0
  **/
 
 //Switch to the appropriate trace level
@@ -112,6 +112,7 @@ error_t tls13FormatClientKeyShareExtension(TlsContext *context,
 
 #if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
    TLS13_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || \
+   TLS13_MLKEM_KE_SUPPORT == ENABLED || TLS13_PSK_MLKEM_KE_SUPPORT == ENABLED || \
    TLS13_HYBRID_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
    error_t error;
    TlsExtension *extension;
@@ -167,8 +168,8 @@ error_t tls13FormatClientKeyShareExtension(TlsContext *context,
 
       //ECDHE parameters are encoded in the opaque key_exchange field of
       //the KeyShareEntry
-      error = ecExport(&context->ecdhContext.params,
-         &context->ecdhContext.qa.q, keyShareEntry->keyExchange, &n);
+      error = ecExportPublicKey(&context->ecdhContext.da.q,
+         keyShareEntry->keyExchange, &n, EC_PUBLIC_KEY_FORMAT_X963);
       //Any error to report?
       if(error)
          return error;
@@ -181,29 +182,85 @@ error_t tls13FormatClientKeyShareExtension(TlsContext *context,
    }
    else
 #endif
-#if (TLS13_HYBRID_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
-   //Hybrid key exchange method?
-   if(tls13IsHybridKeMethodSupported(context, context->namedGroup))
+#if (TLS13_MLKEM_KE_SUPPORT == ENABLED || TLS13_PSK_MLKEM_KE_SUPPORT == ENABLED)
+   //ML-KEM key exchange method?
+   if(tls13IsMlkemGroupSupported(context, context->namedGroup))
    {
+      const KemAlgo *kemAlgo;
+
+      //Point to the KEM algorithm
+      kemAlgo = context->kemContext.kemAlgo;
+
       //Specify the named group for the key being exchanged
       keyShareEntry->group = htons(context->namedGroup);
 
+      //For the client's share, the key_exchange value contains the pk output
+      //of the corresponding KEM's KeyGen algorithm
+      osMemcpy(keyShareEntry->keyExchange, context->kemContext.pk,
+         kemAlgo->publicKeySize);
+
+      //The length of the public key is fixed
+      n = kemAlgo->publicKeySize;
+
+      //Set the length of the key_exchange field
+      keyShareEntry->length = htons(n);
+
+      //Compute the length of the KeyShareEntry
+      n += sizeof(Tls13KeyShareEntry);
+   }
+   else
+#endif
+#if (TLS13_HYBRID_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
+   //Hybrid key exchange method?
+   if(tls13IsHybridGroupSupported(context, context->namedGroup))
+   {
+      size_t offset;
+      const KemAlgo *kemAlgo;
+
+      //Point to the KEM algorithm
+      kemAlgo = context->kemContext.kemAlgo;
+
+      //Specify the named group for the key being exchanged
+      keyShareEntry->group = htons(context->namedGroup);
+
+      //NIST's special publication 800-56C approves the usage of HKDF with two
+      //distinct shared secrets, with the condition that the first one is
+      //computed by a FIPS-approved key-establishment scheme
+      if(context->namedGroup == TLS_GROUP_X25519_MLKEM768)
+      {
+         offset = kemAlgo->publicKeySize;
+      }
+      else
+      {
+         offset = 0;
+      }
+
       //The ECDHE share is the serialized value of the uncompressed ECDH point
       //representation
-      error = ecExport(&context->ecdhContext.params,
-         &context->ecdhContext.qa.q, keyShareEntry->keyExchange, &n);
+      error = ecExportPublicKey(&context->ecdhContext.da.q,
+         keyShareEntry->keyExchange + offset, &n, EC_PUBLIC_KEY_FORMAT_X963);
       //Any error to report?
       if(error)
          return error;
 
-      //The Kyber's ephemeral share is the public key of the KeyGen step
+      //X25519MLKEM768 group?
+      if(context->namedGroup == TLS_GROUP_X25519_MLKEM768)
+      {
+         offset = 0;
+      }
+      else
+      {
+         offset = n;
+      }
+
+      //The ML-KEM's ephemeral share is the public key of the KeyGen step
       //represented as an octet string
-      osMemcpy(keyShareEntry->keyExchange + n, context->kemContext.pk,
-         context->kemContext.kemAlgo->publicKeySize);
+      osMemcpy(keyShareEntry->keyExchange + offset, context->kemContext.pk,
+         kemAlgo->publicKeySize);
 
       //The client's share is a fixed-size concatenation of the ECDHE share
-      //and Kyber's public key
-      n += context->kemContext.kemAlgo->publicKeySize;
+      //and ML-KEM's public key
+      n += kemAlgo->publicKeySize;
 
       //Set the length of the key_exchange field
       keyShareEntry->length = htons(n);
@@ -611,6 +668,7 @@ error_t tls13ParseSelectedGroupExtension(TlsContext *context,
 
 #if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
    TLS13_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || \
+   TLS13_MLKEM_KE_SUPPORT == ENABLED || TLS13_PSK_MLKEM_KE_SUPPORT == ENABLED || \
    TLS13_HYBRID_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
    //KeyShare extension found?
    if(selectedGroup != NULL)
@@ -661,6 +719,7 @@ error_t tls13ParseServerKeyShareExtension(TlsContext *context,
 
 #if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
    TLS13_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || \
+   TLS13_MLKEM_KE_SUPPORT == ENABLED || TLS13_PSK_MLKEM_KE_SUPPORT == ENABLED || \
    TLS13_HYBRID_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
    //If using (EC)DHE key establishment, servers offer exactly one KeyShareEntry
    //in the ServerHello
@@ -695,8 +754,19 @@ error_t tls13ParseServerKeyShareExtension(TlsContext *context,
             error = tls13GenerateSharedSecret(context, serverShare->keyExchange,
                ntohs(serverShare->length));
          }
+         //ML-KEM key exchange method?
+         else if(tls13IsMlkemGroupSupported(context, namedGroup))
+         {
+            //ML-KEM-512, ML-KEM-768, and ML-KEM-1024 can be used as a
+            //standalone algorithm to achieve post-quantum key agreement
+            context->keyExchMethod = TLS13_KEY_EXCH_MLKEM;
+
+            //Decapsulation algorithm
+            error = tls13Decapsulate(context, serverShare->keyExchange,
+               ntohs(serverShare->length));
+         }
          //Hybrid key exchange method?
-         else if(tls13IsHybridKeMethodSupported(context, namedGroup))
+         else if(tls13IsHybridGroupSupported(context, namedGroup))
          {
             //Hybrid key exchange makes use of two key exchange algorithms
             //based on different cryptographic assumptions
@@ -827,6 +897,12 @@ error_t tls13ParseServerPreSharedKeyExtension(TlsContext *context,
       if(context->keyExchMethod == TLS13_KEY_EXCH_ECDHE)
       {
          context->keyExchMethod = TLS13_KEY_EXCH_PSK_ECDHE;
+      }
+#endif
+#if (TLS13_PSK_MLKEM_KE_SUPPORT == ENABLED)
+      if(context->keyExchMethod == TLS13_KEY_EXCH_MLKEM)
+      {
+         context->keyExchMethod = TLS13_KEY_EXCH_PSK_MLKEM;
       }
 #endif
 #if (TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)

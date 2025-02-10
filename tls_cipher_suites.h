@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2024 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2025 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.4
+ * @version 2.5.0
  **/
 
 #ifndef _TLS_CIPHER_SUITES_H
@@ -413,6 +413,8 @@ typedef enum
    TLS_AES_128_CCM_SHA256                        = 0x1304, //RFC 8446
    TLS_AES_128_CCM_8_SHA256                      = 0x1305, //RFC 8446
    TLS_CHACHA20_POLY1305_SHA256                  = 0x1303, //RFC 8446
+   TLS_AEGIS_256_SHA512                          = 0x1306, //Draft
+   TLS_AEGIS_128L_SHA256                         = 0x1307, //Draft
    TLS_SM4_GCM_SM3                               = 0x00C6, //RFC 8998
    TLS_SM4_CCM_SM3                               = 0x00C7, //RFC 8998
    TLS_GOSTR341112_256_WITH_KUZNYECHIK_MGM_L     = 0xC103, //RFC 9367

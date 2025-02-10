@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2024 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2025 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.4
+ * @version 2.5.0
  **/
 
 //Switch to the appropriate trace level
@@ -43,10 +43,12 @@
 #include "tls_handshake.h"
 #include "tls_common.h"
 #include "tls_certificate.h"
+#include "tls_key_material.h"
 #include "tls_transcript_hash.h"
 #include "tls_record.h"
 #include "tls_misc.h"
 #include "tls13_client_misc.h"
+#include "tls13_key_material.h"
 #include "tls13_ticket.h"
 #include "dtls_record.h"
 #include "pkix/pem_import.h"
@@ -134,7 +136,7 @@ TlsContext *tlsInit(void)
       ecdhInit(&context->ecdhContext);
 #endif
 
-#if (TLS_HYBRID_SUPPORT == ENABLED)
+#if (TLS_MLKEM_SUPPORT == ENABLED || TLS_HYBRID_SUPPORT == ENABLED)
       //Initialize KEM context
       kemInit(&context->kemContext, NULL);
 #endif
@@ -149,12 +151,14 @@ TlsContext *tlsInit(void)
       dsaInitPublicKey(&context->peerDsaPublicKey);
 #endif
 
-#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED || TLS_SM2_SIGN_SUPPORT == ENABLED || \
-   TLS_ED25519_SIGN_SUPPORT == ENABLED || TLS_ED448_SIGN_SUPPORT == ENABLED)
-      //Initialize peer's EC domain parameters
-      ecInitDomainParameters(&context->peerEcParams);
+#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED || TLS_SM2_SIGN_SUPPORT == ENABLED)
       //Initialize peer's EC public key
       ecInitPublicKey(&context->peerEcPublicKey);
+#endif
+
+#if (TLS_ED25519_SIGN_SUPPORT == ENABLED || TLS_ED448_SIGN_SUPPORT == ENABLED)
+      //Initialize peer's EdDSA public key
+      eddsaInitPublicKey(&context->peerEddsaPublicKey);
 #endif
 
       //Maximum number of plaintext data the TX and RX buffers can hold
@@ -290,15 +294,19 @@ error_t tlsSetVersion(TlsContext *context, uint16_t versionMin,
       return ERROR_INVALID_PARAMETER;
 
    //Check parameters
-   if(versionMin < TLS_MIN_VERSION || versionMax > TLS_MAX_VERSION)
+   if(versionMin < TLS_VERSION_1_0 || versionMin > TLS_MAX_VERSION)
       return ERROR_INVALID_PARAMETER;
+
+   if(versionMax > TLS_VERSION_1_3 || versionMax < TLS_MIN_VERSION)
+      return ERROR_INVALID_PARAMETER;
+
    if(versionMin > versionMax)
       return ERROR_INVALID_PARAMETER;
 
    //Minimum version accepted by the implementation
-   context->versionMin = versionMin;
+   context->versionMin = MAX(versionMin, TLS_MIN_VERSION);
    //Maximum version accepted by the implementation
-   context->versionMax = versionMax;
+   context->versionMax = MIN(versionMax, TLS_MAX_VERSION);
 
    //Default record layer version number
    context->version = context->versionMin;
@@ -733,7 +741,7 @@ error_t tlsSetDhParameters(TlsContext *context, const char_t *params,
       return ERROR_INVALID_PARAMETER;
 
    //Decode the PEM structure that holds Diffie-Hellman parameters
-   return pemImportDhParameters(params, length, &context->dhContext.params);
+   return pemImportDhParameters(&context->dhContext.params, params, length);
 #else
    //Diffie-Hellman is not implemented
    return ERROR_NOT_IMPLEMENTED;
@@ -1213,47 +1221,6 @@ error_t tlsSetTrustedCaList(TlsContext *context, const char_t *trustedCaList,
 
    //Successful processing
    return NO_ERROR;
-}
-
-
-/**
- * @brief Add a certificate and the corresponding private key (deprecated)
- * @param[in] context Pointer to the TLS context
- * @param[in] certChain Certificate chain (PEM format). This parameter is
- *   taken as reference
- * @param[in] certChainLen Total length of the certificate chain
- * @param[in] privateKey Private key (PEM format). This parameter is taken
- *   as reference
- * @param[in] privateKeyLen Total length of the private key
- * @return Error code
- **/
-
-error_t tlsAddCertificate(TlsContext *context, const char_t *certChain,
-   size_t certChainLen, const char_t *privateKey, size_t privateKeyLen)
-{
-   error_t error;
-
-   //Make sure the TLS context is valid
-   if(context == NULL)
-      return ERROR_INVALID_PARAMETER;
-
-   //Make sure there is enough room to add the certificate
-   if(context->numCerts >= TLS_MAX_CERTIFICATES)
-      return ERROR_OUT_OF_RESOURCES;
-
-   //Load entity's certificate
-   error = tlsLoadCertificate(context, context->numCerts, certChain,
-      certChainLen, privateKey, privateKeyLen, NULL);
-
-   //Check status code
-   if(!error)
-   {
-      //Update the number of certificates
-      context->numCerts++;
-   }
-
-   //Return status code
-   return error;
 }
 
 
@@ -1838,6 +1805,155 @@ TlsEarlyDataStatus tlsGetEarlyDataStatus(TlsContext *context)
 
    //Return early data status
    return status;
+}
+
+
+/**
+ * @brief Export keying material per RFC 5705 standard
+ * @param[in] context Pointer to the TLS context
+ * @param[in] label Identifying label (NULL-terminated string)
+ * @param[in] useContextValue Specifies whether upper-layer context should
+ *   be used when exporting keying material
+ * @param[in] contextValue Pointer to the upper-layer context
+ * @param[in] contextValueLen Length of the upper-layer context
+ * @param[out] output Pointer to the output
+ * @param[in] outputLen Desired output length
+ * @return Error code
+ **/
+
+error_t tlsExportKeyingMaterial(TlsContext *context, const char_t *label,
+   bool_t useContextValue, const uint8_t *contextValue,
+   size_t contextValueLen, uint8_t *output, size_t outputLen)
+{
+   error_t error;
+   size_t n;
+   uint8_t *seed;
+
+   //Invalid TLS context?
+   if(context == NULL)
+      return ERROR_INVALID_PARAMETER;
+
+   //Check parameters
+   if(label == NULL || output == NULL)
+      return ERROR_INVALID_PARAMETER;
+
+   //Make sure the upper-layer context is valid
+   if(contextValue == NULL && contextValueLen != 0)
+      return ERROR_INVALID_PARAMETER;
+
+   //Calculate the length of the seed
+   n = 2 * TLS_RANDOM_SIZE;
+
+   //Check whether a context is provided
+   if(useContextValue)
+   {
+      n += contextValueLen + 2;
+   }
+
+   //Allocate a memory buffer to hold the seed
+   seed = tlsAllocMem(n);
+   //Failed to allocate memory?
+   if(seed == NULL)
+      return ERROR_OUT_OF_RESOURCES;
+
+   //Concatenate client_random and server_random values
+   osMemcpy(seed, context->clientRandom, TLS_RANDOM_SIZE);
+   osMemcpy(seed + 32, context->serverRandom, TLS_RANDOM_SIZE);
+
+   //Check whether a context is provided
+   if(useContextValue)
+   {
+      //The context_value_length is encoded as an unsigned, 16-bit quantity
+      //representing the length of the context value
+      STORE16BE(contextValueLen, seed + 64);
+
+      //Copy the context value provided by the application using the exporter
+      osMemcpy(seed + 66, contextValue, contextValueLen);
+   }
+
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
+   //TLS 1.0 or TLS 1.1 currently selected?
+   if(context->version == TLS_VERSION_1_0 || context->version == TLS_VERSION_1_1)
+   {
+      //TLS 1.0 and 1.1 use a PRF that combines MD5 and SHA-1
+      error = tlsPrf(context->masterSecret, TLS_MASTER_SECRET_SIZE,
+         label, seed, n, output, outputLen);
+   }
+   else
+#endif
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+   //TLS 1.2 currently selected?
+   if(context->version == TLS_VERSION_1_2)
+   {
+      //Make sure the PRF hash algorithm is valid
+      if(context->cipherSuite.prfHashAlgo != NULL)
+      {
+         //TLS 1.2 PRF uses SHA-256 or a stronger hash algorithm as the core
+         //function in its construction
+         error = tls12Prf(context->cipherSuite.prfHashAlgo, context->masterSecret,
+            TLS_MASTER_SECRET_SIZE, label, seed, n, output, outputLen);
+      }
+      else
+      {
+         //Invalid PRF hash algorithm
+         error = ERROR_FAILURE;
+      }
+   }
+   else
+#endif
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+   //TLS 1.3 currently selected?
+   if(context->version == TLS_VERSION_1_3)
+   {
+      const HashAlgo *hash;
+      uint8_t secret[TLS_MAX_HKDF_DIGEST_SIZE];
+      uint8_t digest[TLS_MAX_HKDF_DIGEST_SIZE];
+
+      //The hash function used by HKDF is the cipher suite hash algorithm
+      hash = context->cipherSuite.prfHashAlgo;
+
+      //Make sure the HKDF hash algorithm is valid
+      if(hash != NULL)
+      {
+         //Derive exporter master secret
+         error = tls13DeriveSecret(context, context->exporterMasterSecret,
+            hash->digestSize, label, "", 0, secret, hash->digestSize);
+
+         //Check status code
+         if(!error)
+         {
+            //Hash context_value input
+            error = hash->compute(contextValue, contextValueLen, digest);
+         }
+
+         //Check status code
+         if(!error)
+         {
+            //Export keying material
+            error = tls13HkdfExpandLabel(context->transportProtocol, hash,
+               secret, hash->digestSize, "exporter", digest, hash->digestSize,
+               output, outputLen);
+         }
+      }
+      else
+      {
+         //Invalid HKDF hash algorithm
+         error = ERROR_FAILURE;
+      }
+   }
+   else
+#endif
+   //Invalid TLS version?
+   {
+      //Report an error
+      error = ERROR_INVALID_VERSION;
+   }
+
+   //Release previously allocated memory
+   tlsFreeMem(seed);
+
+   //Return status code
+   return error;
 }
 
 
@@ -2526,7 +2642,7 @@ void tlsFree(TlsContext *context)
       ecdhFree(&context->ecdhContext);
 #endif
 
-#if (TLS_HYBRID_SUPPORT == ENABLED)
+#if (TLS_MLKEM_SUPPORT == ENABLED || TLS_HYBRID_SUPPORT == ENABLED)
       //Release KEM context
       kemFree(&context->kemContext);
 #endif
@@ -2541,12 +2657,14 @@ void tlsFree(TlsContext *context)
       dsaFreePublicKey(&context->peerDsaPublicKey);
 #endif
 
-#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED || TLS_SM2_SIGN_SUPPORT == ENABLED || \
-   TLS_ED25519_SIGN_SUPPORT == ENABLED || TLS_ED448_SIGN_SUPPORT == ENABLED)
-      //Release peer's EC domain parameters
-      ecFreeDomainParameters(&context->peerEcParams);
+#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED || TLS_SM2_SIGN_SUPPORT == ENABLED)
       //Release peer's EC public key
       ecFreePublicKey(&context->peerEcPublicKey);
+#endif
+
+#if (TLS_ED25519_SIGN_SUPPORT == ENABLED || TLS_ED448_SIGN_SUPPORT == ENABLED)
+      //Release peer's EdDSA public key
+      eddsaFreePublicKey(&context->peerEddsaPublicKey);
 #endif
 
 #if (TLS_PSK_SUPPORT == ENABLED)

@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2024 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2025 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.4
+ * @version 2.5.0
  **/
 
 //Switch to the appropriate trace level
@@ -239,7 +239,9 @@ error_t tlsGenerateRandomValue(TlsContext *context, uint8_t *random)
             osMemcpy(random + 24, tls11DowngradeRandom, 8);
          }
          else if(context->version == TLS_VERSION_1_2 &&
-            context->versionMax >= TLS_VERSION_1_3)
+            context->versionMax >= TLS_VERSION_1_3 &&
+            (context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM ||
+            context->transportProtocol == TLS_TRANSPORT_PROTOCOL_EAP))
          {
             //If negotiating TLS 1.2, TLS 1.3 servers must set the last eight
             //bytes of their random value to the bytes 44 4F 57 4E 47 52 44 01
@@ -974,6 +976,7 @@ error_t tlsWriteMpi(const Mpi *a, uint8_t *data, size_t *length)
 
    //Return the total number of bytes that have been written
    *length = n + 2;
+
    //Successful processing
    return NO_ERROR;
 }
@@ -1000,6 +1003,10 @@ error_t tlsReadMpi(Mpi *a, const uint8_t *data, size_t size, size_t *length)
    //Decode the length field
    n = LOAD16BE(data);
 
+   //Invalid length?
+   if(n < 1)
+      return ERROR_DECODING_FAILED;
+
    //Buffer underrun?
    if(size < (n + 2))
       return ERROR_DECODING_FAILED;
@@ -1012,6 +1019,7 @@ error_t tlsReadMpi(Mpi *a, const uint8_t *data, size_t size, size_t *length)
 
    //Return the total number of bytes that have been read
    *length = n + 2;
+
    //Successful processing
    return NO_ERROR;
 }
@@ -1019,22 +1027,22 @@ error_t tlsReadMpi(Mpi *a, const uint8_t *data, size_t size, size_t *length)
 
 /**
  * @brief Encode an EC point to an opaque vector
- * @param[in] params EC domain parameters
- * @param[in] a Pointer to an EC point
+ * @param[in] publicKey EC public key to be encoded
  * @param[out] data Buffer where to store the opaque vector
  * @param[out] length Total number of bytes that have been written
  * @return Error code
  **/
 
-error_t tlsWriteEcPoint(const EcDomainParameters *params,
-   const EcPoint *a, uint8_t *data, size_t *length)
+error_t tlsWriteEcPoint(const EcPublicKey *publicKey, uint8_t *data,
+   size_t *length)
 {
 #if (TLS_ECDH_ANON_KE_SUPPORT == ENABLED || TLS_ECDHE_RSA_KE_SUPPORT == ENABLED || \
    TLS_ECDHE_ECDSA_KE_SUPPORT == ENABLED || TLS_ECDHE_PSK_KE_SUPPORT == ENABLED)
    error_t error;
 
    //Convert the EC point to an octet string
-   error = ecExport(params, a, data + 1, length);
+   error = ecExportPublicKey(publicKey, data + 1, length,
+      EC_PUBLIC_KEY_FORMAT_X963);
    //Any error to report?
    if(error)
       return error;
@@ -1044,6 +1052,7 @@ error_t tlsWriteEcPoint(const EcDomainParameters *params,
 
    //Return the total number of bytes that have been written
    *length += 1;
+
    //Successful processing
    return NO_ERROR;
 #else
@@ -1055,16 +1064,16 @@ error_t tlsWriteEcPoint(const EcDomainParameters *params,
 
 /**
  * @brief Read an EC point from an opaque vector
- * @param[in] params EC domain parameters
- * @param[out] a Resulting EC point
+ * @param[out] publicKey Resulting EC public key
+ * @param[in] curve Elliptic curve parameters
  * @param[in] data Buffer where to read the opaque vector
  * @param[in] size Total number of bytes available in the buffer
  * @param[out] length Total number of bytes that have been read
  * @return Error code
  **/
 
-error_t tlsReadEcPoint(const EcDomainParameters *params,
-   EcPoint *a, const uint8_t *data, size_t size, size_t *length)
+error_t tlsReadEcPoint(EcPublicKey *publicKey, const EcCurve *curve,
+   const uint8_t *data, size_t size, size_t *length)
 {
 #if (TLS_ECDH_ANON_KE_SUPPORT == ENABLED || TLS_ECDHE_RSA_KE_SUPPORT == ENABLED || \
    TLS_ECDHE_ECDSA_KE_SUPPORT == ENABLED || TLS_ECDHE_PSK_KE_SUPPORT == ENABLED)
@@ -1087,13 +1096,15 @@ error_t tlsReadEcPoint(const EcDomainParameters *params,
       return ERROR_DECODING_FAILED;
 
    //Convert the octet string to an EC point
-   error = ecImport(params, a, data + 1, n);
+   error = ecImportPublicKey(publicKey, curve, data + 1, n,
+      EC_PUBLIC_KEY_FORMAT_X963);
    //Any error to report?
    if(error)
       return error;
 
    //Return the total number of bytes that have been read
    *length = n + 1;
+
    //Successful processing
    return NO_ERROR;
 #else
@@ -1234,16 +1245,16 @@ const HashAlgo *tlsGetHashAlgo(TlsHashAlgo hashAlgoId)
  * @brief Get the EC domain parameters that match the specified named curve
  * @param[in] context Pointer to the TLS context
  * @param[in] namedCurve Elliptic curve identifier
- * @return Elliptic curve domain parameters
+ * @return Elliptic curve parameters
  **/
 
-const EcCurveInfo *tlsGetCurveInfo(TlsContext *context, uint16_t namedCurve)
+const EcCurve *tlsGetCurve(TlsContext *context, uint16_t namedCurve)
 {
    uint_t i;
-   const EcCurveInfo *curveInfo;
+   const EcCurve *curve;
 
-   //Default elliptic curve domain parameters
-   curveInfo = NULL;
+   //Default elliptic curve parameters
+   curve = NULL;
 
 #if (TLS_ECDH_SUPPORT == ENABLED)
    //Check named curve
@@ -1252,111 +1263,111 @@ const EcCurveInfo *tlsGetCurveInfo(TlsContext *context, uint16_t namedCurve)
 #if (TLS_SECP160K1_SUPPORT == ENABLED)
    //secp160k1 elliptic curve?
    case TLS_GROUP_SECP160K1:
-      curveInfo = ecGetCurveInfo(SECP160K1_OID, sizeof(SECP160K1_OID));
+      curve = ecGetCurve(SECP160K1_OID, sizeof(SECP160K1_OID));
       break;
 #endif
 #if (TLS_SECP160R1_SUPPORT == ENABLED)
    //secp160r1 elliptic curve?
    case TLS_GROUP_SECP160R1:
-      curveInfo = ecGetCurveInfo(SECP160R1_OID, sizeof(SECP160R1_OID));
+      curve = ecGetCurve(SECP160R1_OID, sizeof(SECP160R1_OID));
       break;
 #endif
 #if (TLS_SECP160R2_SUPPORT == ENABLED)
    //secp160r2 elliptic curve?
    case TLS_GROUP_SECP160R2:
-      curveInfo = ecGetCurveInfo(SECP160R2_OID, sizeof(SECP160R2_OID));
+      curve = ecGetCurve(SECP160R2_OID, sizeof(SECP160R2_OID));
       break;
 #endif
 #if (TLS_SECP192K1_SUPPORT == ENABLED)
    //secp192k1 elliptic curve?
    case TLS_GROUP_SECP192K1:
-      curveInfo = ecGetCurveInfo(SECP192K1_OID, sizeof(SECP192K1_OID));
+      curve = ecGetCurve(SECP192K1_OID, sizeof(SECP192K1_OID));
       break;
 #endif
 #if (TLS_SECP192R1_SUPPORT == ENABLED)
    //secp192r1 elliptic curve?
    case TLS_GROUP_SECP192R1:
-      curveInfo = ecGetCurveInfo(SECP192R1_OID, sizeof(SECP192R1_OID));
+      curve = ecGetCurve(SECP192R1_OID, sizeof(SECP192R1_OID));
       break;
 #endif
 #if (TLS_SECP224K1_SUPPORT == ENABLED)
    //secp224k1 elliptic curve?
    case TLS_GROUP_SECP224K1:
-      curveInfo = ecGetCurveInfo(SECP224K1_OID, sizeof(SECP224K1_OID));
+      curve = ecGetCurve(SECP224K1_OID, sizeof(SECP224K1_OID));
       break;
 #endif
 #if (TLS_SECP224R1_SUPPORT == ENABLED)
    //secp224r1 elliptic curve?
    case TLS_GROUP_SECP224R1:
-      curveInfo = ecGetCurveInfo(SECP224R1_OID, sizeof(SECP224R1_OID));
+      curve = ecGetCurve(SECP224R1_OID, sizeof(SECP224R1_OID));
       break;
 #endif
 #if (TLS_SECP256K1_SUPPORT == ENABLED)
    //secp256k1 elliptic curve?
    case TLS_GROUP_SECP256K1:
-      curveInfo = ecGetCurveInfo(SECP256K1_OID, sizeof(SECP256K1_OID));
+      curve = ecGetCurve(SECP256K1_OID, sizeof(SECP256K1_OID));
       break;
 #endif
 #if (TLS_SECP256R1_SUPPORT == ENABLED)
    //secp256r1 elliptic curve?
    case TLS_GROUP_SECP256R1:
-      curveInfo = ecGetCurveInfo(SECP256R1_OID, sizeof(SECP256R1_OID));
+      curve = ecGetCurve(SECP256R1_OID, sizeof(SECP256R1_OID));
       break;
 #endif
 #if (TLS_SECP384R1_SUPPORT == ENABLED)
    //secp384r1 elliptic curve?
    case TLS_GROUP_SECP384R1:
-      curveInfo = ecGetCurveInfo(SECP384R1_OID, sizeof(SECP384R1_OID));
+      curve = ecGetCurve(SECP384R1_OID, sizeof(SECP384R1_OID));
       break;
 #endif
 #if (TLS_SECP521R1_SUPPORT == ENABLED)
    //secp521r1 elliptic curve?
    case TLS_GROUP_SECP521R1:
-      curveInfo = ecGetCurveInfo(SECP521R1_OID, sizeof(SECP521R1_OID));
+      curve = ecGetCurve(SECP521R1_OID, sizeof(SECP521R1_OID));
       break;
 #endif
 #if (TLS_BRAINPOOLP256R1_SUPPORT == ENABLED)
    //brainpoolP256r1 elliptic curve?
    case TLS_GROUP_BRAINPOOLP256R1:
    case TLS_GROUP_BRAINPOOLP256R1_TLS13:
-      curveInfo = ecGetCurveInfo(BRAINPOOLP256R1_OID, sizeof(BRAINPOOLP256R1_OID));
+      curve = ecGetCurve(BRAINPOOLP256R1_OID, sizeof(BRAINPOOLP256R1_OID));
       break;
 #endif
 #if (TLS_BRAINPOOLP384R1_SUPPORT == ENABLED)
    //brainpoolP384r1 elliptic curve?
    case TLS_GROUP_BRAINPOOLP384R1:
    case TLS_GROUP_BRAINPOOLP384R1_TLS13:
-      curveInfo = ecGetCurveInfo(BRAINPOOLP384R1_OID, sizeof(BRAINPOOLP384R1_OID));
+      curve = ecGetCurve(BRAINPOOLP384R1_OID, sizeof(BRAINPOOLP384R1_OID));
       break;
 #endif
 #if (TLS_BRAINPOOLP512R1_SUPPORT == ENABLED)
    //brainpoolP512r1 elliptic curve?
    case TLS_GROUP_BRAINPOOLP512R1:
    case TLS_GROUP_BRAINPOOLP512R1_TLS13:
-      curveInfo = ecGetCurveInfo(BRAINPOOLP512R1_OID, sizeof(BRAINPOOLP512R1_OID));
+      curve = ecGetCurve(BRAINPOOLP512R1_OID, sizeof(BRAINPOOLP512R1_OID));
       break;
 #endif
 #if (TLS_SM2_SUPPORT == ENABLED)
    //SM2 elliptic curve?
    case TLS_GROUP_CURVE_SM2:
-      curveInfo = ecGetCurveInfo(SM2_OID, sizeof(SM2_OID));
+      curve = ecGetCurve(SM2_OID, sizeof(SM2_OID));
       break;
 #endif
 #if (TLS_X25519_SUPPORT == ENABLED)
    //Curve25519 elliptic curve?
    case TLS_GROUP_X25519:
-      curveInfo = ecGetCurveInfo(X25519_OID, sizeof(X25519_OID));
+      curve = ecGetCurve(X25519_OID, sizeof(X25519_OID));
       break;
 #endif
 #if (TLS_X448_SUPPORT == ENABLED)
    //Curve448 elliptic curve?
    case TLS_GROUP_X448:
-      curveInfo = ecGetCurveInfo(X448_OID, sizeof(X448_OID));
+      curve = ecGetCurve(X448_OID, sizeof(X448_OID));
       break;
 #endif
    //Unknown elliptic curve identifier?
    default:
-      curveInfo = NULL;
+      curve = NULL;
       break;
    }
 #endif
@@ -1375,12 +1386,12 @@ const EcCurveInfo *tlsGetCurveInfo(TlsContext *context, uint16_t namedCurve)
       //Check whether the use of the elliptic curve is restricted
       if(i >= context->numSupportedGroups)
       {
-         curveInfo = NULL;
+         curve = NULL;
       }
    }
 
-   //Return elliptic curve domain parameters, if any
-   return curveInfo;
+   //Return the elliptic curve parameters, if any
+   return curve;
 }
 
 
@@ -1406,105 +1417,105 @@ TlsNamedGroup tlsGetNamedCurve(const uint8_t *oid, size_t length)
    }
 #if (TLS_SECP160K1_SUPPORT == ENABLED)
    //secp160k1 elliptic curve?
-   else if(!oidComp(oid, length, SECP160K1_OID, sizeof(SECP160K1_OID)))
+   else if(OID_COMP(oid, length, SECP160K1_OID) == 0)
    {
       namedCurve = TLS_GROUP_SECP160K1;
    }
 #endif
 #if (TLS_SECP160R1_SUPPORT == ENABLED)
    //secp160r1 elliptic curve?
-   else if(!oidComp(oid, length, SECP160R1_OID, sizeof(SECP160R1_OID)))
+   else if(OID_COMP(oid, length, SECP160R1_OID) == 0)
    {
       namedCurve = TLS_GROUP_SECP160R1;
    }
 #endif
 #if (TLS_SECP160R2_SUPPORT == ENABLED)
    //secp160r2 elliptic curve?
-   else if(!oidComp(oid, length, SECP160R2_OID, sizeof(SECP160R2_OID)))
+   else if(OID_COMP(oid, length, SECP160R2_OID) == 0)
    {
       namedCurve = TLS_GROUP_SECP160R2;
    }
 #endif
 #if (TLS_SECP192K1_SUPPORT == ENABLED)
    //secp192k1 elliptic curve?
-   else if(!oidComp(oid, length, SECP192K1_OID, sizeof(SECP192K1_OID)))
+   else if(OID_COMP(oid, length, SECP192K1_OID) == 0)
    {
       namedCurve = TLS_GROUP_SECP192K1;
    }
 #endif
 #if (TLS_SECP192R1_SUPPORT == ENABLED)
    //secp192r1 elliptic curve?
-   else if(!oidComp(oid, length, SECP192R1_OID, sizeof(SECP192R1_OID)))
+   else if(OID_COMP(oid, length, SECP192R1_OID) == 0)
    {
       namedCurve = TLS_GROUP_SECP192R1;
    }
 #endif
 #if (TLS_SECP224K1_SUPPORT == ENABLED)
    //secp224k1 elliptic curve?
-   else if(!oidComp(oid, length, SECP224K1_OID, sizeof(SECP224K1_OID)))
+   else if(OID_COMP(oid, length, SECP224K1_OID) == 0)
    {
       namedCurve = TLS_GROUP_SECP224K1;
    }
 #endif
 #if (TLS_SECP224R1_SUPPORT == ENABLED)
    //secp224r1 elliptic curve?
-   else if(!oidComp(oid, length, SECP224R1_OID, sizeof(SECP224R1_OID)))
+   else if(OID_COMP(oid, length, SECP224R1_OID) == 0)
    {
       namedCurve = TLS_GROUP_SECP224R1;
    }
 #endif
 #if (TLS_SECP256K1_SUPPORT == ENABLED)
    //secp256k1 elliptic curve?
-   else if(!oidComp(oid, length, SECP256K1_OID, sizeof(SECP256K1_OID)))
+   else if(OID_COMP(oid, length, SECP256K1_OID) == 0)
    {
       namedCurve = TLS_GROUP_SECP256K1;
    }
 #endif
 #if (TLS_SECP256R1_SUPPORT == ENABLED)
    //secp256r1 elliptic curve?
-   else if(!oidComp(oid, length, SECP256R1_OID, sizeof(SECP256R1_OID)))
+   else if(OID_COMP(oid, length, SECP256R1_OID) == 0)
    {
       namedCurve = TLS_GROUP_SECP256R1;
    }
 #endif
 #if (TLS_SECP384R1_SUPPORT == ENABLED)
    //secp384r1 elliptic curve?
-   else if(!oidComp(oid, length, SECP384R1_OID, sizeof(SECP384R1_OID)))
+   else if(OID_COMP(oid, length, SECP384R1_OID) == 0)
    {
       namedCurve = TLS_GROUP_SECP384R1;
    }
 #endif
 #if (TLS_SECP521R1_SUPPORT == ENABLED)
    //secp521r1 elliptic curve?
-   else if(!oidComp(oid, length, SECP521R1_OID, sizeof(SECP521R1_OID)))
+   else if(OID_COMP(oid, length, SECP521R1_OID) == 0)
    {
       namedCurve = TLS_GROUP_SECP521R1;
    }
 #endif
 #if (TLS_BRAINPOOLP256R1_SUPPORT == ENABLED)
    //brainpoolP256r1 elliptic curve?
-   else if(!oidComp(oid, length, BRAINPOOLP256R1_OID, sizeof(BRAINPOOLP256R1_OID)))
+   else if(OID_COMP(oid, length, BRAINPOOLP256R1_OID) == 0)
    {
       namedCurve = TLS_GROUP_BRAINPOOLP256R1;
    }
 #endif
 #if (TLS_BRAINPOOLP384R1_SUPPORT == ENABLED)
    //brainpoolP384r1 elliptic curve?
-   else if(!oidComp(oid, length, BRAINPOOLP384R1_OID, sizeof(BRAINPOOLP384R1_OID)))
+   else if(OID_COMP(oid, length, BRAINPOOLP384R1_OID) == 0)
    {
       namedCurve = TLS_GROUP_BRAINPOOLP384R1;
    }
 #endif
 #if (TLS_BRAINPOOLP512R1_SUPPORT == ENABLED)
    //brainpoolP512r1 elliptic curve?
-   else if(!oidComp(oid, length, BRAINPOOLP512R1_OID, sizeof(BRAINPOOLP512R1_OID)))
+   else if(OID_COMP(oid, length, BRAINPOOLP512R1_OID) == 0)
    {
       namedCurve = TLS_GROUP_BRAINPOOLP512R1;
    }
 #endif
 #if (TLS_SM2_SUPPORT == ENABLED)
    //SM2 elliptic curve?
-   else if(!oidComp(oid, length, SM2_OID, sizeof(SM2_OID)))
+   else if(OID_COMP(oid, length, SM2_OID) == 0)
    {
       namedCurve = TLS_GROUP_CURVE_SM2;
    }

@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2024 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2025 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.4
+ * @version 2.5.0
  **/
 
 //Switch to the appropriate trace level
@@ -340,9 +340,13 @@ error_t dtlsParseHelloVerifyRequest(TlsContext *context,
       if(length < sizeof(DtlsHelloVerifyRequest))
          return ERROR_DECODING_FAILED;
 
-      //Check current state
-      if(context->state != TLS_STATE_SERVER_HELLO)
+      //Clients may receive multiple HelloVerifyRequest messages with different
+      //cookies (refer to RFC 6347, section 4.2.1)
+      if(context->state != TLS_STATE_SERVER_HELLO &&
+         context->state != TLS_STATE_SERVER_HELLO_2)
+      {
          return ERROR_UNEXPECTED_MESSAGE;
+      }
 
       //Remaining bytes to process
       length -= sizeof(DtlsHelloVerifyRequest);
@@ -378,7 +382,7 @@ error_t dtlsParseHelloVerifyRequest(TlsContext *context,
       context->cookieLen = message->cookieLength;
 
       //The client sends a second ClientHello message
-      tlsChangeState(context, TLS_STATE_CLIENT_HELLO);
+      tlsChangeState(context, TLS_STATE_CLIENT_HELLO_2);
 
       //Successful processing
       return NO_ERROR;

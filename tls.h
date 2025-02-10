@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2024 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2025 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.4
+ * @version 2.5.0
  **/
 
 #ifndef _TLS_H
@@ -81,13 +81,13 @@ struct _TlsEncryptionEngine;
 #endif
 
 //Version string
-#define CYCLONE_SSL_VERSION_STRING "2.4.4"
+#define CYCLONE_SSL_VERSION_STRING "2.5.0"
 //Major version
 #define CYCLONE_SSL_MAJOR_VERSION 2
 //Minor version
-#define CYCLONE_SSL_MINOR_VERSION 4
+#define CYCLONE_SSL_MINOR_VERSION 5
 //Revision number
-#define CYCLONE_SSL_REV_NUMBER 4
+#define CYCLONE_SSL_REV_NUMBER 0
 
 //TLS version numbers
 #define SSL_VERSION_3_0 0x0300
@@ -719,11 +719,25 @@ struct _TlsEncryptionEngine;
    #error TLS_X448_SUPPORT parameter is not valid
 #endif
 
-//ML-KEM-768 key encapsulation method
+//ML-KEM-512 key encapsulation mechanism support
+#ifndef TLS_MLKEM512_SUPPORT
+   #define TLS_MLKEM512_SUPPORT DISABLED
+#elif (TLS_MLKEM512_SUPPORT != ENABLED && TLS_MLKEM512_SUPPORT != DISABLED)
+   #error TLS_MLKEM512_SUPPORT parameter is not valid
+#endif
+
+//ML-KEM-768 key encapsulation mechanism support
 #ifndef TLS_MLKEM768_SUPPORT
    #define TLS_MLKEM768_SUPPORT DISABLED
 #elif (TLS_MLKEM768_SUPPORT != ENABLED && TLS_MLKEM768_SUPPORT != DISABLED)
    #error TLS_MLKEM768_SUPPORT parameter is not valid
+#endif
+
+//ML-KEM-1024 key encapsulation mechanism support
+#ifndef TLS_MLKEM1024_SUPPORT
+   #define TLS_MLKEM1024_SUPPORT DISABLED
+#elif (TLS_MLKEM1024_SUPPORT != ENABLED && TLS_MLKEM1024_SUPPORT != DISABLED)
+   #error TLS_MLKEM1024_SUPPORT parameter is not valid
 #endif
 
 //Certificate key usage verification
@@ -880,6 +894,14 @@ struct _TlsEncryptionEngine;
    #define TLS_ECDH_SUPPORT ENABLED
 #else
    #define TLS_ECDH_SUPPORT DISABLED
+#endif
+
+//Support for ML-KEM key exchange?
+#if ((TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3) && \
+   (TLS13_MLKEM_KE_SUPPORT == ENABLED || TLS13_PSK_MLKEM_KE_SUPPORT == ENABLED))
+   #define TLS_MLKEM_SUPPORT ENABLED
+#else
+   #define TLS_MLKEM_SUPPORT DISABLED
 #endif
 
 //Support for hybrid key exchange?
@@ -1157,11 +1179,13 @@ typedef enum
    TLS_KEY_EXCH_SRP_SHA_DSS  = 18,
    TLS13_KEY_EXCH_DHE        = 19,
    TLS13_KEY_EXCH_ECDHE      = 20,
-   TLS13_KEY_EXCH_HYBRID     = 21,
-   TLS13_KEY_EXCH_PSK        = 22,
-   TLS13_KEY_EXCH_PSK_DHE    = 23,
-   TLS13_KEY_EXCH_PSK_ECDHE  = 24,
-   TLS13_KEY_EXCH_PSK_HYBRID = 25
+   TLS13_KEY_EXCH_MLKEM      = 21,
+   TLS13_KEY_EXCH_HYBRID     = 22,
+   TLS13_KEY_EXCH_PSK        = 23,
+   TLS13_KEY_EXCH_PSK_DHE    = 24,
+   TLS13_KEY_EXCH_PSK_ECDHE  = 25,
+   TLS13_KEY_EXCH_PSK_MLKEM  = 26,
+   TLS13_KEY_EXCH_PSK_HYBRID = 27
 } TlsKeyExchMethod;
 
 
@@ -1245,34 +1269,44 @@ typedef enum
 
 typedef enum
 {
-   TLS_SIGN_SCHEME_NONE                       = 0x0000,
-   TLS_SIGN_SCHEME_RSA_PKCS1_SHA1             = 0x0201,
-   TLS_SIGN_SCHEME_RSA_PKCS1_SHA256           = 0x0401,
-   TLS_SIGN_SCHEME_RSA_PKCS1_SHA384           = 0x0501,
-   TLS_SIGN_SCHEME_RSA_PKCS1_SHA512           = 0x0601,
-   TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA256        = 0x0804,
-   TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA384        = 0x0805,
-   TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA512        = 0x0806,
-   TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA256         = 0x0809,
-   TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA384         = 0x080A,
-   TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA512         = 0x080B,
-   TLS_SIGN_SCHEME_ECDSA_SHA1                 = 0x0203,
-   TLS_SIGN_SCHEME_ECDSA_SECP256R1_SHA256     = 0x0403,
-   TLS_SIGN_SCHEME_ECDSA_SECP384R1_SHA384     = 0x0503,
-   TLS_SIGN_SCHEME_ECDSA_SECP521R1_SHA512     = 0x0603,
-   TLS_SIGN_SCHEME_ECDSA_BP256R1_TLS13_SHA256 = 0x081A,
-   TLS_SIGN_SCHEME_ECDSA_BP384R1_TLS13_SHA384 = 0x081B,
-   TLS_SIGN_SCHEME_ECDSA_BP512R1_TLS13_SHA512 = 0x081C,
-   TLS_SIGN_SCHEME_SM2SIG_SM3                 = 0x0708,
-   TLS_SIGN_SCHEME_ED25519                    = 0x0807,
-   TLS_SIGN_SCHEME_ED448                      = 0x0808,
-   TLS_SIGN_SCHEME_GOSTR34102012_256A         = 0x0709,
-   TLS_SIGN_SCHEME_GOSTR34102012_256B         = 0x070A,
-   TLS_SIGN_SCHEME_GOSTR34102012_256C         = 0x070B,
-   TLS_SIGN_SCHEME_GOSTR34102012_256D         = 0x070C,
-   TLS_SIGN_SCHEME_GOSTR34102012_512A         = 0x070D,
-   TLS_SIGN_SCHEME_GOSTR34102012_512B         = 0x070E,
-   TLS_SIGN_SCHEME_GOSTR34102012_512C         = 0x070F
+   TLS_SIGN_SCHEME_NONE                           = 0x0000,
+   TLS_SIGN_SCHEME_RSA_PKCS1_SHA1                 = 0x0201,
+   TLS_SIGN_SCHEME_RSA_PKCS1_SHA256               = 0x0401,
+   TLS_SIGN_SCHEME_RSA_PKCS1_SHA384               = 0x0501,
+   TLS_SIGN_SCHEME_RSA_PKCS1_SHA512               = 0x0601,
+   TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA256            = 0x0804,
+   TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA384            = 0x0805,
+   TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA512            = 0x0806,
+   TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA256             = 0x0809,
+   TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA384             = 0x080A,
+   TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA512             = 0x080B,
+   TLS_SIGN_SCHEME_ECDSA_SHA1                     = 0x0203,
+   TLS_SIGN_SCHEME_ECDSA_SECP256R1_SHA256         = 0x0403,
+   TLS_SIGN_SCHEME_ECDSA_SECP384R1_SHA384         = 0x0503,
+   TLS_SIGN_SCHEME_ECDSA_SECP521R1_SHA512         = 0x0603,
+   TLS_SIGN_SCHEME_ECDSA_BP256R1_TLS13_SHA256     = 0x081A,
+   TLS_SIGN_SCHEME_ECDSA_BP384R1_TLS13_SHA384     = 0x081B,
+   TLS_SIGN_SCHEME_ECDSA_BP512R1_TLS13_SHA512     = 0x081C,
+   TLS_SIGN_SCHEME_SM2SIG_SM3                     = 0x0708,
+   TLS_SIGN_SCHEME_ED25519                        = 0x0807,
+   TLS_SIGN_SCHEME_ED448                          = 0x0808,
+   TLS_SIGN_SCHEME_GOSTR34102012_256A             = 0x0709,
+   TLS_SIGN_SCHEME_GOSTR34102012_256B             = 0x070A,
+   TLS_SIGN_SCHEME_GOSTR34102012_256C             = 0x070B,
+   TLS_SIGN_SCHEME_GOSTR34102012_256D             = 0x070C,
+   TLS_SIGN_SCHEME_GOSTR34102012_512A             = 0x070D,
+   TLS_SIGN_SCHEME_GOSTR34102012_512B             = 0x070E,
+   TLS_SIGN_SCHEME_GOSTR34102012_512C             = 0x070F,
+   TLS_SIGN_SCHEME_MLDSA44_ECDSA_SECP256R1_SHA256 = 0x0907,
+   TLS_SIGN_SCHEME_MLDSA65_ECDSA_SECP384R1_SHA384 = 0x0908,
+   TLS_SIGN_SCHEME_MLDSA87_ECDSA_SECP384R1_SHA384 = 0x0909,
+   TLS_SIGN_SCHEME_MLDSA44_ED25519                = 0x090A,
+   TLS_SIGN_SCHEME_MLDSA65_ED25519                = 0x090B,
+   TLS_SIGN_SCHEME_MLDSA44_RSA_PKCS1_SHA256       = 0x090C,
+   TLS_SIGN_SCHEME_MLDSA65_RSA_PKCS1_SHA384       = 0x090D,
+   TLS_SIGN_SCHEME_MLDSA44_RSA_PSS_PSS_SHA256     = 0x090E,
+   TLS_SIGN_SCHEME_MLDSA65_RSA_PSS_PSS_SHA384     = 0x090F,
+   TLS_SIGN_SCHEME_MLDSA87_ED448                  = 0x0910
 } TlsSignatureScheme;
 
 
@@ -1415,8 +1449,12 @@ typedef enum
    TLS_GROUP_FFDHE6144                  = 259,   //RFC 7919
    TLS_GROUP_FFDHE8192                  = 260,   //RFC 7919
    TLS_GROUP_FFDHE_MAX                  = 511,   //RFC 7919
-   TLS_GROUP_X25519_KYBER768_DRAFT00    = 25497, //Experimental
-   TLS_GROUP_SECP256R1_KYBER768_DRAFT00 = 25498, //Experimental
+   TLS_GROUP_MLKEM512                   = 512,   //Draft
+   TLS_GROUP_MLKEM768                   = 513,   //Draft
+   TLS_GROUP_MLKEM1024                  = 514,   //Draft
+   TLS_GROUP_SECP256R1_MLKEM768         = 4587,  //Draft
+   TLS_GROUP_X25519_MLKEM768            = 4588,  //Draft
+   TLS_GROUP_SECP384R1_MLKEM1024        = 4589,  //Draft
    TLS_GROUP_EXPLICIT_PRIME_CURVE       = 65281, //RFC 4492
    TLS_GROUP_EXPLICIT_CHAR2_CURVE       = 65282  //RFC 4492
 } TlsNamedGroup;
@@ -2220,7 +2258,6 @@ struct _TlsContext
 #endif
 
    TlsCertDesc certs[TLS_MAX_CERTIFICATES];  ///<End entity certificates (PEM format)
-   uint_t numCerts;                          ///<Number of certificates available
    const char_t *trustedCaList;              ///<Trusted CA list (PEM format)
    size_t trustedCaListLen;                  ///<Total length of the trusted CA list
    TlsCertVerifyCallback certVerifyCallback; ///<Certificate verification callback function
@@ -2357,7 +2394,7 @@ struct _TlsContext
    bool_t ecPointFormatsExtReceived;         ///<The EcPointFormats extension has been received
 #endif
 
-#if (TLS_HYBRID_SUPPORT == ENABLED)
+#if (TLS_MLKEM_SUPPORT == ENABLED || TLS_HYBRID_SUPPORT == ENABLED)
    KemContext kemContext;                    ///<KEM context
 #endif
 
@@ -2369,10 +2406,12 @@ struct _TlsContext
    DsaPublicKey peerDsaPublicKey;            ///<Peer's DSA public key
 #endif
 
-#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED || TLS_SM2_SIGN_SUPPORT == ENABLED || \
-   TLS_ED25519_SIGN_SUPPORT == ENABLED || TLS_ED448_SIGN_SUPPORT == ENABLED)
-   EcDomainParameters peerEcParams;          ///<Peer's EC domain parameters
+#if (TLS_ECDSA_SIGN_SUPPORT == ENABLED || TLS_SM2_SIGN_SUPPORT == ENABLED)
    EcPublicKey peerEcPublicKey;              ///<Peer's EC public key
+#endif
+
+#if (TLS_ED25519_SIGN_SUPPORT == ENABLED || TLS_ED448_SIGN_SUPPORT == ENABLED)
+   EddsaPublicKey peerEddsaPublicKey;        ///<Peer's EdDSA public key
 #endif
 
 #if (TLS_PSK_SUPPORT == ENABLED)
@@ -2599,6 +2638,10 @@ error_t tlsWriteEarlyData(TlsContext *context, const void *data,
 error_t tlsConnect(TlsContext *context);
 
 TlsEarlyDataStatus tlsGetEarlyDataStatus(TlsContext *context);
+
+error_t tlsExportKeyingMaterial(TlsContext *context, const char_t *label,
+   bool_t useContextValue, const uint8_t *contextValue,
+   size_t contextValueLen, uint8_t *output, size_t outputLen);
 
 error_t tlsWrite(TlsContext *context, const void *data, size_t length,
    size_t *written, uint_t flags);

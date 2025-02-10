@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2024 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2025 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.4
+ * @version 2.5.0
  **/
 
 //Switch to the appropriate trace level
@@ -39,6 +39,7 @@
 #include "tls_misc.h"
 #include "pkix/pem_import.h"
 #include "pkc/rsa.h"
+#include "pkc/rsa_misc.h"
 #include "pkc/dsa.h"
 #include "ecc/ecdsa.h"
 #include "ecc/eddsa.h"
@@ -95,8 +96,8 @@ error_t tlsGenerateSignature(TlsContext *context, uint8_t *p,
       if(!error)
       {
          //Decode the PEM structure that holds the RSA private key
-         error = pemImportRsaPrivateKey(context->cert->privateKey,
-            context->cert->privateKeyLen, context->cert->password, &privateKey);
+         error = pemImportRsaPrivateKey(&privateKey, context->cert->privateKey,
+            context->cert->privateKeyLen, context->cert->password);
       }
 
       //Check status code
@@ -460,8 +461,8 @@ error_t tlsGenerateRsaPkcs1Signature(TlsContext *context,
    rsaInitPrivateKey(&privateKey);
 
    //Decode the PEM structure that holds the RSA private key
-   error = pemImportRsaPrivateKey(context->cert->privateKey,
-      context->cert->privateKeyLen, context->cert->password, &privateKey);
+   error = pemImportRsaPrivateKey(&privateKey, context->cert->privateKey,
+      context->cert->privateKeyLen, context->cert->password);
 
    //Check status code
    if(!error)
@@ -505,8 +506,8 @@ error_t tlsGenerateRsaPssSignature(TlsContext *context,
    rsaInitPrivateKey(&privateKey);
 
    //Decode the PEM structure that holds the RSA private key
-   error = pemImportRsaPrivateKey(context->cert->privateKey,
-      context->cert->privateKeyLen, context->cert->password, &privateKey);
+   error = pemImportRsaPrivateKey(&privateKey, context->cert->privateKey,
+      context->cert->privateKeyLen, context->cert->password);
 
    //Check status code
    if(!error)
@@ -553,8 +554,8 @@ error_t tlsGenerateDsaSignature(TlsContext *context, const uint8_t *digest,
    dsaInitSignature(&dsaSignature);
 
    //Decode the PEM structure that holds the DSA private key
-   error = pemImportDsaPrivateKey(context->cert->privateKey,
-      context->cert->privateKeyLen, context->cert->password, &privateKey);
+   error = pemImportDsaPrivateKey(&privateKey, context->cert->privateKey,
+      context->cert->privateKeyLen, context->cert->password);
 
    //Check status code
    if(!error)
@@ -568,7 +569,7 @@ error_t tlsGenerateDsaSignature(TlsContext *context, const uint8_t *digest,
    if(!error)
    {
       //Encode the resulting (R, S) integer pair using ASN.1
-      error = dsaWriteSignature(&dsaSignature, signature, signatureLen);
+      error = dsaExportSignature(&dsaSignature, signature, signatureLen);
    }
 
    //Free previously allocated resources
@@ -599,7 +600,6 @@ error_t tlsGenerateEcdsaSignature(TlsContext *context, const uint8_t *digest,
 {
 #if (TLS_ECDSA_SIGN_SUPPORT == ENABLED)
    error_t error;
-   EcDomainParameters params;
    EcPrivateKey privateKey;
    EcdsaSignature ecdsaSignature;
 
@@ -617,33 +617,22 @@ error_t tlsGenerateEcdsaSignature(TlsContext *context, const uint8_t *digest,
    else
 #endif
    {
-      //Initialize EC domain parameters
-      ecInitDomainParameters(&params);
       //Initialize EC private key
       ecInitPrivateKey(&privateKey);
 
-      //Decode the PEM structure that holds the EC domain parameters
-      error = pemImportEcParameters(context->cert->privateKey,
-         context->cert->privateKeyLen, &params);
-
-      //Check status code
-      if(!error)
-      {
-         //Decode the PEM structure that holds the EC private key
-         error = pemImportEcPrivateKey(context->cert->privateKey,
-            context->cert->privateKeyLen, context->cert->password, &privateKey);
-      }
+      //Decode the PEM structure that holds the EC private key
+      error = pemImportEcPrivateKey(&privateKey, context->cert->privateKey,
+         context->cert->privateKeyLen, context->cert->password);
 
       //Check status code
       if(!error)
       {
          //Generate ECDSA signature
          error = ecdsaGenerateSignature(context->prngAlgo, context->prngContext,
-            &params, &privateKey, digest, digestLen, &ecdsaSignature);
+            &privateKey, digest, digestLen, &ecdsaSignature);
       }
 
       //Release previously allocated resources
-      ecFreeDomainParameters(&params);
       ecFreePrivateKey(&privateKey);
    }
 
@@ -651,7 +640,8 @@ error_t tlsGenerateEcdsaSignature(TlsContext *context, const uint8_t *digest,
    if(!error)
    {
       //Encode the resulting (R, S) integer pair using ASN.1
-      error = ecdsaWriteSignature(&ecdsaSignature, signature, signatureLen);
+      error = ecdsaExportSignature(&ecdsaSignature, signature, signatureLen,
+         ECDSA_SIGNATURE_FORMAT_ASN1);
    }
 
    //Release previously allocated resources
@@ -669,50 +659,50 @@ error_t tlsGenerateEcdsaSignature(TlsContext *context, const uint8_t *digest,
 /**
  * @brief Generate Ed25519 signature
  * @param[in] context Pointer to the TLS context
- * @param[in] messageChunks Array of data chunks representing the message
- *   to be signed
+ * @param[in] message Array of data chunks representing the message to be
+ *   signed
+ * @param[in] messageLen Number of data chunks representing the message
  * @param[out] signature Resulting signature
  * @param[out] signatureLen Length of the resulting signature
  * @return Error code
  **/
 
 error_t tlsGenerateEd25519Signature(TlsContext *context,
-   const DataChunk *messageChunks, uint8_t *signature,
+   const DataChunk *message, uint_t messageLen, uint8_t *signature,
    size_t *signatureLen)
 {
 #if (TLS_ED25519_SIGN_SUPPORT == ENABLED)
    error_t error;
+   const uint8_t *q;
    EddsaPrivateKey privateKey;
-   uint8_t d[ED25519_PRIVATE_KEY_LEN];
 
    //Initialize EdDSA private key
    eddsaInitPrivateKey(&privateKey);
 
    //Decode the PEM structure that holds the EdDSA private key
-   error = pemImportEddsaPrivateKey(context->cert->privateKey,
-      context->cert->privateKeyLen, context->cert->password, &privateKey);
+   error = pemImportEddsaPrivateKey(&privateKey, context->cert->privateKey,
+      context->cert->privateKeyLen, context->cert->password);
 
-   //Check the length of the EdDSA private key
-   if(mpiGetByteLength(&privateKey.d) == ED25519_PRIVATE_KEY_LEN)
+   //Check elliptic curve parameters
+   if(privateKey.curve == ED25519_CURVE)
    {
-      //Retrieve private key
-      error = mpiExport(&privateKey.d, d, ED25519_PRIVATE_KEY_LEN,
-         MPI_FORMAT_LITTLE_ENDIAN);
+      //The public key is optional
+      q = (privateKey.q.curve != NULL) ? privateKey.q.q : NULL;
+
+      //Generate Ed25519 signature (PureEdDSA mode)
+      error = ed25519GenerateSignatureEx(privateKey.d, q, message, messageLen,
+         NULL, 0, 0, signature);
 
       //Check status code
       if(!error)
       {
-         //Generate Ed25519 signature (PureEdDSA mode)
-         error = ed25519GenerateSignatureEx(d, NULL, messageChunks, NULL, 0, 0,
-            signature);
+         //Length of the resulting EdDSA signature
+         *signatureLen = ED25519_SIGNATURE_LEN;
       }
-
-      //Length of the resulting EdDSA signature
-      *signatureLen = ED25519_SIGNATURE_LEN;
    }
    else
    {
-      //The length of the EdDSA private key is not valid
+      //The EdDSA private key is not valid
       error = ERROR_INVALID_KEY;
    }
 
@@ -731,50 +721,50 @@ error_t tlsGenerateEd25519Signature(TlsContext *context,
 /**
  * @brief Generate Ed448 signature
  * @param[in] context Pointer to the TLS context
- * @param[in] messageChunks Array of data chunks representing the message
- *   to be signed
+ * @param[in] message Array of data chunks representing the message to be
+ *   signed
+ * @param[in] messageLen Number of data chunks representing the message
  * @param[out] signature Resulting signature
  * @param[out] signatureLen Length of the resulting signature
  * @return Error code
  **/
 
 error_t tlsGenerateEd448Signature(TlsContext *context,
-   const DataChunk *messageChunks, uint8_t *signature,
+   const DataChunk *message, uint_t messageLen, uint8_t *signature,
    size_t *signatureLen)
 {
 #if (TLS_ED448_SIGN_SUPPORT == ENABLED)
    error_t error;
+   const uint8_t *q;
    EddsaPrivateKey privateKey;
-   uint8_t d[ED448_PRIVATE_KEY_LEN];
 
    //Initialize EdDSA private key
    eddsaInitPrivateKey(&privateKey);
 
    //Decode the PEM structure that holds the EdDSA private key
-   error = pemImportEddsaPrivateKey(context->cert->privateKey,
-      context->cert->privateKeyLen, context->cert->password, &privateKey);
+   error = pemImportEddsaPrivateKey(&privateKey, context->cert->privateKey,
+      context->cert->privateKeyLen, context->cert->password);
 
-   //Check the length of the EdDSA private key
-   if(mpiGetByteLength(&privateKey.d) == ED448_PRIVATE_KEY_LEN)
+   //Check elliptic curve parameters
+   if(privateKey.curve == ED448_CURVE)
    {
-      //Retrieve private key
-      error = mpiExport(&privateKey.d, d, ED448_PRIVATE_KEY_LEN,
-         MPI_FORMAT_LITTLE_ENDIAN);
+      //The public key is optional
+      q = (privateKey.q.curve != NULL) ? privateKey.q.q : NULL;
+
+      //Generate Ed448 signature (PureEdDSA mode)
+      error = ed448GenerateSignatureEx(privateKey.d, q, message, messageLen,
+         NULL, 0, 0, signature);
 
       //Check status code
       if(!error)
       {
-         //Generate Ed448 signature (PureEdDSA mode)
-         error = ed448GenerateSignatureEx(d, NULL, messageChunks, NULL, 0, 0,
-            signature);
+         //Length of the resulting EdDSA signature
+         *signatureLen = ED448_SIGNATURE_LEN;
       }
-
-      //Length of the resulting EdDSA signature
-      *signatureLen = ED448_SIGNATURE_LEN;
    }
    else
    {
-      //The length of the EdDSA private key is not valid
+      //The EdDSA private key is not valid
       error = ERROR_INVALID_KEY;
    }
 

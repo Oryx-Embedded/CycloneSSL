@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2024 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2025 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.4
+ * @version 2.5.0
  **/
 
 #ifndef _TLS13_MISC_H
@@ -43,6 +43,13 @@
    #define TLS13_ECDHE_KE_SUPPORT ENABLED
 #elif (TLS13_ECDHE_KE_SUPPORT != ENABLED && TLS13_ECDHE_KE_SUPPORT != DISABLED)
    #error TLS13_ECDHE_KE_SUPPORT parameter is not valid
+#endif
+
+//ML-KEM key exchange support
+#ifndef TLS13_MLKEM_KE_SUPPORT
+   #define TLS13_MLKEM_KE_SUPPORT DISABLED
+#elif (TLS13_MLKEM_KE_SUPPORT != ENABLED && TLS13_MLKEM_KE_SUPPORT != DISABLED)
+   #error TLS13_MLKEM_KE_SUPPORT parameter is not valid
 #endif
 
 //Hybrid key exchange support
@@ -71,6 +78,13 @@
    #define TLS13_PSK_ECDHE_KE_SUPPORT ENABLED
 #elif (TLS13_PSK_ECDHE_KE_SUPPORT != ENABLED && TLS13_PSK_ECDHE_KE_SUPPORT != DISABLED)
    #error TLS13_PSK_ECDHE_KE_SUPPORT parameter is not valid
+#endif
+
+//PSK with ML-KEM key exchange support
+#ifndef TLS13_PSK_MLKEM_KE_SUPPORT
+   #define TLS13_PSK_MLKEM_KE_SUPPORT DISABLED
+#elif (TLS13_PSK_MLKEM_KE_SUPPORT != ENABLED && TLS13_PSK_MLKEM_KE_SUPPORT != DISABLED)
+   #error TLS13_PSK_MLKEM_KE_SUPPORT parameter is not valid
 #endif
 
 //PSK with hybrid key exchange support
@@ -404,13 +418,15 @@ bool_t tls13IsPskValid(TlsContext *context);
 bool_t tls13IsGroupSupported(TlsContext *context, uint16_t namedGroup);
 bool_t tls13IsFfdheGroupSupported(TlsContext *context, uint16_t namedGroup);
 bool_t tls13IsEcdheGroupSupported(TlsContext *context, uint16_t namedGroup);
-bool_t tls13IsHybridKeMethodSupported(TlsContext *context, uint16_t namedGroup);
+bool_t tls13IsMlkemGroupSupported(TlsContext *context, uint16_t namedGroup);
+bool_t tls13IsHybridGroupSupported(TlsContext *context, uint16_t namedGroup);
 
-const EcCurveInfo *tls13GetTraditionalAlgo(TlsContext *context,
+const KemAlgo *tls13GetMlkemAlgo(TlsContext *context, uint16_t namedGroup);
+
+const EcCurve *tls13GetTraditionalAlgo(TlsContext *context,
    uint16_t namedGroup);
 
-const KemAlgo *tls13GetNextGenAlgo(TlsContext *context,
-   uint16_t namedGroup);
+const KemAlgo *tls13GetNextGenAlgo(TlsContext *context, uint16_t namedGroup);
 
 error_t tls13CheckDuplicateKeyShare(uint16_t namedGroup, const uint8_t *p,
    size_t length);

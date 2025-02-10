@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2024 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2025 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.4
+ * @version 2.5.0
  **/
 
 //Switch to the appropriate trace level
@@ -87,41 +87,19 @@ error_t tlsSendClientHello(TlsContext *context)
    //Point to the buffer where to format the message
    message = (TlsClientHello *) (context->txBuffer + context->txBufferLen);
 
-#if (DTLS_SUPPORT == ENABLED)
-   //DTLS protocol?
-   if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_DATAGRAM)
+   //Initial ClientHello?
+   if(context->state == TLS_STATE_CLIENT_HELLO)
    {
-      //When sending the first ClientHello, the client does not have a cookie yet
-      if(context->cookieLen == 0)
-      {
-         //Generate the client random value using a cryptographically-safe
-         //pseudorandom number generator
-         error = tlsGenerateRandomValue(context, context->clientRandom);
-      }
-      else
-      {
-         //When responding to a HelloVerifyRequest, the client must use the
-         //same random value as it did in the original ClientHello
-         error = NO_ERROR;
-      }
+      //Generate the client random value using a cryptographically-safe
+      //pseudorandom number generator
+      error = tlsGenerateRandomValue(context, context->clientRandom);
    }
    else
-#endif
-   //TLS protocol?
    {
-      //Initial or updated ClientHello?
-      if(context->state == TLS_STATE_CLIENT_HELLO)
-      {
-         //Generate the client random value using a cryptographically-safe
-         //pseudorandom number generator
-         error = tlsGenerateRandomValue(context, context->clientRandom);
-      }
-      else
-      {
-         //When responding to a HelloRetryRequest, the client must use the
-         //same random value as it did in the initial ClientHello
-         error = NO_ERROR;
-      }
+      //When responding to a HelloVerifyRequest or a HelloRetryRequest, the
+      //client must use the same random value as it did in the initial
+      //ClientHello
+      error = NO_ERROR;
    }
 
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)

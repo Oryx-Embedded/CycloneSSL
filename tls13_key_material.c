@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2024 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2025 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.4
+ * @version 2.5.0
  **/
 
 //Switch to the appropriate trace level
@@ -343,10 +343,11 @@ error_t tls13GenerateHandshakeTrafficKeys(TlsContext *context)
       return ERROR_FAILURE;
 
 #if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_ECDHE_KE_SUPPORT == ENABLED || \
-   TLS13_HYBRID_KE_SUPPORT == ENABLED)
+   TLS13_MLKEM_KE_SUPPORT == ENABLED || TLS13_HYBRID_KE_SUPPORT == ENABLED)
    //(EC)DHE key exchange method?
    if(context->keyExchMethod == TLS13_KEY_EXCH_DHE ||
       context->keyExchMethod == TLS13_KEY_EXCH_ECDHE ||
+      context->keyExchMethod == TLS13_KEY_EXCH_MLKEM ||
       context->keyExchMethod == TLS13_KEY_EXCH_HYBRID)
    {
       //If PSK is not in use, IKM is a string of Hash-lengths bytes set to 0
@@ -359,11 +360,13 @@ error_t tls13GenerateHandshakeTrafficKeys(TlsContext *context)
    else
 #endif
 #if (TLS13_PSK_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
-   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
+   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_MLKEM_KE_SUPPORT == ENABLED || \
+   TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
    //PSK-only or PSK with (EC)DHE key exchange method?
    if(context->keyExchMethod == TLS13_KEY_EXCH_PSK ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_DHE ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE ||
+      context->keyExchMethod == TLS13_KEY_EXCH_PSK_MLKEM ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_HYBRID)
    {
       //Although PSKs can be established out of band, PSKs can also be

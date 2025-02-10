@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2024 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2025 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.4
+ * @version 2.5.0
  **/
 
 //Switch to the appropriate trace level
@@ -38,9 +38,11 @@
 #include "tls_transcript_hash.h"
 #include "tls_misc.h"
 #include "pkc/rsa.h"
+#include "pkc/rsa_misc.h"
 #include "pkc/dsa.h"
 #include "ecc/ecdsa.h"
 #include "ecc/eddsa.h"
+#include "ecc/ec_misc.h"
 #include "debug.h"
 
 //Check TLS library configuration
@@ -509,7 +511,7 @@ error_t tlsVerifyDsaSignature(TlsContext *context, const uint8_t *digest,
    dsaInitSignature(&dsaSignature);
 
    //Read the ASN.1 encoded DSA signature
-   error = dsaReadSignature(signature, signatureLen, &dsaSignature);
+   error = dsaImportSignature(&dsaSignature, signature, signatureLen);
 
    //Check status code
    if(!error)
@@ -557,7 +559,9 @@ error_t tlsVerifyEcdsaSignature(TlsContext *context, const uint8_t *digest,
    ecdsaInitSignature(&ecdsaSignature);
 
    //Read the ASN.1 encoded ECDSA signature
-   error = ecdsaReadSignature(signature, signatureLen, &ecdsaSignature);
+   error = ecdsaImportSignature(&ecdsaSignature,
+      context->peerEcPublicKey.curve, signature, signatureLen,
+      ECDSA_SIGNATURE_FORMAT_ASN1);
 
    //Check status code
    if(!error)
@@ -582,8 +586,8 @@ error_t tlsVerifyEcdsaSignature(TlsContext *context, const uint8_t *digest,
          error == ERROR_UNSUPPORTED_HASH_ALGO)
       {
          //ECDSA signature verification
-         error = ecdsaVerifySignature(&context->peerEcParams,
-            &context->peerEcPublicKey, digest, digestLen, &ecdsaSignature);
+         error = ecdsaVerifySignature(&context->peerEcPublicKey, digest,
+            digestLen, &ecdsaSignature);
       }
    }
    else
@@ -607,40 +611,41 @@ error_t tlsVerifyEcdsaSignature(TlsContext *context, const uint8_t *digest,
 /**
  * @brief Verify Ed25519 signature
  * @param[in] context Pointer to the TLS context
- * @param[in] messageChunks Array of data chunks representing the message
- *   whose signature is to be verified
+ * @param[in] message Array of data chunks representing the message whose
+ *   signature is to be verified
+ * @param[in] messageLen Number of data chunks representing the message
  * @param[in] signature Signature to be verified
  * @param[in] signatureLen Length of the signature to be verified
  * @return Error code
  **/
 
 error_t tlsVerifyEd25519Signature(TlsContext *context,
-   const DataChunk *messageChunks, const uint8_t *signature,
+   const DataChunk *message, uint_t messageLen, const uint8_t *signature,
    size_t signatureLen)
 {
 #if (TLS_ED25519_SIGN_SUPPORT == ENABLED)
    error_t error;
-   uint8_t publicKey[ED25519_PUBLIC_KEY_LEN];
 
-   //Check the length of the EdDSA signature
-   if(signatureLen == ED25519_SIGNATURE_LEN)
+   //Valid Ed25519 public key?
+   if(context->peerEddsaPublicKey.curve == ED25519_CURVE)
    {
-      //Get peer's public key
-      error = mpiExport(&context->peerEcPublicKey.q.x, publicKey,
-         ED25519_PUBLIC_KEY_LEN, MPI_FORMAT_LITTLE_ENDIAN);
-
-      //Check status code
-      if(!error)
+      //The Ed25519 signature shall consist of 32 octets
+      if(signatureLen == ED25519_SIGNATURE_LEN)
       {
          //Verify Ed25519 signature (PureEdDSA mode)
-         error = ed25519VerifySignatureEx(publicKey, messageChunks, NULL, 0, 0,
-            signature);
+         error = ed25519VerifySignatureEx(context->peerEddsaPublicKey.q,
+            message, messageLen, NULL, 0, 0, signature);
+      }
+      else
+      {
+         //The length of the Ed25519 signature is not valid
+         error = ERROR_INVALID_SIGNATURE;
       }
    }
    else
    {
-      //The length of the EdDSA signature is not valid
-      error = ERROR_INVALID_SIGNATURE;
+      //The public key is not valid
+      error = ERROR_INVALID_KEY;
    }
 
    //Return status code
@@ -655,40 +660,41 @@ error_t tlsVerifyEd25519Signature(TlsContext *context,
 /**
  * @brief Verify Ed448 signature
  * @param[in] context Pointer to the TLS context
- * @param[in] messageChunks Array of data chunks representing the message
- *   whose signature is to be verified
+ * @param[in] message Array of data chunks representing the message whose
+ *   signature is to be verified
+ * @param[in] messageLen Number of data chunks representing the message
  * @param[in] signature Signature to be verified
  * @param[in] signatureLen Length of the signature to be verified
  * @return Error code
  **/
 
 error_t tlsVerifyEd448Signature(TlsContext *context,
-   const DataChunk *messageChunks, const uint8_t *signature,
+   const DataChunk *message, uint_t messageLen, const uint8_t *signature,
    size_t signatureLen)
 {
 #if (TLS_ED448_SIGN_SUPPORT == ENABLED)
    error_t error;
-   uint8_t publicKey[ED448_PUBLIC_KEY_LEN];
 
-   //Check the length of the EdDSA signature
-   if(signatureLen == ED448_SIGNATURE_LEN)
+   //Valid Ed448 public key?
+   if(context->peerEddsaPublicKey.curve == ED448_CURVE)
    {
-      //Get peer's public key
-      error = mpiExport(&context->peerEcPublicKey.q.x, publicKey,
-         ED448_PUBLIC_KEY_LEN, MPI_FORMAT_LITTLE_ENDIAN);
-
-      //Check status code
-      if(!error)
+      //The Ed448 signature shall consist of 32 octets
+      if(signatureLen == ED448_SIGNATURE_LEN)
       {
          //Verify Ed448 signature (PureEdDSA mode)
-         error = ed448VerifySignatureEx(publicKey, messageChunks, NULL, 0, 0,
-            signature);
+         error = ed448VerifySignatureEx(context->peerEddsaPublicKey.q, message,
+            messageLen, NULL, 0, 0, signature);
+      }
+      else
+      {
+         //The length of the Ed448 signature is not valid
+         error = ERROR_INVALID_SIGNATURE;
       }
    }
    else
    {
-      //The length of the EdDSA signature is not valid
-      error = ERROR_INVALID_SIGNATURE;
+      //The public key is not valid
+      error = ERROR_INVALID_KEY;
    }
 
    //Return status code

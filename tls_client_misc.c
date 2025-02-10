@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2024 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2025 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.4
+ * @version 2.5.0
  **/
 
 //Switch to the appropriate trace level
@@ -505,8 +505,7 @@ __weak_func error_t tlsFormatClientKeyParams(TlsContext *context, uint8_t *p,
       }
 
       //Encode the client's public key to an opaque vector
-      error = tlsWriteEcPoint(&context->ecdhContext.params,
-         &context->ecdhContext.qa.q, p, &n);
+      error = tlsWriteEcPoint(&context->ecdhContext.da.q, p, &n);
       //Any error to report?
       if(error)
          return error;
@@ -668,7 +667,7 @@ error_t tlsParseServerKeyParams(TlsContext *context, const uint8_t *p,
          length -= n;
 
          //Verify peer's public value
-         error = dhCheckPublicKey(&context->dhContext.params,
+         error = dhCheckPublicKey(&context->dhContext,
             &context->dhContext.yb);
       }
 
@@ -697,10 +696,10 @@ error_t tlsParseServerKeyParams(TlsContext *context, const uint8_t *p,
    {
       size_t n;
       uint8_t curveType;
-      const EcCurveInfo *curveInfo;
+      const EcCurve *curve;
 
       //Initialize curve parameters
-      curveInfo = NULL;
+      curve = NULL;
 
       //Malformed ServerKeyExchange message?
       if(length < sizeof(curveType))
@@ -759,10 +758,10 @@ error_t tlsParseServerKeyParams(TlsContext *context, const uint8_t *p,
          else
          {
             //Retrieve the corresponding EC domain parameters
-            curveInfo = tlsGetCurveInfo(context, context->namedGroup);
+            curve = tlsGetCurve(context, context->namedGroup);
 
             //Make sure the elliptic curve is supported
-            if(curveInfo == NULL)
+            if(curve == NULL)
             {
                //The elliptic curve is not supported
                error = ERROR_ILLEGAL_PARAMETER;
@@ -773,17 +772,11 @@ error_t tlsParseServerKeyParams(TlsContext *context, const uint8_t *p,
       //Check status code
       if(!error)
       {
-         //Load EC domain parameters
-         error = ecLoadDomainParameters(&context->ecdhContext.params,
-            curveInfo);
-      }
+         //Save elliptic curve parameters
+         context->ecdhContext.curve = curve;
 
-      //Check status code
-      if(!error)
-      {
          //Read server's public key
-         error = tlsReadEcPoint(&context->ecdhContext.params,
-            &context->ecdhContext.qb.q, p, length, &n);
+         error = tlsReadEcPoint(&context->ecdhContext.qb, curve, p, length, &n);
       }
 
       //Check status code
@@ -795,8 +788,8 @@ error_t tlsParseServerKeyParams(TlsContext *context, const uint8_t *p,
          length -= n;
 
          //Verify peer's public key
-         error = ecdhCheckPublicKey(&context->ecdhContext.params,
-            &context->ecdhContext.qb.q);
+         error = ecdhCheckPublicKey(&context->ecdhContext,
+            &context->ecdhContext.qb);
       }
 
       //Check status code
@@ -1068,6 +1061,7 @@ __weak_func error_t tls12VerifyServerKeySignature(TlsContext *context,
    {
       const HashAlgo *hashAlgo;
       HashContext *hashContext;
+      uint8_t digest[MAX_HASH_DIGEST_SIZE];
 
       //Check signature scheme
       if(signScheme == TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA256 ||
@@ -1109,7 +1103,7 @@ __weak_func error_t tls12VerifyServerKeySignature(TlsContext *context,
             hashAlgo->update(hashContext, context->clientRandom, TLS_RANDOM_SIZE);
             hashAlgo->update(hashContext, context->serverRandom, TLS_RANDOM_SIZE);
             hashAlgo->update(hashContext, params, paramsLen);
-            hashAlgo->final(hashContext, NULL);
+            hashAlgo->final(hashContext, digest);
 
 #if (TLS_RSA_SIGN_SUPPORT == ENABLED)
             //RSASSA-PKCS1-v1_5 signature scheme?
@@ -1118,8 +1112,7 @@ __weak_func error_t tls12VerifyServerKeySignature(TlsContext *context,
             {
                //Verify RSA signature (RSASSA-PKCS1-v1_5 signature scheme)
                error = rsassaPkcs1v15Verify(&context->peerRsaPublicKey,
-                  hashAlgo, hashContext->digest, signature->value,
-                  ntohs(signature->length));
+                  hashAlgo, digest, signature->value, ntohs(signature->length));
             }
             else
 #endif
@@ -1135,8 +1128,8 @@ __weak_func error_t tls12VerifyServerKeySignature(TlsContext *context,
                {
                   //Verify RSA signature (RSASSA-PSS signature scheme)
                   error = rsassaPssVerify(&context->peerRsaPublicKey, hashAlgo,
-                     hashAlgo->digestSize, hashContext->digest,
-                     signature->value, ntohs(signature->length));
+                     hashAlgo->digestSize, digest, signature->value,
+                     ntohs(signature->length));
                }
                else
                {
@@ -1158,8 +1151,8 @@ __weak_func error_t tls12VerifyServerKeySignature(TlsContext *context,
                {
                   //Verify RSA signature (RSASSA-PSS signature scheme)
                   error = rsassaPssVerify(&context->peerRsaPublicKey, hashAlgo,
-                     hashAlgo->digestSize, hashContext->digest,
-                     signature->value, ntohs(signature->length));
+                     hashAlgo->digestSize, digest, signature->value,
+                     ntohs(signature->length));
                }
                else
                {
@@ -1175,7 +1168,7 @@ __weak_func error_t tls12VerifyServerKeySignature(TlsContext *context,
                context->peerCertType == TLS_CERT_DSS_SIGN)
             {
                //Verify DSA signature
-               error = tlsVerifyDsaSignature(context, hashContext->digest,
+               error = tlsVerifyDsaSignature(context, digest,
                   hashAlgo->digestSize, signature->value,
                   ntohs(signature->length));
             }
@@ -1187,7 +1180,7 @@ __weak_func error_t tls12VerifyServerKeySignature(TlsContext *context,
                context->peerCertType == TLS_CERT_ECDSA_SIGN)
             {
                //Verify ECDSA signature
-               error = tlsVerifyEcdsaSignature(context, hashContext->digest,
+               error = tlsVerifyEcdsaSignature(context, digest,
                   hashAlgo->digestSize, signature->value,
                   ntohs(signature->length));
             }
@@ -1221,7 +1214,7 @@ __weak_func error_t tls12VerifyServerKeySignature(TlsContext *context,
    if(signScheme == TLS_SIGN_SCHEME_ED25519 &&
       context->peerCertType == TLS_CERT_ED25519_SIGN)
    {
-      DataChunk messageChunks[4];
+      DataChunk messageChunks[3];
 
       //Data to be verified is run through the EdDSA algorithm without
       //pre-hashing
@@ -1231,12 +1224,10 @@ __weak_func error_t tls12VerifyServerKeySignature(TlsContext *context,
       messageChunks[1].length = TLS_RANDOM_SIZE;
       messageChunks[2].buffer = params;
       messageChunks[2].length = paramsLen;
-      messageChunks[3].buffer = NULL;
-      messageChunks[3].length = 0;
 
       //Verify Ed25519 signature (PureEdDSA mode)
       error = tlsVerifyEd25519Signature(context, messageChunks,
-         signature->value, ntohs(signature->length));
+         arraysize(messageChunks), signature->value, ntohs(signature->length));
    }
    else
 #endif
@@ -1245,7 +1236,7 @@ __weak_func error_t tls12VerifyServerKeySignature(TlsContext *context,
    if(signScheme == TLS_SIGN_SCHEME_ED448 &&
       context->peerCertType == TLS_CERT_ED448_SIGN)
    {
-      DataChunk messageChunks[4];
+      DataChunk messageChunks[3];
 
       //Data to be verified is run through the EdDSA algorithm without
       //pre-hashing
@@ -1255,12 +1246,10 @@ __weak_func error_t tls12VerifyServerKeySignature(TlsContext *context,
       messageChunks[1].length = TLS_RANDOM_SIZE;
       messageChunks[2].buffer = params;
       messageChunks[2].length = paramsLen;
-      messageChunks[3].buffer = NULL;
-      messageChunks[3].length = 0;
 
       //Verify Ed448 signature (PureEdDSA mode)
       error = tlsVerifyEd448Signature(context, messageChunks,
-         signature->value, ntohs(signature->length));
+         arraysize(messageChunks), signature->value, ntohs(signature->length));
    }
    else
 #endif
@@ -1430,9 +1419,11 @@ error_t tlsSelectClientVersion(TlsContext *context,
    }
 
    //If the ServerHello indicates TLS 1.2 or below, TLS 1.3 client must check
-   //that the last 8 bytes are not equal to the bytes 44 4F 57 4E 47 52 44 00
+   //that the last 8 bytes are not equal to the bytes 44 4F 57 4E 47 52 44 01
    if(context->version <= TLS_VERSION_1_2 &&
-      context->versionMax >= TLS_VERSION_1_3)
+      context->versionMax >= TLS_VERSION_1_3 &&
+      (context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM ||
+       context->transportProtocol == TLS_TRANSPORT_PROTOCOL_EAP))
    {
       //If a match is found, the client must abort the handshake with an
       //illegal_parameter alert

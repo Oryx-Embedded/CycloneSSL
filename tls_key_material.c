@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2024 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2025 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.4
+ * @version 2.5.0
  **/
 
 //Switch to the appropriate trace level
@@ -35,7 +35,6 @@
 #include "tls.h"
 #include "tls_key_material.h"
 #include "tls_transcript_hash.h"
-#include "tls13_key_material.h"
 #include "debug.h"
 
 //Check TLS library configuration
@@ -232,6 +231,7 @@ error_t tlsGenerateExtendedMasterSecret(TlsContext *context)
    {
       const HashAlgo *hashAlgo;
       HashContext *hashContext;
+      uint8_t digest[MAX_HASH_DIGEST_SIZE];
 
       //Point to the hash algorithm to be used
       hashAlgo = context->cipherSuite.prfHashAlgo;
@@ -247,13 +247,13 @@ error_t tlsGenerateExtendedMasterSecret(TlsContext *context)
             hashAlgo->contextSize);
 
          //Finalize hash computation
-         hashAlgo->final(hashContext, NULL);
+         hashAlgo->final(hashContext, digest);
 
          //Compute the extended master secret (refer to RFC 7627, section 4)
          error = tls12Prf(hashAlgo, context->premasterSecret,
             context->premasterSecretLen, "extended master secret",
-            hashContext->digest, hashAlgo->digestSize,
-            context->masterSecret, TLS_MASTER_SECRET_SIZE);
+            digest, hashAlgo->digestSize, context->masterSecret,
+            TLS_MASTER_SECRET_SIZE);
 
          //Release previously allocated memory
          tlsFreeMem(hashContext);
@@ -426,155 +426,6 @@ __weak_func error_t tlsGenerateKeyBlock(TlsContext *context, size_t keyBlockLen)
       //Report an error
       error = ERROR_INVALID_VERSION;
    }
-
-   //Return status code
-   return error;
-}
-
-
-/**
- * @brief Export keying material per RFC 5705 standard
- * @param[in] context Pointer to the TLS context
- * @param[in] label Identifying label (NULL-terminated string)
- * @param[in] useContextValue Specifies whether upper-layer context should
- *   be used when exporting keying material
- * @param[in] contextValue Pointer to the upper-layer context
- * @param[in] contextValueLen Length of the upper-layer context
- * @param[out] output Pointer to the output
- * @param[in] outputLen Desired output length
- * @return Error code
- **/
-
-error_t tlsExportKeyingMaterial(TlsContext *context, const char_t *label,
-   bool_t useContextValue, const uint8_t *contextValue,
-   size_t contextValueLen, uint8_t *output, size_t outputLen)
-{
-   error_t error;
-   size_t n;
-   uint8_t *seed;
-
-   //Invalid TLS context?
-   if(context == NULL)
-      return ERROR_INVALID_PARAMETER;
-
-   //Check parameters
-   if(label == NULL || output == NULL)
-      return ERROR_INVALID_PARAMETER;
-
-   //Make sure the upper-layer context is valid
-   if(contextValue == NULL && contextValueLen != 0)
-      return ERROR_INVALID_PARAMETER;
-
-   //Calculate the length of the seed
-   n = 2 * TLS_RANDOM_SIZE;
-
-   //Check whether a context is provided
-   if(useContextValue)
-   {
-      n += contextValueLen + 2;
-   }
-
-   //Allocate a memory buffer to hold the seed
-   seed = tlsAllocMem(n);
-   //Failed to allocate memory?
-   if(seed == NULL)
-      return ERROR_OUT_OF_RESOURCES;
-
-   //Concatenate client_random and server_random values
-   osMemcpy(seed, context->clientRandom, TLS_RANDOM_SIZE);
-   osMemcpy(seed + 32, context->serverRandom, TLS_RANDOM_SIZE);
-
-   //Check whether a context is provided
-   if(useContextValue)
-   {
-      //The context_value_length is encoded as an unsigned, 16-bit quantity
-      //representing the length of the context value
-      STORE16BE(contextValueLen, seed + 64);
-
-      //Copy the context value provided by the application using the exporter
-      osMemcpy(seed + 66, contextValue, contextValueLen);
-   }
-
-#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
-   //TLS 1.0 or TLS 1.1 currently selected?
-   if(context->version == TLS_VERSION_1_0 || context->version == TLS_VERSION_1_1)
-   {
-      //TLS 1.0 and 1.1 use a PRF that combines MD5 and SHA-1
-      error = tlsPrf(context->masterSecret, TLS_MASTER_SECRET_SIZE,
-         label, seed, n, output, outputLen);
-   }
-   else
-#endif
-#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
-   //TLS 1.2 currently selected?
-   if(context->version == TLS_VERSION_1_2)
-   {
-      //Make sure the PRF hash algorithm is valid
-      if(context->cipherSuite.prfHashAlgo != NULL)
-      {
-         //TLS 1.2 PRF uses SHA-256 or a stronger hash algorithm as the core
-         //function in its construction
-         error = tls12Prf(context->cipherSuite.prfHashAlgo, context->masterSecret,
-            TLS_MASTER_SECRET_SIZE, label, seed, n, output, outputLen);
-      }
-      else
-      {
-         //Invalid PRF hash algorithm
-         error = ERROR_FAILURE;
-      }
-   }
-   else
-#endif
-#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
-   //TLS 1.3 currently selected?
-   if(context->version == TLS_VERSION_1_3)
-   {
-      const HashAlgo *hash;
-      uint8_t secret[TLS_MAX_HKDF_DIGEST_SIZE];
-      uint8_t digest[TLS_MAX_HKDF_DIGEST_SIZE];
-
-      //The hash function used by HKDF is the cipher suite hash algorithm
-      hash = context->cipherSuite.prfHashAlgo;
-
-      //Make sure the HKDF hash algorithm is valid
-      if(hash != NULL)
-      {
-         //Derive exporter master secret
-         error = tls13DeriveSecret(context, context->exporterMasterSecret,
-            hash->digestSize, label, "", 0, secret, hash->digestSize);
-
-         //Check status code
-         if(!error)
-         {
-            //Hash context_value input
-            error = hash->compute(contextValue, contextValueLen, digest);
-         }
-
-         //Check status code
-         if(!error)
-         {
-            //Export keying material
-            error = tls13HkdfExpandLabel(context->transportProtocol, hash,
-               secret, hash->digestSize, "exporter", digest, hash->digestSize,
-               output, outputLen);
-         }
-      }
-      else
-      {
-         //Invalid HKDF hash algorithm
-         error = ERROR_FAILURE;
-      }
-   }
-   else
-#endif
-   //Invalid TLS version?
-   {
-      //Report an error
-      error = ERROR_INVALID_VERSION;
-   }
-
-   //Release previously allocated memory
-   tlsFreeMem(seed);
 
    //Return status code
    return error;

@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2024 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2025 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.4
+ * @version 2.5.0
  **/
 
 //Switch to the appropriate trace level
@@ -210,42 +210,37 @@ error_t tlsFormatServerKeyParams(TlsContext *context,
       context->keyExchMethod == TLS_KEY_EXCH_ECDHE_PSK)
    {
       size_t n;
-      const EcCurveInfo *curveInfo;
+      const EcCurve *curve;
 
       //Retrieve the elliptic curve to be used
-      curveInfo = tlsGetCurveInfo(context, context->namedGroup);
+      curve = tlsGetCurve(context, context->namedGroup);
 
       //Make sure the elliptic curve is supported
-      if(curveInfo != NULL)
+      if(curve != NULL)
       {
-         //Load EC domain parameters
-         error = ecLoadDomainParameters(&context->ecdhContext.params,
-            curveInfo);
+         //Save elliptic curve parameters
+         context->ecdhContext.curve = curve;
+
+#if (TLS_ECC_CALLBACK_SUPPORT == ENABLED)
+         //Any registered callback?
+         if(context->ecdhCallback != NULL)
+         {
+            //Invoke user callback function
+            error = context->ecdhCallback(context);
+         }
+         else
+#endif
+         {
+            //No callback function defined
+            error = ERROR_UNSUPPORTED_ELLIPTIC_CURVE;
+         }
 
          //Check status code
-         if(!error)
+         if(error == ERROR_UNSUPPORTED_ELLIPTIC_CURVE)
          {
-#if (TLS_ECC_CALLBACK_SUPPORT == ENABLED)
-            //Any registered callback?
-            if(context->ecdhCallback != NULL)
-            {
-               //Invoke user callback function
-               error = context->ecdhCallback(context);
-            }
-            else
-#endif
-            {
-               //No callback function defined
-               error = ERROR_UNSUPPORTED_ELLIPTIC_CURVE;
-            }
-
-            //Check status code
-            if(error == ERROR_UNSUPPORTED_ELLIPTIC_CURVE)
-            {
-               //Generate an ephemeral key pair
-               error = ecdhGenerateKeyPair(&context->ecdhContext,
-                  context->prngAlgo, context->prngContext);
-            }
+            //Generate an ephemeral key pair
+            error = ecdhGenerateKeyPair(&context->ecdhContext,
+               context->prngAlgo, context->prngContext);
          }
 
          //Check status code
@@ -253,9 +248,9 @@ error_t tlsFormatServerKeyParams(TlsContext *context,
          {
             //Debug message
             TRACE_DEBUG("  Server public key X:\r\n");
-            TRACE_DEBUG_MPI("    ", &context->ecdhContext.qa.q.x);
+            TRACE_DEBUG_MPI("    ", &context->ecdhContext.da.q.q.x);
             TRACE_DEBUG("  Server public key Y:\r\n");
-            TRACE_DEBUG_MPI("    ", &context->ecdhContext.qa.q.y);
+            TRACE_DEBUG_MPI("    ", &context->ecdhContext.da.q.q.y);
 
             //Set the type of the elliptic curve domain parameters
             *p = TLS_EC_CURVE_TYPE_NAMED_CURVE;
@@ -274,8 +269,7 @@ error_t tlsFormatServerKeyParams(TlsContext *context,
             *written += sizeof(uint16_t);
 
             //Write server's public key
-            error = tlsWriteEcPoint(&context->ecdhContext.params,
-               &context->ecdhContext.qa.q, p, &n);
+            error = tlsWriteEcPoint(&context->ecdhContext.da.q, p, &n);
          }
 
          //Check status code
@@ -400,8 +394,8 @@ error_t tlsGenerateServerKeySignature(TlsContext *context,
       if(!error)
       {
          //Decode the PEM structure that holds the RSA private key
-         error = pemImportRsaPrivateKey(context->cert->privateKey,
-            context->cert->privateKeyLen, context->cert->password, &privateKey);
+         error = pemImportRsaPrivateKey(&privateKey, context->cert->privateKey,
+            context->cert->privateKeyLen, context->cert->password);
       }
 
       //Check status code
@@ -560,6 +554,7 @@ error_t tls12GenerateServerKeySignature(TlsContext *context,
    {
       const HashAlgo *hashAlgo;
       HashContext *hashContext;
+      uint8_t digest[MAX_HASH_DIGEST_SIZE];
 
       //Retrieve the hash algorithm used for signing
       if(context->signScheme == TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA256 ||
@@ -601,15 +596,15 @@ error_t tls12GenerateServerKeySignature(TlsContext *context,
             hashAlgo->update(hashContext, context->clientRandom, TLS_RANDOM_SIZE);
             hashAlgo->update(hashContext, context->serverRandom, TLS_RANDOM_SIZE);
             hashAlgo->update(hashContext, params, paramsLen);
-            hashAlgo->final(hashContext, NULL);
+            hashAlgo->final(hashContext, digest);
 
 #if (TLS_RSA_SIGN_SUPPORT == ENABLED)
             //RSA signature scheme?
             if(TLS_SIGN_ALGO(context->signScheme) == TLS_SIGN_ALGO_RSA)
             {
                //Sign the key exchange parameters using RSA
-               error = tlsGenerateRsaPkcs1Signature(context, hashAlgo,
-                  hashContext->digest, signature->value, written);
+               error = tlsGenerateRsaPkcs1Signature(context, hashAlgo, digest,
+                  signature->value, written);
             }
             else
 #endif
@@ -623,8 +618,8 @@ error_t tls12GenerateServerKeySignature(TlsContext *context,
                context->signScheme == TLS_SIGN_SCHEME_RSA_PSS_PSS_SHA512)
             {
                //Sign the key exchange parameters using RSA-PSS
-               error = tlsGenerateRsaPssSignature(context, hashAlgo,
-                  hashContext->digest, signature->value, written);
+               error = tlsGenerateRsaPssSignature(context, hashAlgo, digest,
+                  signature->value, written);
             }
             else
 #endif
@@ -633,7 +628,7 @@ error_t tls12GenerateServerKeySignature(TlsContext *context,
             if(TLS_SIGN_ALGO(context->signScheme) == TLS_SIGN_ALGO_DSA)
             {
                //Sign the key exchange parameters using DSA
-               error = tlsGenerateDsaSignature(context, hashContext->digest,
+               error = tlsGenerateDsaSignature(context, digest,
                   hashAlgo->digestSize, signature->value, written);
             }
             else
@@ -643,7 +638,7 @@ error_t tls12GenerateServerKeySignature(TlsContext *context,
             if(TLS_SIGN_ALGO(context->signScheme) == TLS_SIGN_ALGO_ECDSA)
             {
                //Sign the key exchange parameters using ECDSA
-               error = tlsGenerateEcdsaSignature(context, hashContext->digest,
+               error = tlsGenerateEcdsaSignature(context, digest,
                   hashAlgo->digestSize, signature->value, written);
             }
             else
@@ -675,7 +670,7 @@ error_t tls12GenerateServerKeySignature(TlsContext *context,
    //Ed25519 signature scheme?
    if(context->signScheme == TLS_SIGN_SCHEME_ED25519)
    {
-      DataChunk messageChunks[4];
+      DataChunk messageChunks[3];
 
       //Data to be signed is run through the EdDSA algorithm without pre-hashing
       messageChunks[0].buffer = context->clientRandom;
@@ -684,12 +679,10 @@ error_t tls12GenerateServerKeySignature(TlsContext *context,
       messageChunks[1].length = TLS_RANDOM_SIZE;
       messageChunks[2].buffer = params;
       messageChunks[2].length = paramsLen;
-      messageChunks[3].buffer = NULL;
-      messageChunks[3].length = 0;
 
       //Sign the key exchange parameters using Ed25519
       error = tlsGenerateEd25519Signature(context, messageChunks,
-         signature->value, written);
+         arraysize(messageChunks), signature->value, written);
    }
    else
 #endif
@@ -697,7 +690,7 @@ error_t tls12GenerateServerKeySignature(TlsContext *context,
    //Ed448 signature scheme?
    if(context->signScheme == TLS_SIGN_SCHEME_ED448)
    {
-      DataChunk messageChunks[4];
+      DataChunk messageChunks[3];
 
       //Data to be signed is run through the EdDSA algorithm without pre-hashing
       messageChunks[0].buffer = context->clientRandom;
@@ -706,12 +699,10 @@ error_t tls12GenerateServerKeySignature(TlsContext *context,
       messageChunks[1].length = TLS_RANDOM_SIZE;
       messageChunks[2].buffer = params;
       messageChunks[2].length = paramsLen;
-      messageChunks[3].buffer = NULL;
-      messageChunks[3].length = 0;
 
       //Sign the key exchange parameters using Ed448
       error = tlsGenerateEd448Signature(context, messageChunks,
-         signature->value, written);
+         arraysize(messageChunks), signature->value, written);
    }
    else
 #endif
@@ -1163,7 +1154,7 @@ error_t tlsResumeStatelessSession(TlsContext *context, const uint8_t *sessionId,
       {
          //The extension will be empty if the client does not already possess
          //a ticket for the server (refer to RFC 5077, section 3.1)
-         error = ERROR_INVALID_TICKET;
+         error = ERROR_NO_TICKET;
       }
 
       //Valid ticket?
@@ -1544,7 +1535,7 @@ error_t tlsSelectEcdheGroup(TlsContext *context,
                if(context->supportedGroups[i] == namedGroup)
                {
                   //Acceptable elliptic curve found?
-                  if(tlsGetCurveInfo(context, namedGroup) != NULL &&
+                  if(tlsGetCurve(context, namedGroup) != NULL &&
                      namedGroup != TLS_GROUP_BRAINPOOLP256R1_TLS13 &&
                      namedGroup != TLS_GROUP_BRAINPOOLP384R1_TLS13 &&
                      namedGroup != TLS_GROUP_BRAINPOOLP512R1_TLS13 &&
@@ -1568,7 +1559,7 @@ error_t tlsSelectEcdheGroup(TlsContext *context,
             namedGroup = ntohs(groupList->value[j]);
 
             //Acceptable elliptic curve found?
-            if(tlsGetCurveInfo(context, namedGroup) != NULL &&
+            if(tlsGetCurve(context, namedGroup) != NULL &&
                namedGroup != TLS_GROUP_BRAINPOOLP256R1_TLS13 &&
                namedGroup != TLS_GROUP_BRAINPOOLP384R1_TLS13 &&
                namedGroup != TLS_GROUP_BRAINPOOLP512R1_TLS13 &&
@@ -1586,13 +1577,13 @@ error_t tlsSelectEcdheGroup(TlsContext *context,
       //A client that proposes ECC cipher suites may choose not to include
       //the SupportedGroups extension. In this case, the server is free to
       //choose any one of the elliptic curves it supports
-      if(tlsGetCurveInfo(context, TLS_GROUP_SECP256R1) != NULL)
+      if(tlsGetCurve(context, TLS_GROUP_SECP256R1) != NULL)
       {
          //Select secp256r1 elliptic curve
          context->namedGroup = TLS_GROUP_SECP256R1;
          error = NO_ERROR;
       }
-      else if(tlsGetCurveInfo(context, TLS_GROUP_SECP384R1) != NULL)
+      else if(tlsGetCurve(context, TLS_GROUP_SECP384R1) != NULL)
       {
          //Select secp384r1 elliptic curve
          context->namedGroup = TLS_GROUP_SECP384R1;
@@ -1941,8 +1932,8 @@ error_t tlsParseClientKeyParams(TlsContext *context,
       rsaInitPrivateKey(&privateKey);
 
       //Decode the PEM structure that holds the RSA private key
-      error = pemImportRsaPrivateKey(context->cert->privateKey,
-         context->cert->privateKeyLen, context->cert->password, &privateKey);
+      error = pemImportRsaPrivateKey(&privateKey, context->cert->privateKey,
+         context->cert->privateKeyLen, context->cert->password);
 
       //Check status code
       if(!error)
@@ -2004,8 +1995,7 @@ error_t tlsParseClientKeyParams(TlsContext *context,
          *consumed = n;
 
          //Verify client's public value
-         error = dhCheckPublicKey(&context->dhContext.params,
-            &context->dhContext.yb);
+         error = dhCheckPublicKey(&context->dhContext, &context->dhContext.yb);
       }
 
       //Check status code
@@ -2053,8 +2043,8 @@ error_t tlsParseClientKeyParams(TlsContext *context,
       size_t n;
 
       //Decode client's public key
-      error = tlsReadEcPoint(&context->ecdhContext.params,
-         &context->ecdhContext.qb.q, p, length, &n);
+      error = tlsReadEcPoint(&context->ecdhContext.qb,
+         context->ecdhContext.curve, p, length, &n);
 
       //Check status code
       if(!error)
@@ -2064,8 +2054,8 @@ error_t tlsParseClientKeyParams(TlsContext *context,
 
          //Verify client's public key and make sure that it is on the same
          //elliptic curve as the server's ECDH key
-         error = ecdhCheckPublicKey(&context->ecdhContext.params,
-            &context->ecdhContext.qb.q);
+         error = ecdhCheckPublicKey(&context->ecdhContext,
+            &context->ecdhContext.qb);
       }
 
       //Check status code

@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2024 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2025 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.4
+ * @version 2.5.0
  **/
 
 //Switch to the appropriate trace level
@@ -150,6 +150,7 @@ error_t tls13NegotiateCipherSuite(TlsContext *context, const void *clientHello,
       //Check key exchange method
       if(context->keyExchMethod == TLS13_KEY_EXCH_DHE ||
          context->keyExchMethod == TLS13_KEY_EXCH_ECDHE ||
+         context->keyExchMethod == TLS13_KEY_EXCH_MLKEM ||
          context->keyExchMethod == TLS13_KEY_EXCH_HYBRID)
       {
          //Check whether the client supports session resumption with a PSK
@@ -162,6 +163,7 @@ error_t tls13NegotiateCipherSuite(TlsContext *context, const void *clientHello,
       else if(context->keyExchMethod == TLS13_KEY_EXCH_PSK ||
          context->keyExchMethod == TLS13_KEY_EXCH_PSK_DHE ||
          context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE ||
+         context->keyExchMethod == TLS13_KEY_EXCH_PSK_MLKEM ||
          context->keyExchMethod == TLS13_KEY_EXCH_PSK_HYBRID)
       {
          //Servers must not select a key exchange mode that is not listed by
@@ -207,13 +209,14 @@ error_t tls13SelectGroup(TlsContext *context,
    error_t error;
 
    //Initialize status code
-   error = ERROR_HANDSHAKE_FAILED;
+   error = ERROR_ILLEGAL_PARAMETER;
 
    //Reset the named group to its default value
    context->namedGroup = TLS_GROUP_NONE;
 
 #if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
    TLS13_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || \
+   TLS13_MLKEM_KE_SUPPORT == ENABLED || TLS13_PSK_MLKEM_KE_SUPPORT == ENABLED || \
    TLS13_HYBRID_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
    //Valid SupportedGroups extension?
    if(groupList != NULL)
@@ -236,11 +239,22 @@ error_t tls13SelectGroup(TlsContext *context,
             if(tls13IsGroupOffered(namedGroup, groupList))
             {
                //Check whether the ECDHE or FFDHE group is supported
-               if(tls13IsGroupSupported(context, namedGroup))
+               if(tls13IsGroupObsolete(context, namedGroup))
+               {
+                  //Obsolete curves are used in previous versions of TLS and
+                  //must not be negotiated by TLS 1.3 implementations
+               }
+               else if(tls13IsGroupSupported(context, namedGroup))
                {
                   //Save the named group
                   context->namedGroup = namedGroup;
+                  //The group is supported
                   error = NO_ERROR;
+               }
+               else
+               {
+                  //The group is not supported
+                  error = ERROR_HANDSHAKE_FAILED;
                }
             }
          }
@@ -258,11 +272,22 @@ error_t tls13SelectGroup(TlsContext *context,
             namedGroup = ntohs(groupList->value[i]);
 
             //Check whether the ECDHE or FFDHE group is supported
-            if(tls13IsGroupSupported(context, namedGroup))
+            if(tls13IsGroupObsolete(context, namedGroup))
+            {
+               //Obsolete curves are used in previous versions of TLS and must
+               //not be negotiated by TLS 1.3 implementations
+            }
+            else if(tls13IsGroupSupported(context, namedGroup))
             {
                //Save the named group
                context->namedGroup = namedGroup;
+               //The group is supported
                error = NO_ERROR;
+            }
+            else
+            {
+               //The group is not supported
+               error = ERROR_HANDSHAKE_FAILED;
             }
          }
       }
@@ -311,6 +336,45 @@ bool_t tls13IsGroupOffered(uint16_t namedGroup,
 
    //Return TRUE if the group is offered in the SupportedGroups extension
    return found;
+}
+
+
+/**
+ * @brief Check whether a given group is obsolete
+ * @param[in] context Pointer to the TLS context
+ * @param[in] namedGroup Named group
+ * @return TRUE is the group is obsolete, else FALSE
+ **/
+
+bool_t tls13IsGroupObsolete(TlsContext *context, uint16_t namedGroup)
+{
+   bool_t obsolete;
+
+   //Values within obsolete ranges are used in previous versions of TLS and
+   //must not be offered or negotiated by TLS 1.3 implementations (refer to
+   //RFC 8446, appendix B.3.1.4)
+   if(namedGroup >= TLS_GROUP_SECT163K1 &&
+      namedGroup <= TLS_GROUP_SECP256K1)
+   {
+      obsolete = TRUE;
+   }
+   else if(namedGroup >= TLS_GROUP_BRAINPOOLP256R1 &&
+      namedGroup <= TLS_GROUP_BRAINPOOLP512R1)
+   {
+      obsolete = TRUE;
+   }
+   else if(namedGroup >= TLS_GROUP_EXPLICIT_PRIME_CURVE &&
+      namedGroup <= TLS_GROUP_EXPLICIT_CHAR2_CURVE)
+   {
+      obsolete = TRUE;
+   }
+   else
+   {
+      obsolete = FALSE;
+   }
+
+   //Return TRUE is the group is obsolete
+   return obsolete;
 }
 
 

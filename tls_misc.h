@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2024 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2025 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.4
+ * @version 2.5.0
  **/
 
 #ifndef _TLS_MISC_H
@@ -70,15 +70,15 @@ void tlsFreeEncryptionEngine(TlsEncryptionEngine *encryptionEngine);
 error_t tlsWriteMpi(const Mpi *a, uint8_t *data, size_t *length);
 error_t tlsReadMpi(Mpi *a, const uint8_t *data, size_t size, size_t *length);
 
-error_t tlsWriteEcPoint(const EcDomainParameters *params,
-   const EcPoint *a, uint8_t *data, size_t *length);
+error_t tlsWriteEcPoint(const EcPublicKey *publicKey, uint8_t *data,
+   size_t *length);
 
-error_t tlsReadEcPoint(const EcDomainParameters *params,
-   EcPoint *a, const uint8_t *data, size_t size, size_t *length);
+error_t tlsReadEcPoint(EcPublicKey *publicKey, const EcCurve *curve,
+   const uint8_t *data, size_t size, size_t *length);
 
 const char_t *tlsGetVersionName(uint16_t version);
 const HashAlgo *tlsGetHashAlgo(TlsHashAlgo hashAlgoId);
-const EcCurveInfo *tlsGetCurveInfo(TlsContext *context, uint16_t namedCurve);
+const EcCurve *tlsGetCurve(TlsContext *context, uint16_t namedCurve);
 TlsNamedGroup tlsGetNamedCurve(const uint8_t *oid, size_t length);
 
 size_t tlsComputeEncryptionOverhead(TlsEncryptionEngine *encryptionEngine,

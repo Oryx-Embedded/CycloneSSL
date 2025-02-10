@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2024 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2025 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.4
+ * @version 2.5.0
  **/
 
 //Switch to the appropriate trace level
@@ -112,6 +112,7 @@ error_t tls13FormatSelectedGroupExtension(TlsContext *context,
 
 #if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
    TLS13_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || \
+   TLS13_MLKEM_KE_SUPPORT == ENABLED || TLS13_PSK_MLKEM_KE_SUPPORT == ENABLED || \
    TLS13_HYBRID_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
    //Check whether the selected ECDHE or FFDHE group is valid
    if(context->namedGroup != TLS_GROUP_NONE)
@@ -160,14 +161,17 @@ error_t tls13FormatServerKeyShareExtension(TlsContext *context,
 
 #if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
    TLS13_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || \
+   TLS13_MLKEM_KE_SUPPORT == ENABLED || TLS13_PSK_MLKEM_KE_SUPPORT == ENABLED || \
    TLS13_HYBRID_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
    //If using (EC)DHE key establishment, servers offer exactly one
    //KeyShareEntry in the ServerHello
    if(context->keyExchMethod == TLS13_KEY_EXCH_DHE ||
       context->keyExchMethod == TLS13_KEY_EXCH_ECDHE ||
+      context->keyExchMethod == TLS13_KEY_EXCH_MLKEM ||
       context->keyExchMethod == TLS13_KEY_EXCH_HYBRID ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_DHE ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE ||
+      context->keyExchMethod == TLS13_KEY_EXCH_PSK_MLKEM ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_HYBRID)
    {
       error_t error;
@@ -215,11 +219,39 @@ error_t tls13FormatServerKeyShareExtension(TlsContext *context,
       {
          //ECDHE parameters are encoded in the opaque key_exchange field of
          //the KeyShareEntry
-         error = ecExport(&context->ecdhContext.params,
-            &context->ecdhContext.qa.q, keyShareEntry->keyExchange, &n);
+         error = ecExportPublicKey(&context->ecdhContext.da.q,
+            keyShareEntry->keyExchange, &n, EC_PUBLIC_KEY_FORMAT_X963);
          //Any error to report?
          if(error)
             return error;
+      }
+      else
+#endif
+#if (TLS13_MLKEM_KE_SUPPORT == ENABLED || TLS13_PSK_MLKEM_KE_SUPPORT == ENABLED)
+      //ML-KEM key exchange method?
+      if(context->keyExchMethod == TLS13_KEY_EXCH_MLKEM ||
+         context->keyExchMethod == TLS13_KEY_EXCH_PSK_MLKEM)
+      {
+         const KemAlgo *kemAlgo;
+
+         //Point to the KEM algorithm
+         kemAlgo = context->kemContext.kemAlgo;
+
+         //For the server's share, the key_exchange value contains the ct output
+         //of the corresponding KEM's Encaps algorithm
+         error = kemEncapsulate(&context->kemContext, context->prngAlgo,
+            context->prngContext, keyShareEntry->keyExchange,
+            context->premasterSecret);
+         //Any error to report?
+         if(error)
+            return error;
+
+         //The length of the ciphertext is fixed
+         n = kemAlgo->ciphertextSize;
+
+         //The shared secret output from the ML-KEM Encaps is inserted into the
+         //TLS 1.3 key schedule in place of the (EC)DHE shared secret
+         context->premasterSecretLen = kemAlgo->sharedSecretSize;
       }
       else
 #endif
@@ -228,30 +260,62 @@ error_t tls13FormatServerKeyShareExtension(TlsContext *context,
       if(context->keyExchMethod == TLS13_KEY_EXCH_HYBRID ||
          context->keyExchMethod == TLS13_KEY_EXCH_PSK_HYBRID)
       {
+         size_t keyShareOffset;
+         size_t sharedSecretOffset;
+         const KemAlgo *kemAlgo;
+
+         //Point to the KEM algorithm
+         kemAlgo = context->kemContext.kemAlgo;
+
+         //NIST's special publication 800-56C approves the usage of HKDF with two
+         //distinct shared secrets, with the condition that the first one is
+         //computed by a FIPS-approved key-establishment scheme
+         if(context->namedGroup == TLS_GROUP_X25519_MLKEM768)
+         {
+            keyShareOffset = kemAlgo->ciphertextSize;
+         }
+         else
+         {
+            keyShareOffset = 0;
+         }
+
          //The server ECDHE share is the serialized value of the uncompressed
          //ECDH point representation
-         error = ecExport(&context->ecdhContext.params,
-            &context->ecdhContext.qa.q, keyShareEntry->keyExchange, &n);
+         error = ecExportPublicKey(&context->ecdhContext.da.q,
+            keyShareEntry->keyExchange + keyShareOffset, &n,
+            EC_PUBLIC_KEY_FORMAT_X963);
          //Any error to report?
          if(error)
             return error;
 
-         //The server share is the Kyber's ciphertext returned from the
+         //X25519MLKEM768 group?
+         if(context->namedGroup == TLS_GROUP_X25519_MLKEM768)
+         {
+            keyShareOffset = 0;
+            sharedSecretOffset = 0;
+         }
+         else
+         {
+            keyShareOffset = n;
+            sharedSecretOffset = context->premasterSecretLen;
+         }
+
+         //The server share is the ML-KEM's ciphertext returned from the
          //Encapsulate step represented as an octet string
          error = kemEncapsulate(&context->kemContext, context->prngAlgo,
-            context->prngContext, keyShareEntry->keyExchange + n,
-            context->premasterSecret + context->premasterSecretLen);
+            context->prngContext, keyShareEntry->keyExchange + keyShareOffset,
+            context->premasterSecret + sharedSecretOffset);
          //Any error to report?
          if(error)
             return error;
 
          //The server's share is a fixed-size concatenation of ECDHE share and
          //Kyber's ciphertext returned from encapsulation
-         n += context->kemContext.kemAlgo->ciphertextSize;
+         n += kemAlgo->ciphertextSize;
 
          //Finally, the shared secret is a concatenation of the ECDHE and the
          //Kyber shared secrets
-         context->premasterSecretLen += context->kemContext.kemAlgo->sharedSecretSize;
+         context->premasterSecretLen += kemAlgo->sharedSecretSize;
       }
       else
 #endif
@@ -417,6 +481,7 @@ error_t tls13ParseClientKeyShareExtension(TlsContext *context,
 {
 #if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
    TLS13_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || \
+   TLS13_MLKEM_KE_SUPPORT == ENABLED || TLS13_PSK_MLKEM_KE_SUPPORT == ENABLED || \
    TLS13_HYBRID_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
    //KeyShare extension found?
    if(keyShareList != NULL)
@@ -543,8 +608,29 @@ error_t tls13ParseClientKeyShareExtension(TlsContext *context,
                context->keyExchMethod = TLS13_KEY_EXCH_ECDHE;
             }
          }
+         //ML-KEM key exchange method?
+         else if(tls13IsMlkemGroupSupported(context, namedGroup))
+         {
+            //Encapsulation algorithm
+            error = tls13Encapsulate(context, namedGroup,
+               keyShareEntry->keyExchange, ntohs(keyShareEntry->length));
+            //Any error to report?
+            if(error)
+               return error;
+
+            //ML-KEM-512, ML-KEM-768, and ML-KEM-1024 can be used as a
+            //standalone algorithm to achieve post-quantum key agreement
+            if(context->keyExchMethod == TLS13_KEY_EXCH_PSK)
+            {
+               context->keyExchMethod = TLS13_KEY_EXCH_PSK_MLKEM;
+            }
+            else
+            {
+               context->keyExchMethod = TLS13_KEY_EXCH_MLKEM;
+            }
+         }
          //Hybrid key exchange method?
-         else if(tls13IsHybridKeMethodSupported(context, namedGroup))
+         else if(tls13IsHybridGroupSupported(context, namedGroup))
          {
             //Encapsulation algorithm
             error = tls13Encapsulate(context, namedGroup,

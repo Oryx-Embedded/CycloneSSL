@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2024 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2025 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.4
+ * @version 2.5.0
  **/
 
 #ifndef _TLS13_SERVER_MISC_H
@@ -49,6 +49,8 @@ error_t tls13SelectGroup(TlsContext *context,
 
 bool_t tls13IsGroupOffered(uint16_t namedGroup,
    const TlsSupportedGroupList *groupList);
+
+bool_t tls13IsGroupObsolete(TlsContext *context, uint16_t namedGroup);
 
 error_t tls13VerifyPskBinder(TlsContext *context, const void *clientHello,
    size_t clientHelloLen, const Tls13PskIdentityList *identityList,

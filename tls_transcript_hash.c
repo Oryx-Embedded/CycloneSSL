@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2024 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2025 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.4
+ * @version 2.5.0
  **/
 
 //Switch to the appropriate trace level
@@ -387,6 +387,7 @@ __weak_func error_t tlsComputeVerifyData(TlsContext *context,
       const char_t *label;
       const HashAlgo *hashAlgo;
       HashContext *hashContext;
+      uint8_t digest[MAX_HASH_DIGEST_SIZE];
 
       //Point to the hash algorithm to be used
       hashAlgo = context->cipherSuite.prfHashAlgo;
@@ -405,7 +406,7 @@ __weak_func error_t tlsComputeVerifyData(TlsContext *context,
                hashAlgo->contextSize);
 
             //Finalize hash computation
-            hashAlgo->final(hashContext, NULL);
+            hashAlgo->final(hashContext, digest);
 
             //Check whether the computation is performed at client or server side
             if(entity == TLS_CONNECTION_END_CLIENT)
@@ -418,8 +419,8 @@ __weak_func error_t tlsComputeVerifyData(TlsContext *context,
             }
 
             //Compute the verify data
-            error = tls12Prf(hashAlgo, context->masterSecret, TLS_MASTER_SECRET_SIZE,
-               label, hashContext->digest, hashAlgo->digestSize,
+            error = tls12Prf(hashAlgo, context->masterSecret,
+               TLS_MASTER_SECRET_SIZE, label, digest, hashAlgo->digestSize,
                verifyData, context->cipherSuite.verifyDataLen);
 
             //Release previously allocated memory

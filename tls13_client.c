@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2024 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2025 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.4
+ * @version 2.5.0
  **/
 
 //Switch to the appropriate trace level
@@ -649,6 +649,10 @@ error_t tls13ParseNewSessionTicket(TlsContext *context,
    //Retrieve the length of the ticket
    n = ntohs(ticket->length);
 
+   //Empty tickets are not allowed
+   if(n == 0)
+      return ERROR_DECODING_FAILED;
+
    //Malformed NewSessionTicket message?
    if(length < (sizeof(Tls13Ticket) + n))
       return ERROR_DECODING_FAILED;
@@ -677,7 +681,7 @@ error_t tls13ParseNewSessionTicket(TlsContext *context,
    if(ntohl(message->ticketLifetime) > 0)
    {
       //Check the length of the session ticket
-      if(n > 0 && n <= TLS13_MAX_TICKET_SIZE)
+      if(n <= TLS13_MAX_TICKET_SIZE)
       {
          //Servers may send multiple tickets on a single connection
          if(context->ticket != NULL)

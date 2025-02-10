@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2010-2024 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2010-2025 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneSSL Open.
  *
@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.4
+ * @version 2.5.0
  **/
 
 //Switch to the appropriate trace level
@@ -295,6 +295,7 @@ error_t tlsSendCertificateRequest(TlsContext *context)
          context->keyExchMethod == TLS_KEY_EXCH_RSA_PSK ||
          context->keyExchMethod == TLS13_KEY_EXCH_DHE ||
          context->keyExchMethod == TLS13_KEY_EXCH_ECDHE ||
+         context->keyExchMethod == TLS13_KEY_EXCH_MLKEM ||
          context->keyExchMethod == TLS13_KEY_EXCH_HYBRID)
       {
          //Point to the buffer where to format the message

@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Copyright (C) 2022-2024 Oryx Embedded SARL. All rights reserved.
+ * Copyright (C) 2022-2025 Oryx Embedded SARL. All rights reserved.
  *
  * This file is part of CycloneIPSEC Open.
  *
@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.4.4
+ * @version 2.5.0
  **/
 
 //Switch to the appropriate trace level
@@ -86,15 +86,13 @@ error_t tlsSelectSignAlgo(TlsContext *context, const TlsCertDesc *cert,
    const TlsSignSchemeList *signAlgoList)
 {
    error_t error;
-   uint_t i;
-   uint_t n;
-   uint16_t signScheme;
 
    //Initialize status code
    error = NO_ERROR;
    //Default signature algorithm
    context->signScheme = TLS_SIGN_SCHEME_NONE;
 
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
    //TLS 1.0 or TLS 1.1 currently selected?
    if(context->version <= TLS_VERSION_1_1)
    {
@@ -107,7 +105,15 @@ error_t tlsSelectSignAlgo(TlsContext *context, const TlsCertDesc *cert,
       }
    }
    else
+#endif
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+   //TLS 1.2 or TLS 1.3 currently selected?
+   if(context->version >= TLS_VERSION_1_2)
    {
+      uint_t i;
+      uint_t n;
+      uint16_t signScheme;
+
       //Check whether the peer has provided a list of supported signature
       //algorithms
       if(signAlgoList != NULL)
@@ -211,6 +217,13 @@ error_t tlsSelectSignAlgo(TlsContext *context, const TlsCertDesc *cert,
       {
          error = ERROR_HANDSHAKE_FAILED;
       }
+   }
+   else
+#endif
+   //Invalid TLS version?
+   {
+      //Report an error
+      error = ERROR_INVALID_VERSION;
    }
 
    //Return status code
