@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.5.0
+ * @version 2.5.2
  **/
 
 //Switch to the appropriate trace level
@@ -58,8 +58,6 @@
 #include "tls13_server_misc.h"
 #include "dtls_record.h"
 #include "dtls_misc.h"
-#include "pkix/pem_import.h"
-#include "pkix/x509_cert_parse.h"
 #include "date_time.h"
 #include "debug.h"
 

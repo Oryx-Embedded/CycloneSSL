@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.5.0
+ * @version 2.5.2
  **/
 
 //Switch to the appropriate trace level
@@ -427,7 +427,7 @@ error_t tlsFormatSupportedSignAlgos(TlsContext *context, uint8_t *p,
    return NO_ERROR;
 #else
    //Not implemented
-   return FALSE;
+   return ERROR_NOT_IMPLEMENTED;
 #endif
 }
 

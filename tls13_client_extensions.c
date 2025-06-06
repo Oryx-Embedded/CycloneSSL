@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.5.0
+ * @version 2.5.2
  **/
 
 //Switch to the appropriate trace level
@@ -138,15 +138,12 @@ error_t tls13FormatClientKeyShareExtension(TlsContext *context,
       //Specify the named group for the key being exchanged
       keyShareEntry->group = htons(context->namedGroup);
 
-      //Retrieve the length of the modulus
-      n = mpiGetByteLength(&context->dhContext.params.p);
-
       //Diffie-Hellman parameters are encoded in the opaque key_exchange field
       //of the KeyShareEntry. The opaque value contains the Diffie-Hellman
       //public value for the specified group encoded as a big-endian integer
       //and padded to the left with zeros to the size of p in bytes
-      error = mpiExport(&context->dhContext.ya,
-         keyShareEntry->keyExchange, n, MPI_FORMAT_BIG_ENDIAN);
+      error = dhExportPublicKey(&context->dhContext,
+         keyShareEntry->keyExchange, &n, MPI_FORMAT_BIG_ENDIAN);
       //Any error to report?
       if(error)
          return error;
@@ -168,7 +165,7 @@ error_t tls13FormatClientKeyShareExtension(TlsContext *context,
 
       //ECDHE parameters are encoded in the opaque key_exchange field of
       //the KeyShareEntry
-      error = ecExportPublicKey(&context->ecdhContext.da.q,
+      error = ecdhExportPublicKey(&context->ecdhContext,
          keyShareEntry->keyExchange, &n, EC_PUBLIC_KEY_FORMAT_X963);
       //Any error to report?
       if(error)
@@ -237,7 +234,7 @@ error_t tls13FormatClientKeyShareExtension(TlsContext *context,
 
       //The ECDHE share is the serialized value of the uncompressed ECDH point
       //representation
-      error = ecExportPublicKey(&context->ecdhContext.da.q,
+      error = ecdhExportPublicKey(&context->ecdhContext,
          keyShareEntry->keyExchange + offset, &n, EC_PUBLIC_KEY_FORMAT_X963);
       //Any error to report?
       if(error)

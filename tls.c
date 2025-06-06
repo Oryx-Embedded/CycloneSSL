@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.5.0
+ * @version 2.5.2
  **/
 
 //Switch to the appropriate trace level
@@ -334,6 +334,7 @@ error_t tlsSetTransportProtocol(TlsContext *context,
    //Check parameters
    if(transportProtocol != TLS_TRANSPORT_PROTOCOL_STREAM &&
       transportProtocol != TLS_TRANSPORT_PROTOCOL_DATAGRAM &&
+      transportProtocol != TLS_TRANSPORT_PROTOCOL_QUIC &&
       transportProtocol != TLS_TRANSPORT_PROTOCOL_EAP)
    {
       return ERROR_INVALID_PARAMETER;
@@ -1298,9 +1299,15 @@ error_t tlsLoadCertificate(TlsContext *context, uint_t index,
             //Successful memory allocation?
             if(certInfo != NULL)
             {
+               X509Options options;
+
+               //Additional certificate parsing options
+               options = X509_DEFAULT_OPTIONS;
+               options.ignoreUnknownExtensions = TRUE;
+
                //Parse X.509 certificate
                error = x509ParseCertificateEx(derCert, derCertLen, certInfo,
-                  TRUE);
+                  &options);
 
                //Check status code
                if(!error)
@@ -1710,7 +1717,9 @@ error_t tlsWriteEarlyData(TlsContext *context, const void *data,
 
    //Total number of data that have been written
    if(written != NULL)
+   {
       *written = n;
+   }
 
    //Return status code
    return error;
@@ -2085,7 +2094,9 @@ error_t tlsWrite(TlsContext *context, const void *data, size_t length,
 
    //Total number of data that have been written
    if(written != NULL)
+   {
       *written = totalLength;
+   }
 
    //Return status code
    return error;
@@ -2711,6 +2722,7 @@ void tlsFree(TlsContext *context)
       //Release previous encryption engine
       tlsFreeEncryptionEngine(&context->prevEncryptionEngine);
 #endif
+
 
       //Clear the TLS context before freeing memory
       osMemset(context, 0, sizeof(TlsContext));

@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.5.0
+ * @version 2.5.2
  **/
 
 //Switch to the appropriate trace level
@@ -644,7 +644,7 @@ error_t tlsProcessRecord(TlsContext *context, TlsRecord *record)
    {
       //Compliant servers must accept any value {03,XX} as the record layer
       //version number for ClientHello
-      if(LSB(record->version) != MSB(TLS_VERSION_1_0))
+      if(MSB(ntohs(record->version)) != MSB(TLS_VERSION_1_0))
          return ERROR_VERSION_NOT_SUPPORTED;
    }
 

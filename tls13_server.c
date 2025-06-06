@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.5.0
+ * @version 2.5.2
  **/
 
 //Switch to the appropriate trace level
@@ -501,7 +501,7 @@ error_t tls13FormatNewSessionTicket(TlsContext *context,
    message->ticketLifetime = HTONL(TLS_TICKET_LIFETIME / 1000);
 
    //The ticket_age_add field is used to obscure the age of the ticket
-   error = context->prngAlgo->read(context->prngContext,
+   error = context->prngAlgo->generate(context->prngContext,
       (uint8_t *) &message->ticketAgeAdd, sizeof(uint32_t));
    //Any error to report?
    if(error)

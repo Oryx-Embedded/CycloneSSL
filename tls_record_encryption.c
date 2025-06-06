@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.5.0
+ * @version 2.5.2
  **/
 
 //Switch to the appropriate trace level
@@ -198,7 +198,7 @@ __weak_func error_t tlsEncryptAeadRecord(TlsContext *context,
 
       //The explicit part of the nonce is chosen by the sender and is
       //carried in each TLS record
-      error = context->prngAlgo->read(context->prngContext, data,
+      error = context->prngAlgo->generate(context->prngContext, data,
          encryptionEngine->recordIvLen);
       //Any error to report?
       if(error)
@@ -316,7 +316,7 @@ __weak_func error_t tlsEncryptCbcRecord(TlsContext *context,
       osMemmove(data + encryptionEngine->recordIvLen, data, length);
 
       //The initialization vector should be chosen at random
-      error = context->prngAlgo->read(context->prngContext, data,
+      error = context->prngAlgo->generate(context->prngContext, data,
          encryptionEngine->recordIvLen);
       //Any error to report?
       if(error)

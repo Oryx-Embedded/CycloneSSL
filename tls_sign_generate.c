@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.5.0
+ * @version 2.5.2
  **/
 
 //Switch to the appropriate trace level
@@ -37,7 +37,7 @@
 #include "tls_sign_misc.h"
 #include "tls_transcript_hash.h"
 #include "tls_misc.h"
-#include "pkix/pem_import.h"
+#include "pkix/pem_key_import.h"
 #include "pkc/rsa.h"
 #include "pkc/rsa_misc.h"
 #include "pkc/dsa.h"

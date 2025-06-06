@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.5.0
+ * @version 2.5.2
  **/
 
 //Switch to the appropriate trace level
@@ -155,7 +155,7 @@ error_t tlsEncryptTicket(TlsContext *context, const uint8_t *plaintext,
       osMemcpy(ciphertext, state->keyName, TLS_TICKET_KEY_NAME_SIZE);
 
       //Generate a random IV
-      error = context->prngAlgo->read(context->prngContext, iv,
+      error = context->prngAlgo->generate(context->prngContext, iv,
          TLS_TICKET_IV_SIZE);
    }
 
@@ -357,14 +357,14 @@ error_t tlsGenerateTicketKeys(TlsTicketContext *ticketContext,
 
    //The key name should be randomly generated to avoid collisions between
    //servers (refer to RFC 5077, section 4)
-   error = prngAlgo->read(prngContext, state->keyName,
+   error = prngAlgo->generate(prngContext, state->keyName,
       TLS_TICKET_KEY_NAME_SIZE);
    //Any error to report?
    if(error)
       return error;
 
    //Generate a random encryption key
-   error = prngAlgo->read(prngContext, state->key, TLS_TICKET_KEY_SIZE);
+   error = prngAlgo->generate(prngContext, state->key, TLS_TICKET_KEY_SIZE);
    //Any error to report?
    if(error)
       return error;

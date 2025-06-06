@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.5.0
+ * @version 2.5.2
  **/
 
 #ifndef _TLS_H
@@ -81,13 +81,13 @@ struct _TlsEncryptionEngine;
 #endif
 
 //Version string
-#define CYCLONE_SSL_VERSION_STRING "2.5.0"
+#define CYCLONE_SSL_VERSION_STRING "2.5.2"
 //Major version
 #define CYCLONE_SSL_MAJOR_VERSION 2
 //Minor version
 #define CYCLONE_SSL_MINOR_VERSION 5
 //Revision number
-#define CYCLONE_SSL_REV_NUMBER 0
+#define CYCLONE_SSL_REV_NUMBER 2
 
 //TLS version numbers
 #define SSL_VERSION_3_0 0x0300
@@ -101,6 +101,13 @@ struct _TlsEncryptionEngine;
    #define TLS_SUPPORT ENABLED
 #elif (TLS_SUPPORT != ENABLED && TLS_SUPPORT != DISABLED)
    #error TLS_SUPPORT parameter is not valid
+#endif
+
+//QUIC support
+#ifndef TLS_QUIC_SUPPORT
+   #define TLS_QUIC_SUPPORT DISABLED
+#elif (TLS_QUIC_SUPPORT != ENABLED && TLS_QUIC_SUPPORT != DISABLED)
+   #error TLS_QUIC_SUPPORT parameter is not valid
 #endif
 
 //Client mode of operation
@@ -977,7 +984,8 @@ typedef enum
 {
    TLS_TRANSPORT_PROTOCOL_STREAM   = 0,
    TLS_TRANSPORT_PROTOCOL_DATAGRAM = 1,
-   TLS_TRANSPORT_PROTOCOL_EAP      = 2
+   TLS_TRANSPORT_PROTOCOL_QUIC     = 2,
+   TLS_TRANSPORT_PROTOCOL_EAP      = 3
 } TlsTransportProtocol;
 
 
@@ -1137,7 +1145,8 @@ typedef enum
    TLS_ALERT_BAD_CERTIFICATE_HASH_VALUE      = 114,
    TLS_ALERT_UNKNOWN_PSK_IDENTITY            = 115,
    TLS_ALERT_CERTIFICATE_REQUIRED            = 116,
-   TLS_ALERT_NO_APPLICATION_PROTOCOL         = 120
+   TLS_ALERT_NO_APPLICATION_PROTOCOL         = 120,
+   TLS_ALERT_ECH_REQUIRED                    = 121
 } TlsAlertDescription;
 
 
@@ -1274,6 +1283,9 @@ typedef enum
    TLS_SIGN_SCHEME_RSA_PKCS1_SHA256               = 0x0401,
    TLS_SIGN_SCHEME_RSA_PKCS1_SHA384               = 0x0501,
    TLS_SIGN_SCHEME_RSA_PKCS1_SHA512               = 0x0601,
+   TLS_SIGN_SCHEME_RSA_PKCS1_SHA256_LEGACY        = 0x0420,
+   TLS_SIGN_SCHEME_RSA_PKCS1_SHA384_LEGACY        = 0x0520,
+   TLS_SIGN_SCHEME_RSA_PKCS1_SHA512_LEGACY        = 0x0620,
    TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA256            = 0x0804,
    TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA384            = 0x0805,
    TLS_SIGN_SCHEME_RSA_PSS_RSAE_SHA512            = 0x0806,
@@ -1297,16 +1309,21 @@ typedef enum
    TLS_SIGN_SCHEME_GOSTR34102012_512A             = 0x070D,
    TLS_SIGN_SCHEME_GOSTR34102012_512B             = 0x070E,
    TLS_SIGN_SCHEME_GOSTR34102012_512C             = 0x070F,
+   TLS_SIGN_SCHEME_MLDSA44                        = 0x0904,
+   TLS_SIGN_SCHEME_MLDSA65                        = 0x0905,
+   TLS_SIGN_SCHEME_MLDSA87                        = 0x0906,
    TLS_SIGN_SCHEME_MLDSA44_ECDSA_SECP256R1_SHA256 = 0x0907,
    TLS_SIGN_SCHEME_MLDSA65_ECDSA_SECP384R1_SHA384 = 0x0908,
    TLS_SIGN_SCHEME_MLDSA87_ECDSA_SECP384R1_SHA384 = 0x0909,
    TLS_SIGN_SCHEME_MLDSA44_ED25519                = 0x090A,
    TLS_SIGN_SCHEME_MLDSA65_ED25519                = 0x090B,
-   TLS_SIGN_SCHEME_MLDSA44_RSA_PKCS1_SHA256       = 0x090C,
-   TLS_SIGN_SCHEME_MLDSA65_RSA_PKCS1_SHA384       = 0x090D,
-   TLS_SIGN_SCHEME_MLDSA44_RSA_PSS_PSS_SHA256     = 0x090E,
-   TLS_SIGN_SCHEME_MLDSA65_RSA_PSS_PSS_SHA384     = 0x090F,
-   TLS_SIGN_SCHEME_MLDSA87_ED448                  = 0x0910
+   TLS_SIGN_SCHEME_MLDSA44_RSA2048_PKCS1_SHA256   = 0x090C,
+   TLS_SIGN_SCHEME_MLDSA65_RSA3072_PKCS1_SHA256   = 0x090D,
+   TLS_SIGN_SCHEME_MLDSA65_RSA4096_PKCS1_SHA384   = 0x090E,
+   TLS_SIGN_SCHEME_MLDSA44_RSA2048_PSS_PSS_SHA256 = 0x090F,
+   TLS_SIGN_SCHEME_MLDSA65_RSA3072_PSS_PSS_SHA256 = 0x0910,
+   TLS_SIGN_SCHEME_MLDSA65_RSA4096_PSS_PSS_SHA384 = 0x0911,
+   TLS_SIGN_SCHEME_MLDSA87_ED448                  = 0x0912
 } TlsSignatureScheme;
 
 
@@ -1455,6 +1472,7 @@ typedef enum
    TLS_GROUP_SECP256R1_MLKEM768         = 4587,  //Draft
    TLS_GROUP_X25519_MLKEM768            = 4588,  //Draft
    TLS_GROUP_SECP384R1_MLKEM1024        = 4589,  //Draft
+   TLS_GROUP_CURVE_SM2_MLKEM768         = 65278, //Draft (must not used in any production environment)
    TLS_GROUP_EXPLICIT_PRIME_CURVE       = 65281, //RFC 4492
    TLS_GROUP_EXPLICIT_CHAR2_CURVE       = 65282  //RFC 4492
 } TlsNamedGroup;
@@ -2525,6 +2543,7 @@ struct _TlsContext
    uint32_t replayWindow[(DTLS_REPLAY_WINDOW_SIZE + 31) / 32];
 #endif
 
+
    TLS_PRIVATE_CONTEXT                       ///<Application specific context
 };
 
@@ -2602,9 +2621,6 @@ error_t tlsSetRpkVerifyCallback(TlsContext *context,
 
 error_t tlsSetTrustedCaList(TlsContext *context, const char_t *trustedCaList,
    size_t length);
-
-error_t tlsAddCertificate(TlsContext *context, const char_t *certChain,
-   size_t certChainLen, const char_t *privateKey, size_t privateKeyLen);
 
 error_t tlsLoadCertificate(TlsContext *context, uint_t index,
    const char_t *certChain, size_t certChainLen, const char_t *privateKey,

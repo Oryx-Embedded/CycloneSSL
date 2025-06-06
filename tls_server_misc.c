@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.5.0
+ * @version 2.5.2
  **/
 
 //Switch to the appropriate trace level
@@ -46,7 +46,7 @@
 #include "tls_ffdhe.h"
 #include "tls_record.h"
 #include "tls_misc.h"
-#include "pkix/pem_import.h"
+#include "pkix/pem_key_import.h"
 #include "debug.h"
 
 //Check TLS library configuration
@@ -219,39 +219,37 @@ error_t tlsFormatServerKeyParams(TlsContext *context,
       if(curve != NULL)
       {
          //Save elliptic curve parameters
-         context->ecdhContext.curve = curve;
-
-#if (TLS_ECC_CALLBACK_SUPPORT == ENABLED)
-         //Any registered callback?
-         if(context->ecdhCallback != NULL)
-         {
-            //Invoke user callback function
-            error = context->ecdhCallback(context);
-         }
-         else
-#endif
-         {
-            //No callback function defined
-            error = ERROR_UNSUPPORTED_ELLIPTIC_CURVE;
-         }
+         error = ecdhSetCurve(&context->ecdhContext, curve);
 
          //Check status code
-         if(error == ERROR_UNSUPPORTED_ELLIPTIC_CURVE)
+         if(!error)
          {
-            //Generate an ephemeral key pair
-            error = ecdhGenerateKeyPair(&context->ecdhContext,
-               context->prngAlgo, context->prngContext);
+#if (TLS_ECC_CALLBACK_SUPPORT == ENABLED)
+            //Any registered callback?
+            if(context->ecdhCallback != NULL)
+            {
+               //Invoke user callback function
+               error = context->ecdhCallback(context);
+            }
+            else
+#endif
+            {
+               //No callback function defined
+               error = ERROR_UNSUPPORTED_ELLIPTIC_CURVE;
+            }
+
+            //Check status code
+            if(error == ERROR_UNSUPPORTED_ELLIPTIC_CURVE)
+            {
+               //Generate an ephemeral key pair
+               error = ecdhGenerateKeyPair(&context->ecdhContext,
+                  context->prngAlgo, context->prngContext);
+            }
          }
 
          //Check status code
          if(!error)
          {
-            //Debug message
-            TRACE_DEBUG("  Server public key X:\r\n");
-            TRACE_DEBUG_MPI("    ", &context->ecdhContext.da.q.q.x);
-            TRACE_DEBUG("  Server public key Y:\r\n");
-            TRACE_DEBUG_MPI("    ", &context->ecdhContext.da.q.q.y);
-
             //Set the type of the elliptic curve domain parameters
             *p = TLS_EC_CURVE_TYPE_NAMED_CURVE;
 
@@ -1959,7 +1957,7 @@ error_t tlsParseClientKeyParams(TlsContext *context,
       bad |= CRYPTO_TEST_NEQ_16(version, context->clientVersion);
 
       //Generate a random 48-byte value
-      error = context->prngAlgo->read(context->prngContext,
+      error = context->prngAlgo->generate(context->prngContext,
          randPremasterSecret, 48);
 
       //When it receives an incorrectly formatted RSA block, the server should

@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.5.0
+ * @version 2.5.2
  **/
 
 //Switch to the appropriate trace level
@@ -310,12 +310,17 @@ error_t tls13GenerateKeyShare(TlsContext *context, uint16_t namedGroup)
       {
          //Save the named group
          context->namedGroup = namedGroup;
-         //Save elliptic curve parameters
-         context->ecdhContext.curve = curve;
 
-         //Generate an ephemeral key pair
-         error = ecdhGenerateKeyPair(&context->ecdhContext, context->prngAlgo,
-            context->prngContext);
+         //Save elliptic curve parameters
+         error = ecdhSetCurve(&context->ecdhContext, curve);
+
+         //Check status code
+         if(!error)
+         {
+            //Generate an ephemeral key pair
+            error = ecdhGenerateKeyPair(&context->ecdhContext,
+               context->prngAlgo, context->prngContext);
+         }
       }
       else
       {
@@ -372,14 +377,19 @@ error_t tls13GenerateKeyShare(TlsContext *context, uint16_t namedGroup)
       {
          //Save the named group
          context->namedGroup = namedGroup;
-         //Save elliptic curve parameters
-         context->ecdhContext.curve = curve;
 
-         //DH key exchange can be modeled as a KEM, with KeyGen corresponding
-         //to selecting an exponent x as the secret key and computing the
-         //public key g^x
-         error = ecdhGenerateKeyPair(&context->ecdhContext, context->prngAlgo,
-            context->prngContext);
+         //Save elliptic curve parameters
+         error = ecdhSetCurve(&context->ecdhContext, curve);
+
+         //Check status code
+         if(!error)
+         {
+            //DH key exchange can be modeled as a KEM, with KeyGen corresponding
+            //to selecting an exponent x as the secret key and computing the
+            //public key g^x
+            error = ecdhGenerateKeyPair(&context->ecdhContext,
+               context->prngAlgo, context->prngContext);
+         }
 
          //Check status code
          if(!error)
@@ -439,16 +449,8 @@ error_t tls13GenerateSharedSecret(TlsContext *context, const uint8_t *keyShare,
       if(length == n)
       {
          //The Diffie-Hellman public value is encoded as a big-endian integer
-         error = mpiImport(&context->dhContext.yb, keyShare, length,
+         error = dhImportPeerPublicKey(&context->dhContext, keyShare, length,
             MPI_FORMAT_BIG_ENDIAN);
-
-         //Check status code
-         if(!error)
-         {
-            //Verify peer's public key
-            error = dhCheckPublicKey(&context->dhContext,
-               &context->dhContext.yb);
-         }
 
          //Check status code
          if(!error)
@@ -474,17 +476,8 @@ error_t tls13GenerateSharedSecret(TlsContext *context, const uint8_t *keyShare,
    if(tls13IsEcdheGroupSupported(context, context->namedGroup))
    {
       //Read peer's public key (refer to RFC 8446, section 4.2.8.2)
-      error = ecImportPublicKey(&context->ecdhContext.qb,
-         context->ecdhContext.curve, keyShare, length,
-         EC_PUBLIC_KEY_FORMAT_X963);
-
-      //Check status code
-      if(!error)
-      {
-         //Verify peer's public key
-         error = ecdhCheckPublicKey(&context->ecdhContext,
-            &context->ecdhContext.qb);
-      }
+      error = ecdhImportPeerPublicKey(&context->ecdhContext,
+         keyShare, length, EC_PUBLIC_KEY_FORMAT_X963);
 
       //Check status code
       if(!error)
@@ -586,8 +579,6 @@ error_t tls13Encapsulate(TlsContext *context, uint16_t namedGroup,
          {
             //Save the named group
             context->namedGroup = namedGroup;
-            //Save elliptic curve parameters
-            context->ecdhContext.curve = curve;
 
             //Initialize KEM context
             kemFree(&context->kemContext);
@@ -607,28 +598,27 @@ error_t tls13Encapsulate(TlsContext *context, uint16_t namedGroup,
                sharedSecretOffset = 0;
             }
 
-            //DH key exchange can be modeled as a KEM, with encapsulation
-            //corresponding to selecting an exponent y, computing the ciphertext
-            //g^y and the shared secret g^(xy)
-            error = ecdhGenerateKeyPair(&context->ecdhContext,
-               context->prngAlgo, context->prngContext);
+            //Save elliptic curve parameters
+            error = ecdhSetCurve(&context->ecdhContext, curve);
+
+            //Check status code
+            if(!error)
+            {
+               //DH key exchange can be modeled as a KEM, with encapsulation
+               //corresponding to selecting an exponent y, computing the
+               //ciphertext g^y and the shared secret g^(xy)
+               error = ecdhGenerateKeyPair(&context->ecdhContext,
+                  context->prngAlgo, context->prngContext);
+            }
 
             //Check status code
             if(!error)
             {
                //The ECDHE share is the serialized value of the uncompressed ECDH
                //point representation
-               error = ecImportPublicKey(&context->ecdhContext.qb,
-                  context->ecdhContext.curve, keyShare + keyShareOffset,
-                  length - kemAlgo->publicKeySize, EC_PUBLIC_KEY_FORMAT_X963);
-            }
-
-            //Check status code
-            if(!error)
-            {
-               //Verify client's public key
-               error = ecdhCheckPublicKey(&context->ecdhContext,
-                  &context->ecdhContext.qb);
+               error = ecdhImportPeerPublicKey(&context->ecdhContext,
+                  keyShare + keyShareOffset, length - kemAlgo->publicKeySize,
+                  EC_PUBLIC_KEY_FORMAT_X963);
             }
 
             //Check status code
@@ -761,17 +751,9 @@ error_t tls13Decapsulate(TlsContext *context, const uint8_t *keyShare,
          }
 
          //Decode the server's ECDH ephemeral share
-         error = ecImportPublicKey(&context->ecdhContext.qb,
-            context->ecdhContext.curve, keyShare + keyShareOffset,
-            length - kemAlgo->ciphertextSize, EC_PUBLIC_KEY_FORMAT_X963);
-
-         //Check status code
-         if(!error)
-         {
-            //Verify server's public key
-            error = ecdhCheckPublicKey(&context->ecdhContext,
-               &context->ecdhContext.qb);
-         }
+         error = ecdhImportPeerPublicKey(&context->ecdhContext,
+            keyShare + keyShareOffset, length - kemAlgo->ciphertextSize,
+            EC_PUBLIC_KEY_FORMAT_X963);
 
          //Check status code
          if(!error)
@@ -1159,6 +1141,7 @@ bool_t tls13IsHybridGroupSupported(TlsContext *context, uint16_t namedGroup)
    //Hybrid key exchange method?
    if(namedGroup == TLS_GROUP_SECP256R1_MLKEM768 ||
       namedGroup == TLS_GROUP_SECP384R1_MLKEM1024 ||
+      namedGroup == TLS_GROUP_CURVE_SM2_MLKEM768 ||
       namedGroup == TLS_GROUP_X25519_MLKEM768)
    {
       //Any TLS 1.3 cipher suite proposed by the client?
@@ -1282,6 +1265,12 @@ const EcCurve *tls13GetTraditionalAlgo(TlsContext *context,
       curve = ecGetCurve(SECP384R1_OID, sizeof(SECP384R1_OID));
       break;
 #endif
+#if (TLS_SM2_SUPPORT == ENABLED)
+   //SM2 elliptic curve?
+   case TLS_GROUP_CURVE_SM2_MLKEM768:
+      curve = ecGetCurve(SM2_OID, sizeof(SM2_OID));
+      break;
+#endif
 #if (TLS_X25519_SUPPORT == ENABLED)
    //Curve25519 elliptic curve?
    case TLS_GROUP_X25519_MLKEM768:
@@ -1341,6 +1330,7 @@ const KemAlgo *tls13GetNextGenAlgo(TlsContext *context, uint16_t namedGroup)
 #if (TLS_MLKEM768_SUPPORT == ENABLED)
    //ML-KEM-768 key encapsulation mechanism?
    case TLS_GROUP_SECP256R1_MLKEM768:
+   case TLS_GROUP_CURVE_SM2_MLKEM768:
    case TLS_GROUP_X25519_MLKEM768:
       kemAlgo = MLKEM768_KEM_ALGO;
       break;

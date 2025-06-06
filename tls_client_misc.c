@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.5.0
+ * @version 2.5.2
  **/
 
 //Switch to the appropriate trace level
@@ -383,7 +383,7 @@ __weak_func error_t tlsFormatClientKeyParams(TlsContext *context, uint8_t *p,
       STORE16BE(context->clientVersion, context->premasterSecret);
 
       //The last 46 bytes contain securely-generated random bytes
-      error = context->prngAlgo->read(context->prngContext,
+      error = context->prngAlgo->generate(context->prngContext,
          context->premasterSecret + 2, 46);
       //Any error to report?
       if(error)
@@ -773,8 +773,12 @@ error_t tlsParseServerKeyParams(TlsContext *context, const uint8_t *p,
       if(!error)
       {
          //Save elliptic curve parameters
-         context->ecdhContext.curve = curve;
+         error = ecdhSetCurve(&context->ecdhContext, curve);
+      }
 
+      //Check status code
+      if(!error)
+      {
          //Read server's public key
          error = tlsReadEcPoint(&context->ecdhContext.qb, curve, p, length, &n);
       }
@@ -790,16 +794,6 @@ error_t tlsParseServerKeyParams(TlsContext *context, const uint8_t *p,
          //Verify peer's public key
          error = ecdhCheckPublicKey(&context->ecdhContext,
             &context->ecdhContext.qb);
-      }
-
-      //Check status code
-      if(!error)
-      {
-         //Debug message
-         TRACE_DEBUG("  Server public key X:\r\n");
-         TRACE_DEBUG_MPI("    ", &context->ecdhContext.qb.q.x);
-         TRACE_DEBUG("  Server public key Y:\r\n");
-         TRACE_DEBUG_MPI("    ", &context->ecdhContext.qb.q.y);
       }
    }
    else

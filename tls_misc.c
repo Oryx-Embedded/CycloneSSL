@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.5.0
+ * @version 2.5.2
  **/
 
 //Switch to the appropriate trace level
@@ -213,7 +213,7 @@ error_t tlsGenerateRandomValue(TlsContext *context, uint8_t *random)
    {
       //Generate a 32-byte random value using a cryptographically-safe
       //pseudorandom number generator
-      error = context->prngAlgo->read(context->prngContext, random, 32);
+      error = context->prngAlgo->generate(context->prngContext, random, 32);
    }
    else
    {
@@ -276,8 +276,8 @@ error_t tlsGenerateSessionId(TlsContext *context, size_t length)
    {
       //Generate a random value using a cryptographically-safe pseudorandom
       //number generator
-      error = context->prngAlgo->read(context->prngContext, context->sessionId,
-         length);
+      error = context->prngAlgo->generate(context->prngContext,
+         context->sessionId, length);
 
       //Check status code
       if(!error)
@@ -370,7 +370,9 @@ error_t tlsSelectCipherSuite(TlsContext *context, uint16_t identifier)
 
       //Check whether the use of the cipher suite is restricted
       if(i >= context->numCipherSuites)
+      {
          cipherSuite = NULL;
+      }
    }
 
    //Acceptable cipher suite?

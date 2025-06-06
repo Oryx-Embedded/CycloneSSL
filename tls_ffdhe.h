@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.5.0
+ * @version 2.5.2
  **/
 
 #ifndef _TLS_FFDHE_H
@@ -34,6 +34,15 @@
 //Dependencies
 #include "tls.h"
 #include "pkc/dh.h"
+
+//Maximum size of FFDHE prime modulus
+#if (TLS_FFDHE4096_SUPPORT == ENABLED)
+   #define TLS_MAX_FFDHE_MODULUS_SIZE 512
+#elif (TLS_FFDHE3072_SUPPORT == ENABLED)
+   #define TLS_MAX_FFDHE_MODULUS_SIZE 384
+#else
+   #define TLS_MAX_FFDHE_MODULUS_SIZE 256
+#endif
 
 //C++ guard
 #ifdef __cplusplus
@@ -47,10 +56,10 @@ extern "C" {
 
 typedef struct
 {
-   const char_t *name;   ///<Group name
-   const uint8_t p[512]; ///<Prime modulus
-   size_t pLen;          ///<Length of the prime modulus, in bytes
-   uint8_t g;            ///<Generator
+   const char_t *name;                          ///<Group name
+   const uint8_t p[TLS_MAX_FFDHE_MODULUS_SIZE]; ///<Prime modulus
+   size_t pLen;                                 ///<Length of the prime modulus, in bytes
+   uint8_t g;                                   ///<Generator
 } TlsFfdheGroup;
 
 
