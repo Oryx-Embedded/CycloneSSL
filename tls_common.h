@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.5.2
+ * @version 2.5.4
  **/
 
 #ifndef _TLS_COMMON_H
@@ -46,8 +46,8 @@ error_t tlsSendChangeCipherSpec(TlsContext *context);
 error_t tlsSendFinished(TlsContext *context);
 error_t tlsSendAlert(TlsContext *context, uint8_t level, uint8_t description);
 
-error_t tlsFormatCertificate(TlsContext *context,
-   TlsCertificate *message, size_t *length);
+error_t tlsFormatCertificate(TlsContext *context, TlsCertificate *message,
+   size_t *length);
 
 error_t tlsFormatCertificateVerify(TlsContext *context,
    TlsCertificateVerify *message, size_t *length);
@@ -55,20 +55,20 @@ error_t tlsFormatCertificateVerify(TlsContext *context,
 error_t tlsFormatChangeCipherSpec(TlsContext *context,
    TlsChangeCipherSpec *message, size_t *length);
 
-error_t tlsFormatFinished(TlsContext *context,
-   TlsFinished *message, size_t *length);
+error_t tlsFormatFinished(TlsContext *context, TlsFinished *message,
+   size_t *length);
 
-error_t tlsFormatAlert(TlsContext *context, uint8_t level,
-   uint8_t description, TlsAlert *message, size_t *length);
+error_t tlsFormatAlert(TlsContext *context, uint8_t level, uint8_t description,
+   TlsAlert *message, size_t *length);
 
-error_t tlsFormatCertAuthoritiesExtension(TlsContext *context,
-   uint8_t *p, size_t *written);
+error_t tlsFormatCertAuthoritiesExtension(TlsContext *context, uint8_t *p,
+   size_t *written);
 
 error_t tlsFormatCertAuthorities(TlsContext *context, uint8_t *p,
    size_t *written);
 
-error_t tlsParseCertificate(TlsContext *context,
-   const TlsCertificate *message, size_t length);
+error_t tlsParseCertificate(TlsContext *context, const TlsCertificate *message,
+   size_t length);
 
 error_t tlsParseCertificateVerify(TlsContext *context,
    const TlsCertificateVerify *message, size_t length);
@@ -76,11 +76,11 @@ error_t tlsParseCertificateVerify(TlsContext *context,
 error_t tlsParseChangeCipherSpec(TlsContext *context,
    const TlsChangeCipherSpec *message, size_t length);
 
-error_t tlsParseFinished(TlsContext *context,
-   const TlsFinished *message, size_t length);
+error_t tlsParseFinished(TlsContext *context, const TlsFinished *message,
+   size_t length);
 
-error_t tlsParseAlert(TlsContext *context,
-   const TlsAlert *message, size_t length);
+error_t tlsParseAlert(TlsContext *context, const TlsAlert *message,
+   size_t length);
 
 //C++ guard
 #ifdef __cplusplus

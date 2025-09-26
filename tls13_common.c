@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.5.2
+ * @version 2.5.4
  **/
 
 //Switch to the appropriate trace level
@@ -123,7 +123,7 @@ error_t tls13SendKeyUpdate(TlsContext *context)
       //All the traffic keying material is recomputed whenever the underlying
       //secret changes
       error = tlsInitEncryptionEngine(context, &context->encryptionEngine,
-         context->entity, appTrafficSecret);
+         context->entity, TLS_ENCRYPTION_LEVEL_APPLICATION, appTrafficSecret);
    }
 
    //Check status code
@@ -190,6 +190,17 @@ error_t tls13ParseKeyUpdate(TlsContext *context, const Tls13KeyUpdate *message,
    //Check TLS version
    if(context->version != TLS_VERSION_1_3)
       return ERROR_UNEXPECTED_MESSAGE;
+
+#if (TLS_QUIC_SUPPORT == ENABLED)
+   //QUIC transport?
+   if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_QUIC)
+   {
+      //Endpoints must treat the receipt of a TLS KeyUpdate message as a
+      //connection error of type 0x010a, equivalent to a fatal TLS alert of
+      //unexpected_message (refer to RFC 9001, section 6)
+      return ERROR_UNEXPECTED_MESSAGE;
+   }
+#endif
 
    //Check the length of the KeyUpdate message
    if(length != sizeof(Tls13KeyUpdate))
@@ -259,7 +270,7 @@ error_t tls13ParseKeyUpdate(TlsContext *context, const Tls13KeyUpdate *message,
    //All the traffic keying material is recomputed whenever the underlying
    //secret changes
    error = tlsInitEncryptionEngine(context, &context->decryptionEngine,
-      entity, appTrafficSecret);
+      entity, TLS_ENCRYPTION_LEVEL_APPLICATION, appTrafficSecret);
    //Any error to report?
    if(error)
       return error;

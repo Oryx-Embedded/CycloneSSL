@@ -1,6 +1,6 @@
 /**
- * @file tls_client_fsm.h
- * @brief TLS state machine (TLS client)
+ * @file tls_quic_misc.h
+ * @brief QUIC helper functions
  *
  * @section License
  *
@@ -24,12 +24,18 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
+ * @section Description
+ *
+ * The TLS protocol provides communications security over the Internet. The
+ * protocol allows client/server applications to communicate in a way that
+ * is designed to prevent eavesdropping, tampering, or message forgery
+ *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
  * @version 2.5.4
  **/
 
-#ifndef _TLS_CLIENT_FSM_H
-#define _TLS_CLIENT_FSM_H
+#ifndef _TLS_QUIC_MISC_H
+#define _TLS_QUIC_MISC_H
 
 //Dependencies
 #include "tls.h"
@@ -39,11 +45,21 @@
 extern "C" {
 #endif
 
-//TLS related functions
-error_t tlsPerformClientHandshake(TlsContext *context);
+//QUIC TLS related functions
+error_t tlsFormatQuicTransportParamsExtension(TlsContext *context,
+   uint8_t *p, size_t *written);
 
-error_t tlsParseServerHandshakeMessage(TlsContext *context, uint8_t msgType,
-   const void *message, size_t length);
+error_t tlsParseQuicTransportParamsExtension(TlsContext *context,
+   const TlsExtension *quicTransportParams);
+
+error_t tlsSetQuicEncryptionKeys(TlsContext *context, TlsEncryptionLevel level,
+   const uint8_t *clientKey, const uint8_t *serverKey, size_t keyLen);
+
+error_t tlsSendQuicHandshakeMessage(TlsContext *context, const uint8_t *message,
+   size_t length);
+
+error_t tlsSendQuicAlertMessage(TlsContext *context, const TlsAlert *message,
+   size_t length);
 
 //C++ guard
 #ifdef __cplusplus

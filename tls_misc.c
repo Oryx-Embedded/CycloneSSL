@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.5.2
+ * @version 2.5.4
  **/
 
 //Switch to the appropriate trace level
@@ -667,13 +667,14 @@ error_t tlsRestoreSessionTicket(TlsContext *context,
  * @param[in] encryptionEngine Pointer to the encryption/decryption engine to
  *   be initialized
  * @param[in] entity Specifies whether client or server write keys shall be used
+ * @param[in] level Encryption level
  * @param[in] secret Pointer to the secret value
  * @return Error code
  **/
 
 __weak_func error_t tlsInitEncryptionEngine(TlsContext *context,
    TlsEncryptionEngine *encryptionEngine, TlsConnectionEnd entity,
-   const uint8_t *secret)
+   TlsEncryptionLevel level, const uint8_t *secret)
 {
    error_t error;
    const CipherAlgo *cipherAlgo;
@@ -699,6 +700,12 @@ __weak_func error_t tlsInitEncryptionEngine(TlsContext *context,
    //Sequence numbers are maintained separately for each epoch, with each
    //sequence number initially being 0 for each epoch
    osMemset(&encryptionEngine->dtlsSeqNum, 0, sizeof(DtlsSequenceNumber));
+#endif
+
+#if (TLS_QUIC_SUPPORT == ENABLED)
+   //TLS encryption level determines the QUIC packet type and keys that are
+   //used for protecting data (refer to RFC 9001, section 4.1.3)
+   encryptionEngine->level = level;
 #endif
 
 #if (TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)

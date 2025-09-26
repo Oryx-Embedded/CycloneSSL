@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.5.2
+ * @version 2.5.4
  **/
 
 #ifndef _TLS_CLIENT_EXTENSIONS_H
@@ -51,6 +51,9 @@ error_t tlsFormatClientMaxFragLenExtension(TlsContext *context,
 
 error_t tlsFormatClientRecordSizeLimitExtension(TlsContext *context,
    uint8_t *p, size_t *written);
+
+error_t tlsFormatTrustedCaKeysExtension(TlsContext *context, uint8_t *p,
+   size_t *written);
 
 error_t tlsFormatSupportedGroupsExtension(TlsContext *context, uint8_t *p,
    size_t *written);

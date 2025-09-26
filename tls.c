@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.5.2
+ * @version 2.5.4
  **/
 
 //Switch to the appropriate trace level
@@ -124,6 +124,12 @@ TlsContext *tlsInit(void)
 #if (DTLS_SUPPORT == ENABLED && DTLS_REPLAY_DETECTION_SUPPORT == ENABLED)
       //Anti-replay mechanism is enabled by default
       context->replayDetectionEnabled = TRUE;
+#endif
+
+#if (TLS_QUIC_SUPPORT == ENABLED)
+      //Select initial encryption level
+      context->encryptionEngine.level = TLS_ENCRYPTION_LEVEL_INITIAL;
+      context->decryptionEngine.level = TLS_ENCRYPTION_LEVEL_INITIAL;
 #endif
 
 #if (TLS_DH_SUPPORT == ENABLED)
@@ -1428,6 +1434,59 @@ error_t tlsEnableSessionTickets(TlsContext *context, bool_t enabled)
 
 
 /**
+ * @brief Enable TrustedCaKeys extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] enabled Specifies whether TrustedCaKeys extension is enabled
+ * @return Error code
+ **/
+
+error_t tlsEnableTrustedCaKeys(TlsContext *context, bool_t enabled)
+{
+#if (TLS_TRUSTED_CA_KEYS_SUPPORT == ENABLED)
+   //Invalid TLS context?
+   if(context == NULL)
+      return ERROR_INVALID_PARAMETER;
+
+   //Enable or disable support for TrustedCaKeys extension
+   context->trustedCaKeysEnabled = enabled;
+
+   //Successful processing
+   return NO_ERROR;
+#else
+   //TrustedCaKeys extension is not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
+}
+
+
+/**
+ * @brief Enable CertificateAuthorities extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] enabled Specifies whether CertificateAuthorities extension is
+ *   enabled
+ * @return Error code
+ **/
+
+error_t tlsEnableCertAuthorities(TlsContext *context, bool_t enabled)
+{
+#if (TLS_CERT_AUTHORITIES_SUPPORT == ENABLED)
+   //Invalid TLS context?
+   if(context == NULL)
+      return ERROR_INVALID_PARAMETER;
+
+   //Enable or disable support for CertificateAuthorities extension
+   context->certAuthoritiesEnabled = enabled;
+
+   //Successful processing
+   return NO_ERROR;
+#else
+   //CertificateAuthorities extension is not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
+}
+
+
+/**
  * @brief Enable secure renegotiation
  * @param[in] context Pointer to the TLS context
  * @param[in] enabled Specifies whether secure renegotiation is allowed
@@ -1825,7 +1884,7 @@ TlsEarlyDataStatus tlsGetEarlyDataStatus(TlsContext *context)
  *   be used when exporting keying material
  * @param[in] contextValue Pointer to the upper-layer context
  * @param[in] contextValueLen Length of the upper-layer context
- * @param[out] output Pointer to the output
+ * @param[out] output Buffer where to store the keying material
  * @param[in] outputLen Desired output length
  * @return Error code
  **/
@@ -1960,6 +2019,95 @@ error_t tlsExportKeyingMaterial(TlsContext *context, const char_t *label,
 
    //Release previously allocated memory
    tlsFreeMem(seed);
+
+   //Return status code
+   return error;
+}
+
+
+/**
+ * @brief Export channel binding value
+ * @param[in] context Pointer to the TLS context
+ * @param[in] type Channel binding type
+ * @param[out] output Buffer where to store the channel binding value
+ * @param[out] length Length of the channel binding value, in bytes
+ * @return Error code
+ **/
+
+error_t tlsExportChannelBinding(TlsContext *context, const char_t *type,
+   uint8_t *output, size_t *length)
+{
+   error_t error;
+
+   //Check parameters
+   if(context == NULL || type == NULL || length == 0)
+      return ERROR_INVALID_PARAMETER;
+
+   //Initialize status code
+   error = NO_ERROR;
+
+   //Check channel binding type
+   if(osStrcmp(type, "tls-unique") == 0)
+   {
+      //Check TLS version
+      if(context->version <= TLS_VERSION_1_2)
+      {
+         //The "tls-unique" channel binding value is the first TLS Finished
+         //message sent in the most recent TLS handshake of the TLS connection
+         //being bound to (refer to RFC 5929, section 3.1)
+         if(context->resume)
+         {
+            //For abbreviated TLS handshakes (session resumption), the first
+            //Finished message is sent by the server
+            if(output != NULL)
+            {
+               osMemcpy(output, context->serverVerifyData,
+                  context->serverVerifyDataLen);
+            }
+
+            //Length of the channel binding value
+            *length = context->clientVerifyDataLen;
+         }
+         else
+         {
+            //For full TLS handshakes, the first Finished message is sent by
+            //the client
+            if(output != NULL)
+            {
+               osMemcpy(output, context->clientVerifyData,
+                  context->clientVerifyDataLen);
+            }
+
+            //Length of the channel binding value
+            *length = context->clientVerifyDataLen;
+         }
+      }
+      else
+      {
+         //Appendix C.5 of RFC 8446 notes the lack of channel bindings for
+         //TLS 1.3 (refer to to RFC 9266, section 1)
+      }
+   }
+   else if(osStrcmp(type, "tls-exporter") == 0)
+   {
+      //The "tls-exporter" channel binding type uses Exported Keying Material
+      //(EKM), which is already widely exposed by TLS implementations (refer
+      //to RFC 9266, section 2)
+      error = tlsExportKeyingMaterial(context, "EXPORTER-Channel-Binding",
+         TRUE, NULL, 0, output, 32);
+
+      //Check status code
+      if(!error)
+      {
+         //The derived value consists of 32 bytes
+         *length = 32;
+      }
+   }
+   else
+   {
+      //Report an error
+      error = ERROR_INVALID_TYPE;
+   }
 
    //Return status code
    return error;
@@ -2723,6 +2871,19 @@ void tlsFree(TlsContext *context)
       tlsFreeEncryptionEngine(&context->prevEncryptionEngine);
 #endif
 
+#if (TLS_QUIC_SUPPORT == ENABLED)
+      //Release local QUIC transport parameters
+      if(context->localQuicTransportParams != NULL)
+      {
+         tlsFreeMem(context->localQuicTransportParams);
+      }
+
+      //Release remote QUIC transport parameters
+      if(context->remoteQuicTransportParams != NULL)
+      {
+         tlsFreeMem(context->remoteQuicTransportParams);
+      }
+#endif
 
       //Clear the TLS context before freeing memory
       osMemset(context, 0, sizeof(TlsContext));

@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.5.2
+ * @version 2.5.4
  **/
 
 //Switch to the appropriate trace level
@@ -268,6 +268,15 @@ error_t tlsPerformServerHandshake(TlsContext *context)
          error = ERROR_UNEXPECTED_STATE;
          break;
       }
+
+#if (TLS_RTOS_SUPPORT == DISABLED)
+      //Force TLS to operate in non-blocking mode
+      if(error == NO_ERROR && context->state < TLS_STATE_APPLICATION_DATA)
+      {
+         error = ERROR_WOULD_BLOCK;
+         break;
+      }
+#endif
    }
 
    //Successful TLS handshake?

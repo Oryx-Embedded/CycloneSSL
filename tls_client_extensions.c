@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.5.2
+ * @version 2.5.4
  **/
 
 //Switch to the appropriate trace level
@@ -354,6 +354,7 @@ error_t tlsFormatClientRecordSizeLimitExtension(TlsContext *context,
    //Check whether TLS 1.3 is supported
    if(context->versionMax >= TLS_VERSION_1_3 &&
       (context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM ||
+      context->transportProtocol == TLS_TRANSPORT_PROTOCOL_QUIC ||
       context->transportProtocol == TLS_TRANSPORT_PROTOCOL_EAP))
    {
       //The value includes the content type and padding added in TLS 1.3
@@ -378,6 +379,69 @@ error_t tlsFormatClientRecordSizeLimitExtension(TlsContext *context,
 
    //Successful processing
    return NO_ERROR;
+}
+
+
+/**
+ * @brief Format TrustedCaKeys extension
+ * @param[in] context Pointer to the TLS context
+ * @param[in] p Output stream where to write the TrustedCaKeys extension
+ * @param[out] written Total number of bytes that have been written
+ * @return Error code
+ **/
+
+error_t tlsFormatTrustedCaKeysExtension(TlsContext *context, uint8_t *p,
+   size_t *written)
+{
+   error_t error;
+   size_t n;
+
+   //Initialize status code
+   error = NO_ERROR;
+   //Initialize length field
+   n = 0;
+
+#if (TLS_TRUSTED_CA_KEYS_SUPPORT == ENABLED)
+   //The TrustedCaKeys extension is optional
+   if(context->trustedCaKeysEnabled && context->versionMin <= TLS_VERSION_1_2)
+   {
+      TlsExtension *extension;
+
+      //Add the TrustedCaKeys extension
+      extension = (TlsExtension *) p;
+      //Type of the extension
+      extension->type = HTONS(TLS_EXT_TRUSTED_CA_KEYS);
+
+      //"TrustedAuthorities" provides a list of CA root key identifiers that
+      //the client possesses (refer to RFC 6066, section 6)
+      error = tlsFormatTrustedAuthorities(context, extension->value, &n);
+
+      //Check status code
+      if(!error)
+      {
+         //The list must contains at least one CA root key identifier
+         if(n > sizeof(TlsTrustedAuthorities))
+         {
+            //Fix the length of the extension
+            extension->length = htons(n);
+
+            //Compute the length, in bytes, of the TrustedCaKeys extension
+            n += sizeof(TlsExtension);
+         }
+         else
+         {
+            //The list of distinguished names is empty
+            n = 0;
+         }
+      }
+   }
+#endif
+
+   //Total number of bytes that have been written
+   *written = n;
+
+   //Return status code
+   return error;
 }
 
 

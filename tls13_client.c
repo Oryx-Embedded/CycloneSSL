@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.5.2
+ * @version 2.5.4
  **/
 
 //Switch to the appropriate trace level
@@ -39,6 +39,7 @@
 #include "tls_client_misc.h"
 #include "tls_extensions.h"
 #include "tls_transcript_hash.h"
+#include "tls_quic_misc.h"
 #include "tls_misc.h"
 #include "tls13_client.h"
 #include "tls13_client_extensions.h"
@@ -98,7 +99,8 @@ error_t tls13SendEndOfEarlyData(TlsContext *context)
 
       //Calculate client handshake traffic keys
       error = tlsInitEncryptionEngine(context, &context->encryptionEngine,
-         TLS_CONNECTION_END_CLIENT, context->clientHsTrafficSecret);
+         TLS_CONNECTION_END_CLIENT, TLS_ENCRYPTION_LEVEL_HANDSHAKE,
+         context->clientHsTrafficSecret);
 
       //Handshake traffic keys successfully calculated?
       if(!error)
@@ -554,7 +556,8 @@ error_t tls13ParseEncryptedExtensions(TlsContext *context,
 
       //Calculate client early traffic keys
       error = tlsInitEncryptionEngine(context, &context->encryptionEngine,
-         TLS_CONNECTION_END_CLIENT, context->clientEarlyTrafficSecret);
+         TLS_CONNECTION_END_CLIENT, TLS_ENCRYPTION_LEVEL_EARLY_DATA,
+         context->clientEarlyTrafficSecret);
       //Any error to report?
       if(error)
          return error;
@@ -564,6 +567,14 @@ error_t tls13ParseEncryptedExtensions(TlsContext *context,
    }
 #endif
 
+#if (TLS_QUIC_SUPPORT == ENABLED)
+   //Parse QuicTransportParameters extension
+   error = tlsParseQuicTransportParamsExtension(context,
+      extensions.quicTransportParams);
+   //Any error to report?
+   if(error)
+      return error;
+#endif
 
    //PSK key exchange method?
    if(context->keyExchMethod == TLS13_KEY_EXCH_PSK ||

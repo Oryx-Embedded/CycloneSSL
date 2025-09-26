@@ -1,6 +1,6 @@
 /**
- * @file tls_client_fsm.h
- * @brief TLS state machine (TLS client)
+ * @file tls_quic.h
+ * @brief QUIC TLS related API
  *
  * @section License
  *
@@ -24,12 +24,18 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
+ * @section Description
+ *
+ * The TLS protocol provides communications security over the Internet. The
+ * protocol allows client/server applications to communicate in a way that
+ * is designed to prevent eavesdropping, tampering, or message forgery
+ *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
  * @version 2.5.4
  **/
 
-#ifndef _TLS_CLIENT_FSM_H
-#define _TLS_CLIENT_FSM_H
+#ifndef _TLS_QUIC_H
+#define _TLS_QUIC_H
 
 //Dependencies
 #include "tls.h"
@@ -39,11 +45,20 @@
 extern "C" {
 #endif
 
-//TLS related functions
-error_t tlsPerformClientHandshake(TlsContext *context);
+//QUIC TLS related functions
+error_t tlsRegisterQuicCallbacks(TlsContext *context,
+   const TlsQuicCallbacks *quicCallbacks, void *handle);
 
-error_t tlsParseServerHandshakeMessage(TlsContext *context, uint8_t msgType,
-   const void *message, size_t length);
+error_t tlsSetQuicHandle(TlsContext *context, void *handle);
+
+error_t tlsSetLocalQuicTransportParams(TlsContext *context,
+   const uint8_t *params, size_t length);
+
+error_t tlsGetRemoteQuicTransportParams(TlsContext *context,
+   const uint8_t **params, size_t *length);
+
+error_t tlsProcessQuicHandshakeMessage(TlsContext *context,
+   TlsEncryptionLevel level, const uint8_t *data, size_t length);
 
 //C++ guard
 #ifdef __cplusplus

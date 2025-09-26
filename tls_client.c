@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.5.2
+ * @version 2.5.4
  **/
 
 //Switch to the appropriate trace level
@@ -50,6 +50,7 @@
 #include "tls_sign_misc.h"
 #include "tls_key_material.h"
 #include "tls_transcript_hash.h"
+#include "tls_quic_misc.h"
 #include "tls_record.h"
 #include "tls_misc.h"
 #include "tls13_client.h"
@@ -138,6 +139,7 @@ error_t tlsSendClientHello(TlsContext *context)
       //TLS 1.3 supported by the client?
       if(context->versionMax >= TLS_VERSION_1_3 &&
          (context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM ||
+         context->transportProtocol == TLS_TRANSPORT_PROTOCOL_QUIC ||
          context->transportProtocol == TLS_TRANSPORT_PROTOCOL_EAP))
       {
          //Initial or updated ClientHello?
@@ -145,7 +147,8 @@ error_t tlsSendClientHello(TlsContext *context)
          {
 #if (TLS13_MIDDLEBOX_COMPAT_SUPPORT == ENABLED)
             //In compatibility mode the session ID field must be non-empty
-            if(context->sessionIdLen == 0)
+            if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM &&
+               context->sessionIdLen == 0)
             {
                //A client not offering a pre-TLS 1.3 session must generate a
                //new 32-byte value. This value need not be random but should
@@ -556,6 +559,21 @@ error_t tlsFormatClientHello(TlsContext *context,
    p += n;
 #endif
 
+#if (TLS_TRUSTED_CA_KEYS_SUPPORT == ENABLED)
+   //In order to indicate which CA root keys they possess, clients may include
+   //an extension of type "trusted_ca_keys" in the extended ClientHello message
+   //(refer to RFC 6066, section 6)
+   error = tlsFormatTrustedCaKeysExtension(context, p, &n);
+   //Any error to report?
+   if(error)
+      return error;
+
+   //Fix the length of the extension list
+   extensionList->length += (uint16_t) n;
+   //Point to the next field
+   p += n;
+#endif
+
 #if (TLS_TICKET_SUPPORT == ENABLED)
    //The SessionTicket extension is used to resume a TLS session without
    //requiring session-specific state at the TLS server
@@ -588,6 +606,7 @@ error_t tlsFormatClientHello(TlsContext *context,
    //TLS 1.3 supported by the client?
    if(context->versionMax >= TLS_VERSION_1_3 &&
       (context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM ||
+      context->transportProtocol == TLS_TRANSPORT_PROTOCOL_QUIC ||
       context->transportProtocol == TLS_TRANSPORT_PROTOCOL_EAP))
    {
       Tls13PskIdentityList *identityList;
@@ -661,6 +680,23 @@ error_t tlsFormatClientHello(TlsContext *context,
       p += n;
 #endif
 
+#if (TLS_QUIC_SUPPORT == ENABLED)
+      //QUIC transport?
+      if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_QUIC)
+      {
+         //QUIC transport parameters are carried in a TLS extension (refer to
+         //RFC 9001, section 8.2)
+         error = tlsFormatQuicTransportParamsExtension(context, p, &n);
+         //Any error to report?
+         if(error)
+            return error;
+
+         //Fix the length of the extension list
+         extensionList->length += (uint16_t) n;
+         //Point to the next field
+         p += n;
+      }
+#endif
 
 #if (TLS_CLIENT_HELLO_PADDING_SUPPORT == ENABLED)
       //The first pass calculates the length of the PreSharedKey extension
@@ -1030,6 +1066,7 @@ error_t tlsParseServerHello(TlsContext *context,
 
    //TLS protocol?
    if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM ||
+      context->transportProtocol == TLS_TRANSPORT_PROTOCOL_QUIC ||
       context->transportProtocol == TLS_TRANSPORT_PROTOCOL_EAP)
    {
       //Check whether the ServerHello message is received in response to the

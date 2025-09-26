@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.5.2
+ * @version 2.5.4
  **/
 
 #ifndef _TLS_MISC_H
@@ -63,7 +63,7 @@ error_t tlsRestoreSessionTicket(TlsContext *context,
 
 error_t tlsInitEncryptionEngine(TlsContext *context,
    TlsEncryptionEngine *encryptionEngine, TlsConnectionEnd entity,
-   const uint8_t *secret);
+   TlsEncryptionLevel level, const uint8_t *secret);
 
 void tlsFreeEncryptionEngine(TlsEncryptionEngine *encryptionEngine);
 

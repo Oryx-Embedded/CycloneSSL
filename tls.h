@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.5.2
+ * @version 2.5.4
  **/
 
 #ifndef _TLS_H
@@ -81,13 +81,13 @@ struct _TlsEncryptionEngine;
 #endif
 
 //Version string
-#define CYCLONE_SSL_VERSION_STRING "2.5.2"
+#define CYCLONE_SSL_VERSION_STRING "2.5.4"
 //Major version
 #define CYCLONE_SSL_MAJOR_VERSION 2
 //Minor version
 #define CYCLONE_SSL_MINOR_VERSION 5
 //Revision number
-#define CYCLONE_SSL_REV_NUMBER 2
+#define CYCLONE_SSL_REV_NUMBER 4
 
 //TLS version numbers
 #define SSL_VERSION_3_0 0x0300
@@ -136,6 +136,13 @@ struct _TlsEncryptionEngine;
    #define TLS_MAX_VERSION TLS_VERSION_1_3
 #elif (TLS_MAX_VERSION > TLS_VERSION_1_3 || TLS_MAX_VERSION < TLS_MIN_VERSION)
    #error TLS_MAX_VERSION parameter is not valid
+#endif
+
+//RTOS support
+#ifndef TLS_RTOS_SUPPORT
+   #define TLS_RTOS_SUPPORT ENABLED
+#elif (TLS_RTOS_SUPPORT != ENABLED && TLS_RTOS_SUPPORT != DISABLED)
+   #error TLS_RTOS_SUPPORT parameter is not valid
 #endif
 
 //Session resumption mechanism
@@ -220,6 +227,13 @@ struct _TlsEncryptionEngine;
    #define TLS_CLIENT_HELLO_PADDING_SUPPORT ENABLED
 #elif (TLS_CLIENT_HELLO_PADDING_SUPPORT != ENABLED && TLS_CLIENT_HELLO_PADDING_SUPPORT != DISABLED)
    #error TLS_CLIENT_HELLO_PADDING_SUPPORT parameter is not valid
+#endif
+
+//Trusted CA Keys extension
+#ifndef TLS_TRUSTED_CA_KEYS_SUPPORT
+   #define TLS_TRUSTED_CA_KEYS_SUPPORT DISABLED
+#elif (TLS_TRUSTED_CA_KEYS_SUPPORT != ENABLED && TLS_TRUSTED_CA_KEYS_SUPPORT != DISABLED)
+   #error TLS_TRUSTED_CA_KEYS_SUPPORT parameter is not valid
 #endif
 
 //Certificate Authorities extension
@@ -1390,7 +1404,7 @@ typedef enum
 
 
 /**
- * @brief Name type
+ * @brief Name types
  **/
 
 typedef enum
@@ -1410,6 +1424,19 @@ typedef enum
    TLS_MAX_FRAGMENT_LENGTH_2048 = 3,
    TLS_MAX_FRAGMENT_LENGTH_4096 = 4
 } TlsMaxFragmentLength;
+
+
+/**
+ * @brief CA root key identifier type
+ **/
+
+typedef enum
+{
+   TLS_CA_ROOT_KEY_ID_TYPE_PRE_AGREED     = 0,
+   TLS_CA_ROOT_KEY_ID_TYPE_KEY_SHA1_HASH  = 1,
+   TLS_CA_ROOT_KEY_ID_TYPE_X509_NAME      = 2,
+   TLS_CA_ROOT_KEY_ID_TYPE_CERT_SHA1_HASH = 3
+} TlsCaRootKeyIdType;
 
 
 /**
@@ -1544,6 +1571,19 @@ typedef enum
 } TlsState;
 
 
+/**
+ * @brief Encryption level
+ **/
+
+typedef enum
+{
+   TLS_ENCRYPTION_LEVEL_INITIAL     = 0,
+   TLS_ENCRYPTION_LEVEL_EARLY_DATA  = 1,
+   TLS_ENCRYPTION_LEVEL_HANDSHAKE   = 2,
+   TLS_ENCRYPTION_LEVEL_APPLICATION = 3
+} TlsEncryptionLevel;
+
+
 //CC-RX, CodeWarrior or Win32 compiler?
 #if defined(__CCRX__)
    #pragma pack
@@ -1615,6 +1655,28 @@ typedef __packed_struct
    uint16_t length; //0-1
    uint8_t value[]; //2
 } TlsCertAuthorities;
+
+
+/**
+ * @brief Trusted authority
+ **/
+
+typedef __packed_struct
+{
+   uint8_t type;         //0
+   uint8_t identifier[]; //1
+} TlsTrustedAuthority;
+
+
+/**
+ * @brief List of trusted authorities
+ **/
+
+typedef __packed_struct
+{
+   uint16_t length; //0-1
+   uint8_t value[]; //2
+} TlsTrustedAuthorities;
 
 
 /**
@@ -2065,6 +2127,43 @@ typedef void (*TlsKeyLogCallback)(TlsContext *context, const char_t *key);
 
 
 /**
+ * @brief Encryption key update callback function
+ **/
+
+typedef error_t (*TlsSetQuicEncryptionKeyCallback)(TlsContext *context,
+   TlsEncryptionLevel level, const uint8_t *txKey, const uint8_t *rxKey,
+   size_t keyLen, void *param);
+
+
+/**
+ * @brief Handshake message sending callback function
+ **/
+
+typedef error_t (*TlsSendQuicHandshakeMessageCallback)(TlsContext *context,
+   TlsEncryptionLevel level, const uint8_t *data, size_t length, void *param);
+
+
+/**
+ * @brief Alert message sending callback function
+ **/
+
+typedef error_t (*TlsSendQuicAlertMessageCallback)(TlsContext *context,
+   uint8_t description, void *param);
+
+
+/**
+ * @brief QUIC callback functions
+ **/
+
+typedef struct
+{
+   TlsSetQuicEncryptionKeyCallback setEncryptionKeys;
+   TlsSendQuicHandshakeMessageCallback sendHandshakeMessage;
+   TlsSendQuicAlertMessageCallback sendAlertMessage;
+} TlsQuicCallbacks;
+
+
+/**
  * @brief Structure describing a cipher suite
  **/
 
@@ -2186,6 +2285,9 @@ typedef struct
 #if (TLS_SECURE_RENEGOTIATION_SUPPORT == ENABLED)
    const TlsRenegoInfo *renegoInfo;                     ///<RenegotiationInfo extension
 #endif
+#if (TLS_QUIC_SUPPORT == ENABLED)
+   const TlsExtension *quicTransportParams;             ///<QUIC transport parameters extension
+#endif
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
    const Tls13Cookie *cookie;                           ///<Cookie extension
    const TlsCertAuthorities *certAuthorities;           ///<CertificateAuthorities extension
@@ -2228,6 +2330,9 @@ struct _TlsEncryptionEngine
 #if (DTLS_SUPPORT == ENABLED)
    uint16_t epoch;                ///<Counter value incremented on every cipher state change
    DtlsSequenceNumber dtlsSeqNum; ///<Record sequence number
+#endif
+#if (TLS_QUIC_SUPPORT == ENABLED)
+   TlsEncryptionLevel level;      ///<Encryption level
 #endif
 #if (TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)
    size_t recordSizeLimit;        ///<Maximum size of record in octets
@@ -2484,6 +2589,14 @@ struct _TlsContext
    void *ticketParam;                        ///<Opaque pointer passed to the ticket callbacks
 #endif
 
+#if (TLS_TRUSTED_CA_KEYS_SUPPORT == ENABLED)
+   bool_t trustedCaKeysEnabled;              ///<Support for TrustedCaKeys extension
+#endif
+
+#if (TLS_CERT_AUTHORITIES_SUPPORT == ENABLED)
+   bool_t certAuthoritiesEnabled;            ///<Support for CertificateAuthorities extension
+#endif
+
 #if (TLS_SECURE_RENEGOTIATION_SUPPORT == ENABLED)
    bool_t secureRenegoEnabled;               ///<Secure renegotiation enabled
    bool_t secureRenegoFlag;                  ///<Secure renegotiation flag
@@ -2543,6 +2656,14 @@ struct _TlsContext
    uint32_t replayWindow[(DTLS_REPLAY_WINDOW_SIZE + 31) / 32];
 #endif
 
+#if (TLS_QUIC_SUPPORT == ENABLED)
+   TlsQuicCallbacks quicCallbacks;           ///<QUIC-specific callback functions
+   void *quicHandle;                         ///<Opaque pointer passed to the QUIC-specific callbacks
+   uint8_t *localQuicTransportParams;        ///<Local QUIC transport parameters
+   size_t localQuicTransportParamsLen;       ///<Length of the local QUIC transport parameters
+   uint8_t *remoteQuicTransportParams;       ///<Remote QUIC transport parameters
+   size_t remoteQuicTransportParamsLen;      ///<Length of the remote QUIC transport parameters
+#endif
 
    TLS_PRIVATE_CONTEXT                       ///<Application specific context
 };
@@ -2630,6 +2751,8 @@ error_t tlsSetCertificateVerifyCallback(TlsContext *context,
    TlsCertVerifyCallback certVerifyCallback, void *param);
 
 error_t tlsEnableSessionTickets(TlsContext *context, bool_t enabled);
+error_t tlsEnableTrustedCaKeys(TlsContext *context, bool_t enabled);
+error_t tlsEnableCertAuthorities(TlsContext *context, bool_t enabled);
 error_t tlsEnableSecureRenegotiation(TlsContext *context, bool_t enabled);
 error_t tlsEnableFallbackScsv(TlsContext *context, bool_t enabled);
 
@@ -2658,6 +2781,9 @@ TlsEarlyDataStatus tlsGetEarlyDataStatus(TlsContext *context);
 error_t tlsExportKeyingMaterial(TlsContext *context, const char_t *label,
    bool_t useContextValue, const uint8_t *contextValue,
    size_t contextValueLen, uint8_t *output, size_t outputLen);
+
+error_t tlsExportChannelBinding(TlsContext *context, const char_t *type,
+   uint8_t *output, size_t *length);
 
 error_t tlsWrite(TlsContext *context, const void *data, size_t length,
    size_t *written, uint_t flags);

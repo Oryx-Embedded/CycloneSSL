@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.5.2
+ * @version 2.5.4
  **/
 
 //Switch to the appropriate trace level
@@ -35,6 +35,7 @@
 #include "tls.h"
 #include "tls_key_material.h"
 #include "tls_transcript_hash.h"
+#include "tls_quic_misc.h"
 #include "tls_misc.h"
 #include "tls13_key_material.h"
 #include "tls13_ticket.h"
@@ -271,7 +272,8 @@ error_t tls13GenerateEarlyTrafficKeys(TlsContext *context)
    {
       //Calculate client early traffic keys
       error = tlsInitEncryptionEngine(context, &context->encryptionEngine,
-         TLS_CONNECTION_END_CLIENT, context->clientEarlyTrafficSecret);
+         TLS_CONNECTION_END_CLIENT, TLS_ENCRYPTION_LEVEL_EARLY_DATA,
+         context->clientEarlyTrafficSecret);
    }
    else
    {
@@ -280,7 +282,8 @@ error_t tls13GenerateEarlyTrafficKeys(TlsContext *context)
       {
          //Calculate client early traffic keys
          error = tlsInitEncryptionEngine(context, &context->decryptionEngine,
-            TLS_CONNECTION_END_CLIENT, context->clientEarlyTrafficSecret);
+            TLS_CONNECTION_END_CLIENT, TLS_ENCRYPTION_LEVEL_EARLY_DATA,
+            context->clientEarlyTrafficSecret);
       }
       else
       {
@@ -303,6 +306,16 @@ error_t tls13GenerateEarlyTrafficKeys(TlsContext *context)
    //Debug message
    TRACE_DEBUG("Early exporter master secret:\r\n");
    TRACE_DEBUG_ARRAY("  ", context->exporterMasterSecret, hash->digestSize);
+
+#if (TLS_QUIC_SUPPORT == ENABLED)
+   //After providing a QUIC client with the first handshake bytes, the TLS stack
+   //might signal the change to 0-RTT keys (refer to RFC 9001, section 4.1.4)
+   error = tlsSetQuicEncryptionKeys(context, TLS_ENCRYPTION_LEVEL_EARLY_DATA,
+      context->clientEarlyTrafficSecret, NULL, hash->digestSize);
+   //Any error to report?
+   if(error)
+      return error;
+#endif
 
 #if (TLS_KEY_LOG_SUPPORT == ENABLED)
    //Log client early traffic secret
@@ -477,14 +490,16 @@ error_t tls13GenerateHandshakeTrafficKeys(TlsContext *context)
 
       //Calculate client handshake traffic keys
       error = tlsInitEncryptionEngine(context, &context->encryptionEngine,
-         TLS_CONNECTION_END_CLIENT, context->clientHsTrafficSecret);
+         TLS_CONNECTION_END_CLIENT, TLS_ENCRYPTION_LEVEL_HANDSHAKE,
+         context->clientHsTrafficSecret);
 
       //Check status code
       if(!error)
       {
          //Calculate server handshake traffic keys
          error = tlsInitEncryptionEngine(context, &context->decryptionEngine,
-            TLS_CONNECTION_END_SERVER, context->serverHsTrafficSecret);
+            TLS_CONNECTION_END_SERVER, TLS_ENCRYPTION_LEVEL_HANDSHAKE,
+            context->serverHsTrafficSecret);
       }
    }
    else
@@ -494,20 +509,34 @@ error_t tls13GenerateHandshakeTrafficKeys(TlsContext *context)
 
       //Calculate client handshake traffic keys
       error = tlsInitEncryptionEngine(context, &context->decryptionEngine,
-         TLS_CONNECTION_END_CLIENT, context->clientHsTrafficSecret);
+         TLS_CONNECTION_END_CLIENT, TLS_ENCRYPTION_LEVEL_HANDSHAKE,
+         context->clientHsTrafficSecret);
 
       //Check status code
       if(!error)
       {
          //Calculate server handshake traffic keys
          error = tlsInitEncryptionEngine(context, &context->encryptionEngine,
-            TLS_CONNECTION_END_SERVER, context->serverHsTrafficSecret);
+            TLS_CONNECTION_END_SERVER, TLS_ENCRYPTION_LEVEL_HANDSHAKE,
+            context->serverHsTrafficSecret);
       }
    }
 
    //Failed to generate traffic keying material?
    if(error)
       return error;
+
+#if (TLS_QUIC_SUPPORT == ENABLED)
+   //As keys at a given encryption level become available to TLS, TLS indicates
+   //to QUIC that reading or writing keys at that encryption level are available
+   //(refer to RFC 9001, section 4.1.4)
+   error = tlsSetQuicEncryptionKeys(context, TLS_ENCRYPTION_LEVEL_HANDSHAKE,
+      context->clientHsTrafficSecret, context->serverHsTrafficSecret,
+      hash->digestSize);
+   //Any error to report?
+   if(error)
+      return error;
+#endif
 
 #if (TLS_KEY_LOG_SUPPORT == ENABLED)
    //Log client handshake traffic secret
@@ -619,7 +648,8 @@ error_t tls13GenerateServerAppTrafficKeys(TlsContext *context)
          //Inform the record layer that subsequent records will be protected
          //under the new traffic keys
          error = tlsInitEncryptionEngine(context, &context->decryptionEngine,
-            TLS_CONNECTION_END_SERVER, context->serverAppTrafficSecret);
+            TLS_CONNECTION_END_SERVER, TLS_ENCRYPTION_LEVEL_APPLICATION,
+            context->serverAppTrafficSecret);
       }
       else
       {
@@ -635,7 +665,8 @@ error_t tls13GenerateServerAppTrafficKeys(TlsContext *context)
       //Inform the record layer that subsequent records will be protected
       //under the new traffic keys
       error = tlsInitEncryptionEngine(context, &context->encryptionEngine,
-         TLS_CONNECTION_END_SERVER, context->serverAppTrafficSecret);
+         TLS_CONNECTION_END_SERVER, TLS_ENCRYPTION_LEVEL_APPLICATION,
+         context->serverAppTrafficSecret);
    }
 
    //Failed to generate traffic keying material?
@@ -652,6 +683,18 @@ error_t tls13GenerateServerAppTrafficKeys(TlsContext *context)
    //Debug message
    TRACE_DEBUG("Exporter master secret:\r\n");
    TRACE_DEBUG_ARRAY("  ", context->exporterMasterSecret, hash->digestSize);
+
+#if (TLS_QUIC_SUPPORT == ENABLED)
+   //As keys at a given encryption level become available to TLS, TLS indicates
+   //to QUIC that reading or writing keys at that encryption level are available
+   //(refer to RFC 9001, section 4.1.4)
+   error = tlsSetQuicEncryptionKeys(context, TLS_ENCRYPTION_LEVEL_APPLICATION,
+      context->clientAppTrafficSecret, context->serverAppTrafficSecret,
+      hash->digestSize);
+   //Any error to report?
+   if(error)
+      return error;
+#endif
 
 #if (TLS_KEY_LOG_SUPPORT == ENABLED)
    //Log client application traffic secret
@@ -768,7 +811,8 @@ error_t tls13GenerateClientAppTrafficKeys(TlsContext *context)
       //Inform the record layer that subsequent records will be protected
       //under the new traffic keys
       error = tlsInitEncryptionEngine(context, &context->encryptionEngine,
-         TLS_CONNECTION_END_CLIENT, context->clientAppTrafficSecret);
+         TLS_CONNECTION_END_CLIENT, TLS_ENCRYPTION_LEVEL_APPLICATION,
+         context->clientAppTrafficSecret);
    }
    else
    {
@@ -782,7 +826,8 @@ error_t tls13GenerateClientAppTrafficKeys(TlsContext *context)
          //Inform the record layer that subsequent records will be protected
          //under the new traffic keys
          error = tlsInitEncryptionEngine(context, &context->decryptionEngine,
-            TLS_CONNECTION_END_CLIENT, context->clientAppTrafficSecret);
+            TLS_CONNECTION_END_CLIENT, TLS_ENCRYPTION_LEVEL_APPLICATION,
+            context->clientAppTrafficSecret);
       }
       else
       {

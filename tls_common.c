@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.5.2
+ * @version 2.5.4
  **/
 
 //Switch to the appropriate trace level
@@ -42,6 +42,7 @@
 #include "tls_sign_generate.h"
 #include "tls_sign_verify.h"
 #include "tls_transcript_hash.h"
+#include "tls_quic_misc.h"
 #include "tls_cache.h"
 #include "tls_record.h"
 #include "tls_misc.h"
@@ -288,21 +289,29 @@ error_t tlsSendChangeCipherSpec(TlsContext *context)
       TRACE_INFO("Sending ChangeCipherSpec message (%" PRIuSIZE " bytes)...\r\n", length);
       TRACE_DEBUG_ARRAY("  ", message, length);
 
+      //TLS protocol?
+      if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM ||
+         context->transportProtocol == TLS_TRANSPORT_PROTOCOL_EAP)
+      {
+         //Send ChangeCipherSpec message
+         error = tlsWriteProtocolData(context, (uint8_t *) message, length,
+            TLS_TYPE_CHANGE_CIPHER_SPEC);
+      }
 #if (DTLS_SUPPORT == ENABLED)
       //DTLS protocol?
-      if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_DATAGRAM)
+      else if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_DATAGRAM)
       {
          //Send ChangeCipherSpec message
-         error = dtlsWriteProtocolData(context, (uint8_t *) message,
-            length, TLS_TYPE_CHANGE_CIPHER_SPEC);
+         error = dtlsWriteProtocolData(context, (uint8_t *) message, length,
+            TLS_TYPE_CHANGE_CIPHER_SPEC);
       }
-      else
 #endif
-      //TLS protocol?
+      //QUIC protocol?
+      else
       {
-         //Send ChangeCipherSpec message
-         error = tlsWriteProtocolData(context, (uint8_t *) message,
-            length, TLS_TYPE_CHANGE_CIPHER_SPEC);
+         //QUIC provides no means to carry a change_cipher_spec record (refer
+         //to RFC 9001, section 8.4)
+         error = ERROR_INVALID_PROTOCOL;
       }
    }
 
@@ -330,7 +339,7 @@ error_t tlsSendChangeCipherSpec(TlsContext *context)
          //Inform the record layer that subsequent records will be protected
          //under the newly negotiated encryption algorithm
          error = tlsInitEncryptionEngine(context, &context->encryptionEngine,
-            context->entity, NULL);
+            context->entity, TLS_ENCRYPTION_LEVEL_APPLICATION, NULL);
 
          //Check status code
          if(!error)
@@ -531,21 +540,37 @@ error_t tlsSendAlert(TlsContext *context, uint8_t level, uint8_t description)
       TRACE_INFO("Sending Alert message (%" PRIuSIZE " bytes)...\r\n", length);
       TRACE_INFO_ARRAY("  ", message, length);
 
+      //TLS protocol?
+      if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM ||
+         context->transportProtocol == TLS_TRANSPORT_PROTOCOL_EAP)
+      {
+         //Send Alert message
+         error = tlsWriteProtocolData(context, (uint8_t *) message, length,
+            TLS_TYPE_ALERT);
+      }
 #if (DTLS_SUPPORT == ENABLED)
       //DTLS protocol?
-      if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_DATAGRAM)
+      else if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_DATAGRAM)
       {
          //Send Alert message
-         error = dtlsWriteProtocolData(context, (uint8_t *) message,
-            length, TLS_TYPE_ALERT);
+         error = dtlsWriteProtocolData(context, (uint8_t *) message, length,
+            TLS_TYPE_ALERT);
       }
-      else
 #endif
-      //TLS protocol?
+#if (TLS_QUIC_SUPPORT == ENABLED)
+      //QUIC protocol?
+      else if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_QUIC)
       {
-         //Send Alert message
-         error = tlsWriteProtocolData(context, (uint8_t *) message,
-            length, TLS_TYPE_ALERT);
+         //TLS alert messages are carried directly over the QUIC transport
+         //(refer to RFC 9001, section 3)
+         error = tlsSendQuicAlertMessage(context, message, length);
+      }
+#endif
+      //Unknown protocol?
+      else
+      {
+         //Report an error
+         error = ERROR_INVALID_PROTOCOL;
       }
    }
 
@@ -598,8 +623,8 @@ error_t tlsSendAlert(TlsContext *context, uint8_t level, uint8_t description)
  * @return Error code
  **/
 
-error_t tlsFormatCertificate(TlsContext *context,
-   TlsCertificate *message, size_t *length)
+error_t tlsFormatCertificate(TlsContext *context, TlsCertificate *message,
+   size_t *length)
 {
    error_t error;
    size_t n;
@@ -768,8 +793,8 @@ error_t tlsFormatChangeCipherSpec(TlsContext *context,
  * @return Error code
  **/
 
-error_t tlsFormatFinished(TlsContext *context,
-   TlsFinished *message, size_t *length)
+error_t tlsFormatFinished(TlsContext *context, TlsFinished *message,
+   size_t *length)
 {
    //Check whether TLS operates as a client or a server
    if(context->entity == TLS_CONNECTION_END_CLIENT)
@@ -802,8 +827,8 @@ error_t tlsFormatFinished(TlsContext *context,
  * @return Error code
  **/
 
-error_t tlsFormatAlert(TlsContext *context, uint8_t level,
-   uint8_t description, TlsAlert *message, size_t *length)
+error_t tlsFormatAlert(TlsContext *context, uint8_t level, uint8_t description,
+   TlsAlert *message, size_t *length)
 {
    //Severity of the message
    message->level = level;
@@ -826,44 +851,56 @@ error_t tlsFormatAlert(TlsContext *context, uint8_t level,
  * @return Error code
  **/
 
-error_t tlsFormatCertAuthoritiesExtension(TlsContext *context,
-   uint8_t *p, size_t *written)
+error_t tlsFormatCertAuthoritiesExtension(TlsContext *context, uint8_t *p,
+   size_t *written)
 {
    error_t error;
    size_t n;
-   TlsExtension *extension;
 
-   //Add the CertificateAuthorities extension
-   extension = (TlsExtension *) p;
-   //Type of the extension
-   extension->type = HTONS(TLS_EXT_CERTIFICATE_AUTHORITIES);
+   //Initialize status code
+   error = NO_ERROR;
+   //Initialize length field
+   n = 0;
 
-   //The CertificateAuthorities extension is used to indicate the certificate
-   //authorities (CAs) which an endpoint supports and which should be used by
-   //the receiving endpoint to guide certificate selection
-   error = tlsFormatCertAuthorities(context, extension->value, &n);
-
-   //Check status code
-   if(!error)
+#if (TLS_CERT_AUTHORITIES_SUPPORT == ENABLED)
+   //The CertificateAuthorities extension is optional
+   if(context->certAuthoritiesEnabled)
    {
-      //The list must contains at least one distinguished name
-      if(n > sizeof(TlsCertAuthorities))
-      {
-         //Fix the length of the extension
-         extension->length = htons(n);
+      TlsExtension *extension;
 
-         //Compute the length, in bytes, of the CertificateAuthorities extension
-         n += sizeof(TlsExtension);
-      }
-      else
-      {
-         //The list of distinguished names is empty
-         n = 0;
-      }
+      //Add the CertificateAuthorities extension
+      extension = (TlsExtension *) p;
+      //Type of the extension
+      extension->type = HTONS(TLS_EXT_CERTIFICATE_AUTHORITIES);
 
-      //Total number of bytes that have been written
-      *written = n;
+      //The CertificateAuthorities extension is used to indicate the certificate
+      //authorities (CAs) which an endpoint supports and which should be used by
+      //the receiving endpoint to guide certificate selection
+      error = tlsFormatCertAuthorities(context, extension->value, &n);
+
+      //Check status code
+      if(!error)
+      {
+         //The list must contains at least one distinguished name
+         if(n > sizeof(TlsCertAuthorities))
+         {
+            //Fix the length of the extension
+            extension->length = htons(n);
+
+            //Compute the length, in bytes, of the CertificateAuthorities extension
+            n += sizeof(TlsExtension);
+         }
+         else
+         {
+            //The list of distinguished names is empty
+            n = 0;
+         }
+      }
    }
+#endif
+
+   //Total number of bytes that have been written
+   *written = n;
 
    //Return status code
    return error;
@@ -1014,8 +1051,8 @@ error_t tlsFormatCertAuthorities(TlsContext *context, uint8_t *p,
  * @return Error code
  **/
 
-error_t tlsParseCertificate(TlsContext *context,
-   const TlsCertificate *message, size_t length)
+error_t tlsParseCertificate(TlsContext *context, const TlsCertificate *message,
+   size_t length)
 {
    error_t error;
    size_t n;
@@ -1362,7 +1399,7 @@ error_t tlsParseChangeCipherSpec(TlsContext *context,
       {
          //Initialize decryption engine using server write keys
          error = tlsInitEncryptionEngine(context, &context->decryptionEngine,
-            TLS_CONNECTION_END_SERVER, NULL);
+            TLS_CONNECTION_END_SERVER, TLS_ENCRYPTION_LEVEL_APPLICATION, NULL);
          //Any error to report?
          if(error)
             return error;
@@ -1374,7 +1411,7 @@ error_t tlsParseChangeCipherSpec(TlsContext *context,
       {
          //Initialize decryption engine using client write keys
          error = tlsInitEncryptionEngine(context, &context->decryptionEngine,
-            TLS_CONNECTION_END_CLIENT, NULL);
+            TLS_CONNECTION_END_CLIENT, TLS_ENCRYPTION_LEVEL_APPLICATION, NULL);
          //Any error to report?
          if(error)
             return error;
@@ -1451,8 +1488,8 @@ error_t tlsParseChangeCipherSpec(TlsContext *context,
  * @return Error code
  **/
 
-error_t tlsParseFinished(TlsContext *context,
-   const TlsFinished *message, size_t length)
+error_t tlsParseFinished(TlsContext *context, const TlsFinished *message,
+   size_t length)
 {
    error_t error;
 
@@ -1597,8 +1634,8 @@ error_t tlsParseFinished(TlsContext *context,
  * @return Error code
  **/
 
-error_t tlsParseAlert(TlsContext *context,
-   const TlsAlert *message, size_t length)
+error_t tlsParseAlert(TlsContext *context, const TlsAlert *message,
+   size_t length)
 {
    //Debug message
    TRACE_INFO("Alert message received (%" PRIuSIZE " bytes)...\r\n", length);

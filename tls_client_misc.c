@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.5.2
+ * @version 2.5.4
  **/
 
 //Switch to the appropriate trace level
@@ -44,6 +44,8 @@
 #include "tls_ffdhe.h"
 #include "tls_record.h"
 #include "tls_misc.h"
+#include "pkix/pem_import.h"
+#include "pkix/x509_cert_parse.h"
 #include "debug.h"
 
 //Check TLS library configuration
@@ -108,6 +110,7 @@ error_t tlsFormatSessionId(TlsContext *context, uint8_t *p,
    //TLS 1.3 supported by the client?
    if(context->versionMax >= TLS_VERSION_1_3 &&
       (context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM ||
+      context->transportProtocol == TLS_TRANSPORT_PROTOCOL_QUIC ||
       context->transportProtocol == TLS_TRANSPORT_PROTOCOL_EAP))
    {
       //A client which has a cached session ID set by a pre-TLS 1.3 server
@@ -307,6 +310,156 @@ error_t tlsFormatCompressMethods(TlsContext *context, uint8_t *p,
 
    //Successful processing
    return NO_ERROR;
+}
+
+
+/**
+ * @brief Format the list of trusted authorities
+ * @param[in] context Pointer to the TLS context
+ * @param[in] p Output stream where to write the list of trusted authorities
+ * @param[out] written Total number of bytes that have been written
+ * @return Error code
+ **/
+
+error_t tlsFormatTrustedAuthorities(TlsContext *context, uint8_t *p,
+   size_t *written)
+{
+#if (TLS_TRUSTED_CA_KEYS_SUPPORT == ENABLED)
+   error_t error;
+   size_t n;
+   size_t pemCertLen;
+   const char_t *trustedCaList;
+   size_t trustedCaListLen;
+   uint8_t *derCert;
+   size_t derCertLen;
+   X509CertInfo *certInfo;
+   TlsTrustedAuthority *trustedAuthority;
+   TlsTrustedAuthorities *trustedAuthorities;
+
+   //Initialize status code
+   error = NO_ERROR;
+
+   //"TrustedAuthorities" provides a list of CA root key identifiers that the
+   //client possesses (refer to RFC 6066, section 6)
+   trustedAuthorities = (TlsTrustedAuthorities *) p;
+
+   //Point to the first certificate authority
+   p = trustedAuthorities->value;
+   //Length of the list in bytes
+   n = 0;
+
+   //Point to the first trusted CA certificate
+   trustedCaList = context->trustedCaList;
+   //Get the total length, in bytes, of the trusted CA list
+   trustedCaListLen = context->trustedCaListLen;
+
+   //Allocate a memory buffer to store X.509 certificate info
+   certInfo = tlsAllocMem(sizeof(X509CertInfo));
+
+   //Successful memory allocation?
+   if(certInfo != NULL)
+   {
+      //Loop through the list of trusted CA certificates
+      while(trustedCaListLen > 0 && error == NO_ERROR)
+      {
+         //The first pass calculates the length of the DER-encoded certificate
+         error = pemImportCertificate(trustedCaList, trustedCaListLen, NULL,
+            &derCertLen, &pemCertLen);
+
+         //Check status code
+         if(!error)
+         {
+            //Allocate a memory buffer to hold the DER-encoded certificate
+            derCert = tlsAllocMem(derCertLen);
+
+            //Successful memory allocation?
+            if(derCert != NULL)
+            {
+               //The second pass decodes the PEM certificate
+               error = pemImportCertificate(trustedCaList, trustedCaListLen,
+                  derCert, &derCertLen, NULL);
+
+               //Check status code
+               if(!error)
+               {
+                  //Parse X.509 certificate
+                  error = x509ParseCertificate(derCert, derCertLen, certInfo);
+               }
+
+               //Valid CA certificate?
+               if(!error)
+               {
+                  //Point to the CA root key identifier
+                  trustedAuthority = (TlsTrustedAuthority *) p;
+
+                  //The CA root key is identified via a distinguished name
+                  trustedAuthority->type = TLS_CA_ROOT_KEY_ID_TYPE_X509_NAME;
+
+                  //Each distinguished name is preceded by a 2-byte length field
+                  STORE16BE(certInfo->tbsCert.subject.raw.length,
+                     trustedAuthority->identifier);
+
+                  //The distinguished name shall be DER-encoded
+                  osMemcpy(trustedAuthority->identifier + 2,
+                     certInfo->tbsCert.subject.raw.value,
+                     certInfo->tbsCert.subject.raw.length);
+
+                  //Advance write pointer
+                  p += sizeof(TlsTrustedAuthority) + 2 + certInfo->tbsCert.subject.raw.length;
+                  n += sizeof(TlsTrustedAuthority) + 2 + certInfo->tbsCert.subject.raw.length;
+               }
+               else
+               {
+                  //Discard current CA certificate
+                  error = NO_ERROR;
+               }
+
+               //Free previously allocated memory
+               tlsFreeMem(derCert);
+            }
+            else
+            {
+               //Failed to allocate memory
+               error = ERROR_OUT_OF_MEMORY;
+            }
+
+            //Advance read pointer
+            trustedCaList += pemCertLen;
+            trustedCaListLen -= pemCertLen;
+         }
+         else
+         {
+            //End of file detected
+            trustedCaListLen = 0;
+            error = NO_ERROR;
+         }
+      }
+
+      //Fix the length of the list
+      trustedAuthorities->length = htons(n);
+
+      //Free previously allocated memory
+      tlsFreeMem(certInfo);
+   }
+   else
+   {
+      //Failed to allocate memory
+      error = ERROR_OUT_OF_MEMORY;
+   }
+
+   //Check status code
+   if(!error)
+   {
+      //Total number of bytes that have been written
+      *written = sizeof(TlsTrustedAuthorities) + n;
+   }
+
+   //Return status code
+   return error;
+#else
+   //Not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
 }
 
 
@@ -1417,7 +1570,7 @@ error_t tlsSelectClientVersion(TlsContext *context,
    if(context->version <= TLS_VERSION_1_2 &&
       context->versionMax >= TLS_VERSION_1_3 &&
       (context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM ||
-       context->transportProtocol == TLS_TRANSPORT_PROTOCOL_EAP))
+      context->transportProtocol == TLS_TRANSPORT_PROTOCOL_EAP))
    {
       //If a match is found, the client must abort the handshake with an
       //illegal_parameter alert

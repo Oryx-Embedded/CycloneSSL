@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.5.2
+ * @version 2.5.4
  **/
 
 //Switch to the appropriate trace level
@@ -38,6 +38,7 @@
 #include "tls_server_fsm.h"
 #include "tls_common.h"
 #include "tls_transcript_hash.h"
+#include "tls_quic_misc.h"
 #include "tls_record.h"
 #include "tls_misc.h"
 #include "tls13_server_misc.h"
@@ -218,19 +219,35 @@ error_t tlsSendHandshakeMessage(TlsContext *context, const void *data,
       tlsUpdateTranscriptHash(context, data, length);
    }
 
+   //TLS protocol?
+   if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM ||
+      context->transportProtocol == TLS_TRANSPORT_PROTOCOL_EAP)
+   {
+      //Send handshake message
+      error = tlsWriteProtocolData(context, data, length, TLS_TYPE_HANDSHAKE);
+   }
 #if (DTLS_SUPPORT == ENABLED)
    //DTLS protocol?
-   if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_DATAGRAM)
+   else if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_DATAGRAM)
    {
       //Send handshake message
       error = dtlsWriteProtocolData(context, data, length, TLS_TYPE_HANDSHAKE);
    }
-   else
 #endif
-   //TLS protocol?
+#if (TLS_QUIC_SUPPORT == ENABLED)
+   //QUIC protocol?
+   else if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_QUIC)
    {
-      //Send handshake message
-      error = tlsWriteProtocolData(context, data, length, TLS_TYPE_HANDSHAKE);
+      //TLS handshake messages are carried directly over the QUIC transport
+      //(refer to RFC 9001, section 3)
+      error = tlsSendQuicHandshakeMessage(context, data, length);
+   }
+#endif
+   //Unknown protocol?
+   else
+   {
+      //Report an error
+      error = ERROR_INVALID_PROTOCOL;
    }
 
    //Return status code

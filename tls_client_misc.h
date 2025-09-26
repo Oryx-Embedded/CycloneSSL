@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.5.2
+ * @version 2.5.4
  **/
 
 #ifndef _TLS_CLIENT_MISC_H
@@ -49,6 +49,9 @@ error_t tlsFormatCipherSuites(TlsContext *context, uint8_t *p,
    size_t *written);
 
 error_t tlsFormatCompressMethods(TlsContext *context, uint8_t *p,
+   size_t *written);
+
+error_t tlsFormatTrustedAuthorities(TlsContext *context, uint8_t *p,
    size_t *written);
 
 error_t tlsFormatPskIdentity(TlsContext *context, uint8_t *p,
