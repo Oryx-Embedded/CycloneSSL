@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.2
+ * @version 2.6.4
  **/
 
 //Switch to the appropriate trace level
@@ -44,6 +44,9 @@
 //List of supported signature algorithms
 const uint16_t tlsSupportedSignAlgos[] =
 {
+   TLS_SIGN_SCHEME_MLDSA44,
+   TLS_SIGN_SCHEME_MLDSA65,
+   TLS_SIGN_SCHEME_MLDSA87,
    TLS_SIGN_SCHEME_ED25519,
    TLS_SIGN_SCHEME_ED448,
    TLS_SIGN_SCHEME_ECDSA_SECP256R1_SHA256,
@@ -659,6 +662,54 @@ bool_t tlsIsSignAlgoAcceptable(TlsContext *context, uint16_t signScheme,
    }
    else
 #endif
+#if (TLS_MLDSA44_SIGN_SUPPORT == ENABLED)
+   //ML-DSA-44 certificate?
+   if(cert->type == TLS_CERT_MLDSA44_SIGN)
+   {
+      //TLS 1.3 currently selected?
+      if(context->version == TLS_VERSION_1_3)
+      {
+         //Check signature scheme
+         if(signScheme == TLS_SIGN_SCHEME_MLDSA44)
+         {
+            acceptable = TRUE;
+         }
+      }
+   }
+   else
+#endif
+#if (TLS_MLDSA65_SIGN_SUPPORT == ENABLED)
+   //ML-DSA-65 certificate?
+   if(cert->type == TLS_CERT_MLDSA65_SIGN)
+   {
+      //TLS 1.3 currently selected?
+      if(context->version == TLS_VERSION_1_3)
+      {
+         //Check signature scheme
+         if(signScheme == TLS_SIGN_SCHEME_MLDSA65)
+         {
+            acceptable = TRUE;
+         }
+      }
+   }
+   else
+#endif
+#if (TLS_MLDSA87_SIGN_SUPPORT == ENABLED)
+   //ML-DSA-87 certificate?
+   if(cert->type == TLS_CERT_MLDSA87_SIGN)
+   {
+      //TLS 1.3 currently selected?
+      if(context->version == TLS_VERSION_1_3)
+      {
+         //Check signature scheme
+         if(signScheme == TLS_SIGN_SCHEME_MLDSA87)
+         {
+            acceptable = TRUE;
+         }
+      }
+   }
+   else
+#endif
    //Unsupported certificate type?
    {
       //Just for sanity
@@ -949,6 +1000,42 @@ bool_t tlsIsSignAlgoSupported(TlsContext *context, uint16_t signScheme)
    }
    else
 #endif
+#if (TLS_MLDSA44_SIGN_SUPPORT == ENABLED)
+   //ML-DSA-44 signature algorithm?
+   if(signScheme == TLS_SIGN_SCHEME_MLDSA44)
+   {
+      //Any TLS 1.3 cipher suite proposed by the client?
+      if((cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_TLS13) != 0)
+      {
+         hashAlgoId = TLS_HASH_ALGO_INTRINSIC;
+      }
+   }
+   else
+#endif
+#if (TLS_MLDSA65_SIGN_SUPPORT == ENABLED)
+   //ML-DSA-65 signature algorithm?
+   if(signScheme == TLS_SIGN_SCHEME_MLDSA65)
+   {
+      //Any TLS 1.3 cipher suite proposed by the client?
+      if((cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_TLS13) != 0)
+      {
+         hashAlgoId = TLS_HASH_ALGO_INTRINSIC;
+      }
+   }
+   else
+#endif
+#if (TLS_MLDSA87_SIGN_SUPPORT == ENABLED)
+   //ML-DSA-87 signature algorithm?
+   if(signScheme == TLS_SIGN_SCHEME_MLDSA87)
+   {
+      //Any TLS 1.3 cipher suite proposed by the client?
+      if((cipherSuiteTypes & TLS_CIPHER_SUITE_TYPE_TLS13) != 0)
+      {
+         hashAlgoId = TLS_HASH_ALGO_INTRINSIC;
+      }
+   }
+   else
+#endif
    {
       //Unknown signature algorithm
    }
@@ -1205,6 +1292,21 @@ bool_t tlsIsCertSignAlgoSupported(uint16_t signScheme)
    {
       //Ed448 signature algorithm (PureEdDSA mode)
       acceptable = x509IsSignAlgoSupported(X509_SIGN_ALGO_ED448);
+   }
+   else if(signScheme == TLS_SIGN_SCHEME_MLDSA44)
+   {
+      //ML-DSA-44 signature algorithm 
+      acceptable = x509IsSignAlgoSupported(X509_SIGN_ALGO_MLDSA44);
+   }
+   else if(signScheme == TLS_SIGN_SCHEME_MLDSA65)
+   {
+      //ML-DSA-65 signature algorithm 
+      acceptable = x509IsSignAlgoSupported(X509_SIGN_ALGO_MLDSA65);
+   }
+   else if(signScheme == TLS_SIGN_SCHEME_MLDSA87)
+   {
+      //ML-DSA-87 signature algorithm 
+      acceptable = x509IsSignAlgoSupported(X509_SIGN_ALGO_MLDSA87);
    }
    else
    {

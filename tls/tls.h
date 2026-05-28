@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.2
+ * @version 2.6.4
  **/
 
 #ifndef _TLS_H
@@ -82,13 +82,13 @@ struct _TlsEncryptionEngine;
 #endif
 
 //Version string
-#define CYCLONE_SSL_VERSION_STRING "2.6.2"
+#define CYCLONE_SSL_VERSION_STRING "2.6.4"
 //Major version
 #define CYCLONE_SSL_MAJOR_VERSION 2
 //Minor version
 #define CYCLONE_SSL_MINOR_VERSION 6
 //Revision number
-#define CYCLONE_SSL_REV_NUMBER 2
+#define CYCLONE_SSL_REV_NUMBER 4
 
 //TLS version numbers
 #define SSL_VERSION_3_0 0x0300
@@ -410,6 +410,27 @@ struct _TlsEncryptionEngine;
    #define TLS_ED448_SIGN_SUPPORT DISABLED
 #elif (TLS_ED448_SIGN_SUPPORT != ENABLED && TLS_ED448_SIGN_SUPPORT != DISABLED)
    #error TLS_ED448_SIGN_SUPPORT parameter is not valid
+#endif
+
+//ML-DSA-44 signature capability
+#ifndef TLS_MLDSA44_SIGN_SUPPORT
+   #define TLS_MLDSA44_SIGN_SUPPORT DISABLED
+#elif (TLS_MLDSA44_SIGN_SUPPORT != ENABLED && TLS_MLDSA44_SIGN_SUPPORT != DISABLED)
+   #error TLS_MLDSA44_SIGN_SUPPORT parameter is not valid
+#endif
+
+//ML-DSA-65 signature capability
+#ifndef TLS_MLDSA65_SIGN_SUPPORT
+   #define TLS_MLDSA65_SIGN_SUPPORT DISABLED
+#elif (TLS_MLDSA65_SIGN_SUPPORT != ENABLED && TLS_MLDSA65_SIGN_SUPPORT != DISABLED)
+   #error TLS_MLDSA65_SIGN_SUPPORT parameter is not valid
+#endif
+
+//ML-DSA-87 signature capability
+#ifndef TLS_MLDSA87_SIGN_SUPPORT
+   #define TLS_MLDSA87_SIGN_SUPPORT DISABLED
+#elif (TLS_MLDSA87_SIGN_SUPPORT != ENABLED && TLS_MLDSA87_SIGN_SUPPORT != DISABLED)
+   #error TLS_MLDSA87_SIGN_SUPPORT parameter is not valid
 #endif
 
 //NULL cipher support (insecure)
@@ -1176,6 +1197,7 @@ typedef enum
    TLS_ALERT_BAD_CERTIFICATE_HASH_VALUE      = 114,
    TLS_ALERT_UNKNOWN_PSK_IDENTITY            = 115,
    TLS_ALERT_CERTIFICATE_REQUIRED            = 116,
+   TLS_ALERT_GENERAL_ERROR                   = 117,
    TLS_ALERT_NO_APPLICATION_PROTOCOL         = 120,
    TLS_ALERT_ECH_REQUIRED                    = 121
 } TlsAlertDescription;
@@ -1264,7 +1286,10 @@ typedef enum
    TLS_CERT_RSA_PSS_SIGN     = 256, //For internal use only
    TLS_CERT_SM2_SIGN         = 257, //For internal use only
    TLS_CERT_ED25519_SIGN     = 258, //For internal use only
-   TLS_CERT_ED448_SIGN       = 259  //For internal use only
+   TLS_CERT_ED448_SIGN       = 259, //For internal use only
+   TLS_CERT_MLDSA44_SIGN     = 260, //For internal use only
+   TLS_CERT_MLDSA65_SIGN     = 261, //For internal use only
+   TLS_CERT_MLDSA87_SIGN     = 262  //For internal use only
 } TlsCertificateType;
 
 
@@ -2573,6 +2598,11 @@ struct _TlsContext
 
 #if (TLS_ED25519_SIGN_SUPPORT == ENABLED || TLS_ED448_SIGN_SUPPORT == ENABLED)
    EddsaPublicKey peerEddsaPublicKey;        ///<Peer's EdDSA public key
+#endif
+
+#if (TLS_MLDSA44_SIGN_SUPPORT == ENABLED || TLS_MLDSA65_SIGN_SUPPORT == ENABLED || \
+   TLS_MLDSA87_SIGN_SUPPORT == ENABLED)
+   MldsaPublicKey peerMldsaPublicKey;        ///<Peer's ML-DSA public key
 #endif
 
 #if (TLS_PSK_SUPPORT == ENABLED)

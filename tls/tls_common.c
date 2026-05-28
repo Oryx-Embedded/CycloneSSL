@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.2
+ * @version 2.6.4
  **/
 
 //Switch to the appropriate trace level
@@ -209,7 +209,10 @@ error_t tlsSendCertificateVerify(TlsContext *context)
          context->cert->type == TLS_CERT_ECDSA_SIGN ||
          context->cert->type == TLS_CERT_SM2_SIGN ||
          context->cert->type == TLS_CERT_ED25519_SIGN ||
-         context->cert->type == TLS_CERT_ED448_SIGN)
+         context->cert->type == TLS_CERT_ED448_SIGN ||
+         context->cert->type == TLS_CERT_MLDSA44_SIGN ||
+         context->cert->type == TLS_CERT_MLDSA65_SIGN ||
+         context->cert->type == TLS_CERT_MLDSA87_SIGN)
       {
          //Point to the buffer where to format the message
          message = (TlsCertificateVerify *) (context->txBuffer + context->txBufferLen);
@@ -1641,7 +1644,10 @@ error_t tlsParseAlert(TlsContext *context, const TlsAlert *message,
          context->closeNotifyReceived = TRUE;
 
          //Close down the connection immediately
-         if(context->state == TLS_STATE_APPLICATION_DATA)
+         if(context->state == TLS_STATE_APPLICATION_DATA ||
+            context->state == TLS_STATE_CLIENT_FINISHED_ACK ||
+            context->state == TLS_STATE_NEW_SESSION_TICKET_ACK ||
+            context->state == TLS_STATE_KEY_UPDATE_ACK)
          {
             tlsChangeState(context, TLS_STATE_CLOSING);
          }

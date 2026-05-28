@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.2
+ * @version 2.6.4
  **/
 
 //Switch to the appropriate trace level
@@ -120,7 +120,7 @@ error_t dtls13ReadPlaintextRecord(TlsContext *context, uint8_t *record)
       //Drop the received datagram
       context->rxDatagramLen = 0;
       //Report an error
-      return ERROR_BAD_RECORD_MAC;
+      return ERROR_INVALID_LENGTH;
    }
 
    //Point to the payload data
@@ -263,7 +263,7 @@ error_t dtls13ReadCiphertextRecord(TlsContext *context, uint8_t *record)
       //Drop the received datagram
       context->rxDatagramLen = 0;
       //Report an error
-      return ERROR_BAD_RECORD_MAC;
+      return ERROR_INVALID_LENGTH;
    }
 
    //Point to the payload data

@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.2
+ * @version 2.6.4
  **/
 
 //Switch to the appropriate trace level
@@ -166,6 +166,12 @@ TlsContext *tlsInit(void)
 #if (TLS_ED25519_SIGN_SUPPORT == ENABLED || TLS_ED448_SIGN_SUPPORT == ENABLED)
       //Initialize peer's EdDSA public key
       eddsaInitPublicKey(&context->peerEddsaPublicKey);
+#endif
+
+#if (TLS_MLDSA44_SIGN_SUPPORT == ENABLED || TLS_MLDSA65_SIGN_SUPPORT == ENABLED || \
+   TLS_MLDSA87_SIGN_SUPPORT == ENABLED)
+      //Initialize peer's ML-DSA public key
+      mldsaInitPublicKey(&context->peerMldsaPublicKey);
 #endif
 
       //Maximum number of plaintext data the TX and RX buffers can hold
@@ -2652,7 +2658,10 @@ error_t tlsShutdownEx(TlsContext *context, bool_t waitForCloseNotify)
    while(context->state != TLS_STATE_CLOSED)
    {
       //Check current state
-      if(context->state == TLS_STATE_APPLICATION_DATA)
+      if(context->state == TLS_STATE_APPLICATION_DATA ||
+         context->state == TLS_STATE_CLIENT_FINISHED_ACK ||
+         context->state == TLS_STATE_NEW_SESSION_TICKET_ACK ||
+         context->state == TLS_STATE_KEY_UPDATE_ACK)
       {
          //TLS protocol?
          if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM ||
@@ -2889,6 +2898,12 @@ void tlsFree(TlsContext *context)
 #if (TLS_ED25519_SIGN_SUPPORT == ENABLED || TLS_ED448_SIGN_SUPPORT == ENABLED)
       //Release peer's EdDSA public key
       eddsaFreePublicKey(&context->peerEddsaPublicKey);
+#endif
+
+#if (TLS_MLDSA44_SIGN_SUPPORT == ENABLED || TLS_MLDSA65_SIGN_SUPPORT == ENABLED || \
+   TLS_MLDSA87_SIGN_SUPPORT == ENABLED)
+      //Release peer's ML-DSA public key
+      mldsaFreePublicKey(&context->peerMldsaPublicKey);
 #endif
 
 #if (TLS_PSK_SUPPORT == ENABLED)

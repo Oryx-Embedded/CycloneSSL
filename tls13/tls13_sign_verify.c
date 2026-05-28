@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.2
+ * @version 2.6.4
  **/
 
 //Switch to the appropriate trace level
@@ -171,6 +171,33 @@ error_t tls13VerifySignature(TlsContext *context, const uint8_t *p,
          {
             //Verify Ed448 signature
             error = tls13VerifyEd448Signature(context, buffer, n, signature);
+         }
+         else
+#endif
+#if (TLS_MLDSA44_SIGN_SUPPORT == ENABLED)
+         //ML-DSA-44 signature scheme?
+         if(signScheme == TLS_SIGN_SCHEME_MLDSA44)
+         {
+            //Verify ML-DSA-44 signature
+            error = tls13VerifyMldsa44Signature(context, buffer, n, signature);
+         }
+         else
+#endif
+#if (TLS_MLDSA65_SIGN_SUPPORT == ENABLED)
+         //ML-DSA-65 signature scheme?
+         if(signScheme == TLS_SIGN_SCHEME_MLDSA65)
+         {
+            //Verify ML-DSA-65 signature
+            error = tls13VerifyMldsa65Signature(context, buffer, n, signature);
+         }
+         else
+#endif
+#if (TLS_MLDSA87_SIGN_SUPPORT == ENABLED)
+         //ML-DSA-87 signature scheme?
+         if(signScheme == TLS_SIGN_SCHEME_MLDSA87)
+         {
+            //Verify ML-DSA-87 signature
+            error = tls13VerifyMldsa87Signature(context, buffer, n, signature);
          }
          else
 #endif
@@ -544,6 +571,177 @@ error_t tls13VerifyEd448Signature(TlsContext *context, const uint8_t *message,
    return error;
 #else
    //Ed448 signature algorithm not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
+}
+
+
+/**
+ * @brief ML-DSA-44 signature verification (TLS 1.3)
+ * @param[in] context Pointer to the TLS context
+ * @param[in] message Message whose signature is to be verified
+ * @param[in] length Length of the message, in bytes
+ * @param[in] signature Pointer to the digital signature to be verified
+ * @return Error code
+ **/
+
+error_t tls13VerifyMldsa44Signature(TlsContext *context, const uint8_t *message,
+   size_t length, const Tls13DigitalSignature *signature)
+{
+#if (TLS_MLDSA44_SIGN_SUPPORT == ENABLED)
+   error_t error;
+
+   //The signature algorithm must be compatible with the key in the sender's
+   //end-entity certificate (refer to RFC 8446, section 4.4.3)
+   if(context->peerCertType == TLS_CERT_MLDSA44_SIGN)
+   {
+      //Check security level
+      if(context->peerMldsaPublicKey.level == MLDSA44_SECURITY_LEVEL &&
+         context->peerMldsaPublicKey.pkLen == MLDSA44_PUBLIC_KEY_LEN)
+      {
+         //The ML-DSA-44 signature shall consist of 2420 octets
+         if(ntohs(signature->length) == MLDSA44_SIGNATURE_LEN)
+         {
+            //Verify ML-DSA-44 signature
+            error = mldsa44VerifySignature(context->peerMldsaPublicKey.pk,
+               message, length, NULL, 0, signature->value);
+         }
+         else
+         {
+            //The length of the ML-DSA-44 signature is not valid
+            error = ERROR_INVALID_SIGNATURE;
+         }
+      }
+      else
+      {
+         //The public key is not valid
+         error = ERROR_INVALID_KEY;
+      }
+   }
+   else
+   {
+      //Invalid certificate
+      error = ERROR_ILLEGAL_PARAMETER;
+   }
+
+   //Return status code
+   return error;
+#else
+   //ML-DSA-44 signature algorithm not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
+}
+
+
+/**
+ * @brief ML-DSA-65 signature verification (TLS 1.3)
+ * @param[in] context Pointer to the TLS context
+ * @param[in] message Message whose signature is to be verified
+ * @param[in] length Length of the message, in bytes
+ * @param[in] signature Pointer to the digital signature to be verified
+ * @return Error code
+ **/
+
+error_t tls13VerifyMldsa65Signature(TlsContext *context, const uint8_t *message,
+   size_t length, const Tls13DigitalSignature *signature)
+{
+#if (TLS_MLDSA65_SIGN_SUPPORT == ENABLED)
+   error_t error;
+
+   //The signature algorithm must be compatible with the key in the sender's
+   //end-entity certificate (refer to RFC 8446, section 4.4.3)
+   if(context->peerCertType == TLS_CERT_MLDSA65_SIGN)
+   {
+      //Check security level
+      if(context->peerMldsaPublicKey.level == MLDSA65_SECURITY_LEVEL &&
+         context->peerMldsaPublicKey.pkLen == MLDSA65_PUBLIC_KEY_LEN)
+      {
+         //The ML-DSA-65 signature shall consist of 3309 octets
+         if(ntohs(signature->length) == MLDSA65_SIGNATURE_LEN)
+         {
+            //Verify ML-DSA-65 signature
+            error = mldsa65VerifySignature(context->peerMldsaPublicKey.pk,
+               message, length, NULL, 0, signature->value);
+         }
+         else
+         {
+            //The length of the ML-DSA-65 signature is not valid
+            error = ERROR_INVALID_SIGNATURE;
+         }
+      }
+      else
+      {
+         //The public key is not valid
+         error = ERROR_INVALID_KEY;
+      }
+   }
+   else
+   {
+      //Invalid certificate
+      error = ERROR_ILLEGAL_PARAMETER;
+   }
+
+   //Return status code
+   return error;
+#else
+   //ML-DSA-65 signature algorithm not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
+}
+
+
+/**
+ * @brief ML-DSA-87 signature verification (TLS 1.3)
+ * @param[in] context Pointer to the TLS context
+ * @param[in] message Message whose signature is to be verified
+ * @param[in] length Length of the message, in bytes
+ * @param[in] signature Pointer to the digital signature to be verified
+ * @return Error code
+ **/
+
+error_t tls13VerifyMldsa87Signature(TlsContext *context, const uint8_t *message,
+   size_t length, const Tls13DigitalSignature *signature)
+{
+#if (TLS_MLDSA87_SIGN_SUPPORT == ENABLED)
+   error_t error;
+
+   //The signature algorithm must be compatible with the key in the sender's
+   //end-entity certificate (refer to RFC 8446, section 4.4.3)
+   if(context->peerCertType == TLS_CERT_MLDSA87_SIGN)
+   {
+      //Check security level
+      if(context->peerMldsaPublicKey.level == MLDSA87_SECURITY_LEVEL &&
+         context->peerMldsaPublicKey.pkLen == MLDSA87_PUBLIC_KEY_LEN)
+      {
+         //The ML-DSA-87 signature shall consist of 4627 octets
+         if(ntohs(signature->length) == MLDSA87_SIGNATURE_LEN)
+         {
+            //Verify ML-DSA-87 signature
+            error = mldsa87VerifySignature(context->peerMldsaPublicKey.pk,
+               message, length, NULL, 0, signature->value);
+         }
+         else
+         {
+            //The length of the ML-DSA-87 signature is not valid
+            error = ERROR_INVALID_SIGNATURE;
+         }
+      }
+      else
+      {
+         //The public key is not valid
+         error = ERROR_INVALID_KEY;
+      }
+   }
+   else
+   {
+      //Invalid certificate
+      error = ERROR_ILLEGAL_PARAMETER;
+   }
+
+   //Return status code
+   return error;
+#else
+   //ML-DSA-87 signature algorithm not implemented
    return ERROR_NOT_IMPLEMENTED;
 #endif
 }

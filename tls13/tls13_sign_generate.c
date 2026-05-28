@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.2
+ * @version 2.6.4
  **/
 
 //Switch to the appropriate trace level
@@ -158,6 +158,33 @@ error_t tls13GenerateSignature(TlsContext *context, uint8_t *p,
          {
             //Generate an Ed448 signature
             error = tls13GenerateEd448Signature(context, buffer, n, signature);
+         }
+         else
+#endif
+#if (TLS_MLDSA44_SIGN_SUPPORT == ENABLED)
+         //ML-DSA-44 signature scheme?
+         if(context->signScheme == TLS_SIGN_SCHEME_MLDSA44)
+         {
+            //Generate an ML-DSA-44 signature
+            error = tls13GenerateMldsa44Signature(context, buffer, n, signature);
+         }
+         else
+#endif
+#if (TLS_MLDSA65_SIGN_SUPPORT == ENABLED)
+         //ML-DSA-65 signature scheme?
+         if(context->signScheme == TLS_SIGN_SCHEME_MLDSA65)
+         {
+            //Generate an ML-DSA-65 signature
+            error = tls13GenerateMldsa65Signature(context, buffer, n, signature);
+         }
+         else
+#endif
+#if (TLS_MLDSA87_SIGN_SUPPORT == ENABLED)
+         //ML-DSA-87 signature scheme?
+         if(context->signScheme == TLS_SIGN_SCHEME_MLDSA87)
+         {
+            //Generate an ML-DSA-87 signature
+            error = tls13GenerateMldsa87Signature(context, buffer, n, signature);
          }
          else
 #endif
@@ -483,6 +510,174 @@ error_t tls13GenerateEd448Signature(TlsContext *context, const uint8_t *message,
    return error;
 #else
    //Ed448 signature algorithm not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
+}
+
+
+/**
+ * @brief ML-DSA-44 signature generation (TLS 1.3)
+ * @param[in] context Pointer to the TLS context
+ * @param[in] message Pointer to the message to be signed
+ * @param[in] length Length of the message, in bytes
+ * @param[out] signature Buffer where to store the digital signature
+ * @return Error code
+ **/
+
+error_t tls13GenerateMldsa44Signature(TlsContext *context, const uint8_t *message,
+   size_t length, Tls13DigitalSignature *signature)
+{
+#if (TLS_MLDSA44_SIGN_SUPPORT == ENABLED)
+   error_t error;
+   MldsaPrivateKey privateKey;
+
+   //Initialize ML-DSA private key
+   mldsaInitPrivateKey(&privateKey);
+
+   //Decode the PEM structure that holds the ML-DSA private key
+   error = pemImportMldsaPrivateKey(&privateKey, context->cert->privateKey,
+      context->cert->privateKeyLen, context->cert->password);
+
+   //Check security level
+   if(privateKey.level == MLDSA44_SECURITY_LEVEL &&
+      privateKey.skLen == MLDSA44_PRIVATE_KEY_LEN)
+   {
+      //Generate ML-DSA-44 signature
+      error = mldsa44GenerateSignature(privateKey.sk, message, length,
+         NULL, 0, signature->value);
+
+      //Check status code
+      if(!error)
+      {
+         //Length of the resulting ML-DSA signature
+         signature->length = HTONS(MLDSA44_SIGNATURE_LEN);
+      }
+   }
+   else
+   {
+      //The ML-DSA private key is not valid
+      error = ERROR_INVALID_KEY;
+   }
+
+   //Free previously allocated resources
+   mldsaFreePrivateKey(&privateKey);
+
+   //Return status code
+   return error;
+#else
+   //ML-DSA-44 signature algorithm not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
+}
+
+
+/**
+ * @brief ML-DSA-65 signature generation (TLS 1.3)
+ * @param[in] context Pointer to the TLS context
+ * @param[in] message Pointer to the message to be signed
+ * @param[in] length Length of the message, in bytes
+ * @param[out] signature Buffer where to store the digital signature
+ * @return Error code
+ **/
+
+error_t tls13GenerateMldsa65Signature(TlsContext *context, const uint8_t *message,
+   size_t length, Tls13DigitalSignature *signature)
+{
+#if (TLS_MLDSA65_SIGN_SUPPORT == ENABLED)
+   error_t error;
+   MldsaPrivateKey privateKey;
+
+   //Initialize ML-DSA private key
+   mldsaInitPrivateKey(&privateKey);
+
+   //Decode the PEM structure that holds the ML-DSA private key
+   error = pemImportMldsaPrivateKey(&privateKey, context->cert->privateKey,
+      context->cert->privateKeyLen, context->cert->password);
+
+   //Check security level
+   if(privateKey.level == MLDSA65_SECURITY_LEVEL &&
+      privateKey.skLen == MLDSA65_PRIVATE_KEY_LEN)
+   {
+      //Generate ML-DSA-65 signature
+      error = mldsa65GenerateSignature(privateKey.sk, message, length,
+         NULL, 0, signature->value);
+
+      //Check status code
+      if(!error)
+      {
+         //Length of the resulting ML-DSA signature
+         signature->length = HTONS(MLDSA65_SIGNATURE_LEN);
+      }
+   }
+   else
+   {
+      //The ML-DSA private key is not valid
+      error = ERROR_INVALID_KEY;
+   }
+
+   //Free previously allocated resources
+   mldsaFreePrivateKey(&privateKey);
+
+   //Return status code
+   return error;
+#else
+   //ML-DSA-65 signature algorithm not implemented
+   return ERROR_NOT_IMPLEMENTED;
+#endif
+}
+
+
+/**
+ * @brief ML-DSA-87 signature generation (TLS 1.3)
+ * @param[in] context Pointer to the TLS context
+ * @param[in] message Pointer to the message to be signed
+ * @param[in] length Length of the message, in bytes
+ * @param[out] signature Buffer where to store the digital signature
+ * @return Error code
+ **/
+
+error_t tls13GenerateMldsa87Signature(TlsContext *context, const uint8_t *message,
+   size_t length, Tls13DigitalSignature *signature)
+{
+#if (TLS_MLDSA87_SIGN_SUPPORT == ENABLED)
+   error_t error;
+   MldsaPrivateKey privateKey;
+
+   //Initialize ML-DSA private key
+   mldsaInitPrivateKey(&privateKey);
+
+   //Decode the PEM structure that holds the ML-DSA private key
+   error = pemImportMldsaPrivateKey(&privateKey, context->cert->privateKey,
+      context->cert->privateKeyLen, context->cert->password);
+
+   //Check security level
+   if(privateKey.level == MLDSA87_SECURITY_LEVEL &&
+      privateKey.skLen == MLDSA87_PRIVATE_KEY_LEN)
+   {
+      //Generate ML-DSA-87 signature
+      error = mldsa87GenerateSignature(privateKey.sk, message, length,
+         NULL, 0, signature->value);
+
+      //Check status code
+      if(!error)
+      {
+         //Length of the resulting ML-DSA signature
+         signature->length = HTONS(MLDSA87_SIGNATURE_LEN);
+      }
+   }
+   else
+   {
+      //The ML-DSA private key is not valid
+      error = ERROR_INVALID_KEY;
+   }
+
+   //Free previously allocated resources
+   mldsaFreePrivateKey(&privateKey);
+
+   //Return status code
+   return error;
+#else
+   //ML-DSA-87 signature algorithm not implemented
    return ERROR_NOT_IMPLEMENTED;
 #endif
 }

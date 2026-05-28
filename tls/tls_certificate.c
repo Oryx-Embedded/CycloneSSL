@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.2
+ * @version 2.6.4
  **/
 
 //Switch to the appropriate trace level
@@ -1261,6 +1261,39 @@ error_t tlsGetCertificateType(const X509CertInfo *certInfo,
    }
    else
 #endif
+#if (TLS_MLDSA44_SIGN_SUPPORT == ENABLED)
+   //ML-DSA-44 public key?
+   if(OID_COMP(oid, oidLen, MLDSA44_OID) == 0)
+   {
+      //Save certificate type
+      *certType = TLS_CERT_MLDSA44_SIGN;
+      //No named curve applicable
+      *namedCurve = TLS_GROUP_NONE;
+   }
+   else
+#endif
+#if (TLS_MLDSA65_SIGN_SUPPORT == ENABLED)
+   //ML-DSA-65 public key?
+   if(OID_COMP(oid, oidLen, MLDSA65_OID) == 0)
+   {
+      //Save certificate type
+      *certType = TLS_CERT_MLDSA65_SIGN;
+      //No named curve applicable
+      *namedCurve = TLS_GROUP_NONE;
+   }
+   else
+#endif
+#if (TLS_MLDSA87_SIGN_SUPPORT == ENABLED)
+   //ML-DSA-87 public key?
+   if(OID_COMP(oid, oidLen, MLDSA87_OID) == 0)
+   {
+      //Save certificate type
+      *certType = TLS_CERT_MLDSA87_SIGN;
+      //No named curve applicable
+      *namedCurve = TLS_GROUP_NONE;
+   }
+   else
+#endif
    //Invalid public key?
    {
       //The certificate does not contain any valid public key
@@ -1440,6 +1473,33 @@ error_t tlsGetCertificateSignAlgo(const X509CertInfo *certInfo,
    }
    else
 #endif
+#if (TLS_MLDSA44_SIGN_SUPPORT == ENABLED)
+   //ML-DSA-44 signature algorithm?
+   if(OID_COMP(oid, oidLen, MLDSA44_OID) == 0)
+   {
+      //ML-DSA-44 signature algorithm
+      *signScheme = TLS_SIGN_SCHEME_MLDSA44;
+   }
+   else
+#endif
+#if (TLS_MLDSA65_SIGN_SUPPORT == ENABLED)
+   //ML-DSA-65 signature algorithm?
+   if(OID_COMP(oid, oidLen, MLDSA65_OID) == 0)
+   {
+      //ML-DSA-65 signature algorithm
+      *signScheme = TLS_SIGN_SCHEME_MLDSA65;
+   }
+   else
+#endif
+#if (TLS_MLDSA87_SIGN_SUPPORT == ENABLED)
+   //ML-DSA-87 signature algorithm?
+   if(OID_COMP(oid, oidLen, MLDSA87_OID) == 0)
+   {
+      //ML-DSA-87 signature algorithm
+      *signScheme = TLS_SIGN_SCHEME_MLDSA87;
+   }
+   else
+#endif
    //Unknown signature algorithm?
    {
       //The signature algorithm is not supported
@@ -1579,7 +1639,7 @@ error_t tlsReadSubjectPublicKey(TlsContext *context,
    else
 #endif
 #if (TLS_ED25519_SIGN_SUPPORT == ENABLED || TLS_ED448_SIGN_SUPPORT == ENABLED)
-   //Ed25519 or Ed448 public key?
+   //EdDSA public key?
    if(OID_COMP(oid, oidLen, ED25519_OID) == 0 ||
       OID_COMP(oid, oidLen, ED448_OID) == 0)
    {
@@ -1600,6 +1660,45 @@ error_t tlsReadSubjectPublicKey(TlsContext *context,
          {
             //The certificate contains a valid Ed448 public key
             context->peerCertType = TLS_CERT_ED448_SIGN;
+         }
+         else
+         {
+            //Just for sanity
+            error = ERROR_BAD_CERTIFICATE;
+         }
+      }
+   }
+   else
+#endif
+#if (TLS_MLDSA44_SIGN_SUPPORT == ENABLED || TLS_MLDSA65_SIGN_SUPPORT == ENABLED || \
+   TLS_MLDSA87_SIGN_SUPPORT == ENABLED)
+   //ML-DSA public key?
+   if(OID_COMP(oid, oidLen, MLDSA44_OID) == 0 ||
+      OID_COMP(oid, oidLen, MLDSA65_OID) == 0 ||
+      OID_COMP(oid, oidLen, MLDSA87_OID) == 0)
+   {
+      //Import the ML-DSA public key
+      error = x509ImportMldsaPublicKey(&context->peerMldsaPublicKey,
+         subjectPublicKeyInfo);
+
+      //Check status code
+      if(!error)
+      {
+         //ML-DSA-44, ML-DSA-65 or ML-DSA-87 certificate?
+         if(OID_COMP(oid, oidLen, MLDSA44_OID) == 0)
+         {
+            //The certificate contains a valid ML-DSA-44 public key
+            context->peerCertType = TLS_CERT_MLDSA44_SIGN;
+         }
+         else if(OID_COMP(oid, oidLen, MLDSA65_OID) == 0)
+         {
+            //The certificate contains a valid ML-DSA-65 public key
+            context->peerCertType = TLS_CERT_MLDSA65_SIGN;
+         }
+         else if(OID_COMP(oid, oidLen, MLDSA87_OID) == 0)
+         {
+            //The certificate contains a valid ML-DSA-87 public key
+            context->peerCertType = TLS_CERT_MLDSA87_SIGN;
          }
          else
          {
@@ -1668,7 +1767,10 @@ error_t tlsReadSubjectPublicKey(TlsContext *context,
                context->peerCertType != TLS_CERT_ECDSA_SIGN &&
                context->peerCertType != TLS_CERT_SM2_SIGN &&
                context->peerCertType != TLS_CERT_ED25519_SIGN &&
-               context->peerCertType != TLS_CERT_ED448_SIGN)
+               context->peerCertType != TLS_CERT_ED448_SIGN &&
+               context->peerCertType != TLS_CERT_MLDSA44_SIGN &&
+               context->peerCertType != TLS_CERT_MLDSA65_SIGN &&
+               context->peerCertType != TLS_CERT_MLDSA87_SIGN)
             {
                error = ERROR_UNSUPPORTED_CERTIFICATE;
             }

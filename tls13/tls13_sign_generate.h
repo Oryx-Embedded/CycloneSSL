@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.2
+ * @version 2.6.4
  **/
 
 #ifndef _TLS13_SIGN_GENERATE_H
@@ -56,6 +56,15 @@ error_t tls13GenerateEd25519Signature(TlsContext *context, const uint8_t *messag
    size_t length, Tls13DigitalSignature *signature);
 
 error_t tls13GenerateEd448Signature(TlsContext *context, const uint8_t *message,
+   size_t length, Tls13DigitalSignature *signature);
+
+error_t tls13GenerateMldsa44Signature(TlsContext *context, const uint8_t *message,
+   size_t length, Tls13DigitalSignature *signature);
+
+error_t tls13GenerateMldsa65Signature(TlsContext *context, const uint8_t *message,
+   size_t length, Tls13DigitalSignature *signature);
+
+error_t tls13GenerateMldsa87Signature(TlsContext *context, const uint8_t *message,
    size_t length, Tls13DigitalSignature *signature);
 
 //C++ guard
