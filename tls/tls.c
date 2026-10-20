@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -86,6 +86,11 @@ TlsContext *tlsInit(void)
       context->entity = TLS_CONNECTION_END_CLIENT;
       //Default client authentication mode
       context->clientAuthMode = TLS_CLIENT_AUTH_NONE;
+
+      //The peer's certificate chain is validated by default
+      context->certChainValidation = TRUE;
+      //The validity period of certificates is checked by default
+      context->certValidityCheck = TRUE;
 
       //Minimum and maximum versions accepted by the implementation
       context->versionMin = TLS_MIN_VERSION;
@@ -248,7 +253,9 @@ error_t tlsSetStateChangeCallback(TlsContext *context,
 {
    //Check parameters
    if(context == NULL || stateChangeCallback == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Save TLS state change callback
    context->stateChangeCallback = stateChangeCallback;
@@ -273,11 +280,15 @@ error_t tlsSetSocketCallbacks(TlsContext *context,
 {
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Check parameters
    if(socketSendCallback == NULL || socketReceiveCallback == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Save send and receive callback functions
    context->socketSendCallback = socketSendCallback;
@@ -304,17 +315,25 @@ error_t tlsSetVersion(TlsContext *context, uint16_t versionMin,
 {
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Check parameters
    if(versionMin < TLS_VERSION_1_0 || versionMin > TLS_MAX_VERSION)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    if(versionMax > TLS_VERSION_1_3 || versionMax < TLS_MIN_VERSION)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    if(versionMin > versionMax)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Minimum version accepted by the implementation
    context->versionMin = MAX(versionMin, TLS_MIN_VERSION);
@@ -342,7 +361,9 @@ error_t tlsSetTransportProtocol(TlsContext *context,
 {
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Check parameters
    if(transportProtocol != TLS_TRANSPORT_PROTOCOL_STREAM &&
@@ -372,11 +393,15 @@ error_t tlsSetConnectionEnd(TlsContext *context, TlsConnectionEnd entity)
 {
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Check parameters
    if(entity != TLS_CONNECTION_END_CLIENT && entity != TLS_CONNECTION_END_SERVER)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Check whether TLS operates as a client or a server
    context->entity = entity;
@@ -399,11 +424,15 @@ error_t tlsSetPrng(TlsContext *context, const PrngAlgo *prngAlgo,
 {
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Check parameters
    if(prngAlgo == NULL || prngContext == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //PRNG algorithm that will be used to generate random numbers
    context->prngAlgo = prngAlgo;
@@ -429,7 +458,9 @@ error_t tlsSetServerName(TlsContext *context, const char_t *serverName)
 
    //Check parameters
    if(context == NULL || serverName == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Retrieve the length of the server name
    length = osStrlen(serverName);
@@ -449,7 +480,9 @@ error_t tlsSetServerName(TlsContext *context, const char_t *serverName)
       context->serverName = tlsAllocMem(length + 1);
       //Failed to allocate memory?
       if(context->serverName == NULL)
+      {
          return ERROR_OUT_OF_MEMORY;
+      }
 
       //Convert the hostname into lowercase
       for(i = 0; i < length; i++)
@@ -501,7 +534,9 @@ error_t tlsSetCache(TlsContext *context, TlsCache *cache)
 {
    //Check parameters
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //The cache will be used to save/resume TLS sessions
    context->cache = cache;
@@ -522,7 +557,9 @@ error_t tlsSetClientAuthMode(TlsContext *context, TlsClientAuthMode mode)
 {
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Save client authentication mode
    context->clientAuthMode = mode;
@@ -545,7 +582,9 @@ error_t tlsSetBufferSize(TlsContext *context, size_t txBufferSize,
 {
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Check parameters
    if(txBufferSize < TLS_MIN_RECORD_LENGTH ||
@@ -593,7 +632,9 @@ error_t tlsSetMaxFragmentLength(TlsContext *context, size_t maxFragLen)
 #if (TLS_MAX_FRAG_LEN_SUPPORT == ENABLED)
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Make sure the specified value is acceptable (ref to RFC 6066, section 4)
    if(maxFragLen != 512 && maxFragLen != 1024 &&
@@ -629,11 +670,15 @@ error_t tlsSetCipherSuites(TlsContext *context, const uint16_t *cipherSuites,
 {
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Check parameters
    if(cipherSuites == NULL && length != 0)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Restrict the cipher suites that can be used
    context->cipherSuites = cipherSuites;
@@ -658,11 +703,15 @@ error_t tlsSetSupportedGroups(TlsContext *context, const uint16_t *groups,
 {
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Check parameters
    if(groups == NULL && length != 0)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Restrict the named groups that can be used
    context->supportedGroups = groups;
@@ -685,7 +734,9 @@ error_t tlsSetPreferredGroup(TlsContext *context, uint16_t group)
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Save the preferred named group
    context->preferredGroup = group;
@@ -714,11 +765,15 @@ error_t tlsSetSupportedSignAlgos(TlsContext *context,
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_2 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Check parameters
    if(signAlgos == NULL && length != 0)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Restrict the signature algorithms that can be used
    context->supportedSignAlgos = signAlgos;
@@ -748,11 +803,15 @@ error_t tlsSetDhParameters(TlsContext *context, const char_t *params,
 #if (TLS_DH_SUPPORT == ENABLED)
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Check parameters
    if(params == NULL && length != 0)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Decode the PEM structure that holds Diffie-Hellman parameters
    return pemImportDhParameters(&context->dhContext.params, params, length);
@@ -775,7 +834,9 @@ error_t tlsSetEcdhCallback(TlsContext *context, TlsEcdhCallback ecdhCallback)
 #if (TLS_ECC_CALLBACK_SUPPORT == ENABLED)
    //Check parameters
    if(context == NULL || ecdhCallback == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Save ECDH key agreement callback function
    context->ecdhCallback = ecdhCallback;
@@ -802,7 +863,9 @@ error_t tlsSetEcdsaSignCallback(TlsContext *context,
 #if (TLS_ECC_CALLBACK_SUPPORT == ENABLED)
    //Check parameters
    if(context == NULL || ecdsaSignCallback == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Save ECDSA signature generation callback function
    context->ecdsaSignCallback = ecdsaSignCallback;
@@ -829,7 +892,9 @@ error_t tlsSetEcdsaVerifyCallback(TlsContext *context,
 #if (TLS_ECC_CALLBACK_SUPPORT == ENABLED)
    //Check parameters
    if(context == NULL || ecdsaVerifyCallback == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Save ECDSA signature verification callback function
    context->ecdsaVerifyCallback = ecdsaVerifyCallback;
@@ -856,7 +921,9 @@ error_t tlsSetKeyLogCallback(TlsContext *context,
 #if (TLS_KEY_LOG_SUPPORT == ENABLED)
    //Check parameters
    if(context == NULL || keyLogCallback == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Save key logging callback function
    context->keyLogCallback = keyLogCallback;
@@ -882,7 +949,9 @@ error_t tlsAllowUnknownAlpnProtocols(TlsContext *context, bool_t allowed)
 #if (TLS_ALPN_SUPPORT == ENABLED)
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Allow or disallow unknown ALPN protocols
    context->unknownProtocolsAllowed = allowed;
@@ -910,10 +979,18 @@ error_t tlsSetAlpnProtocolList(TlsContext *context, const char_t *protocolList)
 
    //Check parameters
    if(context == NULL || protocolList == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Retrieve the length of the list
    length = osStrlen(protocolList);
+
+   //Check the length of the list
+   if(length > 255)
+   {
+      return ERROR_INVALID_LENGTH;
+   }
 
    //Check whether the list of supported protocols has already been configured
    if(context->protocolList != NULL)
@@ -930,7 +1007,9 @@ error_t tlsSetAlpnProtocolList(TlsContext *context, const char_t *protocolList)
       context->protocolList = tlsAllocMem(length + 1);
       //Failed to allocate memory?
       if(context->protocolList == NULL)
+      {
          return ERROR_OUT_OF_MEMORY;
+      }
 
       //Save the list of supported protocols
       osStrcpy(context->protocolList, protocolList);
@@ -957,7 +1036,9 @@ error_t tlsSetAlpnCallback(TlsContext *context, TlsAlpnCallback alpnCallback)
 #if (TLS_ALPN_SUPPORT == ENABLED)
    //Check parameters
    if(context == NULL || alpnCallback == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Save ALPN callback function
    context->alpnCallback = alpnCallback;
@@ -1010,17 +1091,21 @@ error_t tlsSetPsk(TlsContext *context, const uint8_t *psk, size_t length)
 #if (TLS_PSK_SUPPORT == ENABLED)
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Check parameters
    if(psk == NULL && length != 0)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Check whether the pre-shared key has already been configured
    if(context->psk != NULL)
    {
       //Release memory
-      osMemset(context->psk, 0, context->pskLen);
+      cryptoZeroizeMem(context->psk, context->pskLen);
       tlsFreeMem(context->psk);
       context->psk = NULL;
       context->pskLen = 0;
@@ -1033,7 +1118,9 @@ error_t tlsSetPsk(TlsContext *context, const uint8_t *psk, size_t length)
       context->psk = tlsAllocMem(length);
       //Failed to allocate memory?
       if(context->psk == NULL)
+      {
          return ERROR_OUT_OF_MEMORY;
+      }
 
       //Save the pre-shared key
       osMemcpy(context->psk, psk, length);
@@ -1073,7 +1160,9 @@ error_t tlsSetPskIdentity(TlsContext *context, const char_t *pskIdentity)
 
    //Check parameters
    if(context == NULL || pskIdentity == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Retrieve the length of the PSK identity
    length = osStrlen(pskIdentity);
@@ -1093,7 +1182,9 @@ error_t tlsSetPskIdentity(TlsContext *context, const char_t *pskIdentity)
       context->pskIdentity = tlsAllocMem(length + 1);
       //Failed to allocate memory?
       if(context->pskIdentity == NULL)
+      {
          return ERROR_OUT_OF_MEMORY;
+      }
 
       //Save the PSK identity
       osStrcpy(context->pskIdentity, pskIdentity);
@@ -1122,7 +1213,9 @@ error_t tlsSetPskIdentityHint(TlsContext *context, const char_t *pskIdentityHint
 
    //Check parameters
    if(context == NULL || pskIdentityHint == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Retrieve the length of the PSK identity hint
    length = osStrlen(pskIdentityHint);
@@ -1142,7 +1235,9 @@ error_t tlsSetPskIdentityHint(TlsContext *context, const char_t *pskIdentityHint
       context->pskIdentityHint = tlsAllocMem(length + 1);
       //Failed to allocate memory?
       if(context->pskIdentityHint == NULL)
+      {
          return ERROR_OUT_OF_MEMORY;
+      }
 
       //Save the PSK identity hint
       osStrcpy(context->pskIdentityHint, pskIdentityHint);
@@ -1169,7 +1264,9 @@ error_t tlsSetPskCallback(TlsContext *context, TlsPskCallback pskCallback)
 #if (TLS_PSK_SUPPORT == ENABLED)
    //Check parameters
    if(context == NULL || pskCallback == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Save PSK callback function
    context->pskCallback = pskCallback;
@@ -1196,7 +1293,9 @@ error_t tlsSetRpkVerifyCallback(TlsContext *context,
 #if (TLS_RAW_PUBLIC_KEY_SUPPORT == ENABLED)
    //Check parameters
    if(context == NULL || rpkVerifyCallback == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Save raw public key verification callback function
    context->rpkVerifyCallback = rpkVerifyCallback;
@@ -1223,11 +1322,15 @@ error_t tlsSetTrustedCaList(TlsContext *context, const char_t *trustedCaList,
 {
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Check parameters
    if(trustedCaList == NULL && length != 0)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Save the list of trusted CA
    context->trustedCaList = trustedCaList;
@@ -1268,23 +1371,33 @@ error_t tlsLoadCertificate(TlsContext *context, uint_t index,
 
    //Make sure the TLS context is valid
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //The implementation limits the number of certificates that can be loaded
    if(index >= TLS_MAX_CERTIFICATES)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Check whether the certificate chain is valid
    if(certChain == NULL || certChainLen == 0)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //The private key is optional
    if(privateKey == NULL && privateKeyLen != 0)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //The password if required only for encrypted private keys
    if(password != NULL && osStrlen(password) > TLS_MAX_PASSWORD_LEN)
+   {
       return ERROR_INVALID_PASSWORD;
+   }
 
    //The first pass calculates the length of the DER-encoded certificate
    error = pemImportCertificate(certChain, certChainLen, NULL, &derCertLen,
@@ -1402,12 +1515,62 @@ error_t tlsSetCertificateVerifyCallback(TlsContext *context,
 {
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Save certificate verification callback function
    context->certVerifyCallback = certVerifyCallback;
    //This opaque pointer will be directly passed to the callback function
    context->certVerifyParam = param;
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
+ * @brief Enable certificate chain validation
+ * @param[in] context Pointer to the TLS context
+ * @param[in] enabled Specifies whether the peer's certificate chain must be
+ *   validated against the trusted CA list
+ * @return Error code
+ **/
+
+error_t tlsEnableCertChainValidation(TlsContext *context, bool_t enabled)
+{
+   //Invalid TLS context?
+   if(context == NULL)
+   {
+      return ERROR_INVALID_PARAMETER;
+   }
+
+   //Enable or disable certificate chain validation
+   context->certChainValidation = enabled;
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
+ * @brief Enable certificate validity period check
+ * @param[in] context Pointer to the TLS context
+ * @param[in] enabled Specifies whether the validity period of certificates must
+ *   be checked
+ * @return Error code
+ **/
+
+error_t tlsEnableCertValidityCheck(TlsContext *context, bool_t enabled)
+{
+   //Invalid TLS context?
+   if(context == NULL)
+   {
+      return ERROR_INVALID_PARAMETER;
+   }
+
+   //Enable or disable the validity period check
+   context->certValidityCheck = enabled;
 
    //Successful processing
    return NO_ERROR;
@@ -1426,7 +1589,9 @@ error_t tlsEnableSessionTickets(TlsContext *context, bool_t enabled)
 #if (TLS_TICKET_SUPPORT == ENABLED)
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Enable or disable session ticket mechanism
    context->sessionTicketEnabled = enabled;
@@ -1452,7 +1617,9 @@ error_t tlsEnableTrustedCaKeys(TlsContext *context, bool_t enabled)
 #if (TLS_TRUSTED_CA_KEYS_SUPPORT == ENABLED)
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Enable or disable support for TrustedCaKeys extension
    context->trustedCaKeysEnabled = enabled;
@@ -1479,7 +1646,9 @@ error_t tlsEnableCertAuthorities(TlsContext *context, bool_t enabled)
 #if (TLS_CERT_AUTHORITIES_SUPPORT == ENABLED)
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Enable or disable support for CertificateAuthorities extension
    context->certAuthoritiesEnabled = enabled;
@@ -1505,7 +1674,9 @@ error_t tlsEnableSecureRenegotiation(TlsContext *context, bool_t enabled)
 #if (TLS_SECURE_RENEGOTIATION_SUPPORT == ENABLED)
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Enable or disable secure renegotiation
    context->secureRenegoEnabled = enabled;
@@ -1531,7 +1702,9 @@ error_t tlsEnableFallbackScsv(TlsContext *context, bool_t enabled)
 #if (TLS_FALLBACK_SCSV_SUPPORT == ENABLED)
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Enable or disable support for FALLBACK_SCSV
    context->fallbackScsvEnabled = enabled;
@@ -1561,7 +1734,9 @@ error_t tlsSetTicketCallbacks(TlsContext *context,
 #if (TLS_TICKET_SUPPORT == ENABLED)
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Save ticket encryption/decryption callback functions
    context->ticketEncryptCallback = ticketEncryptCallback;
@@ -1591,11 +1766,15 @@ error_t tlsSetPmtu(TlsContext *context, size_t pmtu)
 #if (DTLS_SUPPORT == ENABLED)
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Make sure the PMTU value is acceptable
    if(pmtu < DTLS_MIN_PMTU)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Save PMTU value
    context->pmtu = pmtu;
@@ -1621,7 +1800,9 @@ error_t tlsSetTimeout(TlsContext *context, systime_t timeout)
 #if (DTLS_SUPPORT == ENABLED)
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Save timeout value
    context->timeout = timeout;
@@ -1651,11 +1832,15 @@ error_t tlsSetCookieCallbacks(TlsContext *context,
 #if (DTLS_SUPPORT == ENABLED)
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Check parameters
    if(cookieGenerateCallback == NULL || cookieVerifyCallback == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Save cookie generation/verification callback functions
    context->cookieGenerateCallback = cookieGenerateCallback;
@@ -1685,7 +1870,9 @@ error_t tlsEnableReplayDetection(TlsContext *context, bool_t enabled)
 #if (DTLS_SUPPORT == ENABLED && DTLS_REPLAY_DETECTION_SUPPORT == ENABLED)
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Enable or disable anti-replay mechanism
    context->replayDetectionEnabled = enabled;
@@ -1713,7 +1900,9 @@ error_t tlsSetMaxEarlyDataSize(TlsContext *context, size_t maxEarlyDataSize)
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Save the maximum amount of 0-RTT data that the client is allowed to send
    context->maxEarlyDataSize = maxEarlyDataSize;
@@ -1747,31 +1936,45 @@ error_t tlsWriteEarlyData(TlsContext *context, const void *data,
 
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Check parameters
    if(data == NULL && length != 0)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Check operation mode
    if(context->entity != TLS_CONNECTION_END_CLIENT)
+   {
       return ERROR_FAILURE;
+   }
 
    //Check transport protocol
    if(context->transportProtocol != TLS_TRANSPORT_PROTOCOL_STREAM)
+   {
       return ERROR_FAILURE;
+   }
 
    //Make sure TLS 1.3 is supported by the client
    if(context->versionMax < TLS_VERSION_1_3)
+   {
       return ERROR_FAILURE;
+   }
 
    //Ensure the send/receive functions are properly registered
    if(context->socketSendCallback == NULL || context->socketReceiveCallback == NULL)
+   {
       return ERROR_NOT_CONFIGURED;
+   }
 
    //Verify that the PRNG is properly set
    if(context->prngAlgo == NULL || context->prngContext == NULL)
+   {
       return ERROR_NOT_CONFIGURED;
+   }
 
 #if (DTLS_SUPPORT == ENABLED)
    //Save current time
@@ -1808,15 +2011,21 @@ error_t tlsConnect(TlsContext *context)
 
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Ensure the send/receive functions are properly registered
    if(context->socketSendCallback == NULL || context->socketReceiveCallback == NULL)
+   {
       return ERROR_NOT_CONFIGURED;
+   }
 
    //Verify that the PRNG is properly set
    if(context->prngAlgo == NULL || context->prngContext == NULL)
+   {
       return ERROR_NOT_CONFIGURED;
+   }
 
 #if (DTLS_SUPPORT == ENABLED)
    //Save current time
@@ -1906,15 +2115,21 @@ error_t tlsExportKeyingMaterial(TlsContext *context, const char_t *label,
 
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Check parameters
    if(label == NULL || output == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Make sure the upper-layer context is valid
    if(contextValue == NULL && contextValueLen != 0)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Calculate the length of the seed
    n = 2 * TLS_RANDOM_SIZE;
@@ -1929,7 +2144,9 @@ error_t tlsExportKeyingMaterial(TlsContext *context, const char_t *label,
    seed = tlsAllocMem(n);
    //Failed to allocate memory?
    if(seed == NULL)
+   {
       return ERROR_OUT_OF_RESOURCES;
+   }
 
    //Concatenate client_random and server_random values
    osMemcpy(seed, context->clientRandom, TLS_RANDOM_SIZE);
@@ -1943,7 +2160,10 @@ error_t tlsExportKeyingMaterial(TlsContext *context, const char_t *label,
       STORE16BE(contextValueLen, seed + 64);
 
       //Copy the context value provided by the application using the exporter
-      osMemcpy(seed + 66, contextValue, contextValueLen);
+      if(contextValueLen > 0)
+      {
+         osMemcpy(seed + 66, contextValue, contextValueLen);
+      }
    }
 
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
@@ -2048,7 +2268,9 @@ error_t tlsExportChannelBinding(TlsContext *context, const char_t *type,
 
    //Check parameters
    if(context == NULL || type == NULL || length == 0)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Initialize status code
    error = NO_ERROR;
@@ -2104,6 +2326,7 @@ error_t tlsExportChannelBinding(TlsContext *context, const char_t *type,
       {
          //Appendix C.5 of RFC 8446 notes the lack of channel bindings for
          //TLS 1.3 (refer to to RFC 9266, section 1)
+         error = ERROR_INVALID_VERSION;
       }
    }
    else if(osStrcmp(type, "tls-exporter") == 0)
@@ -2151,15 +2374,21 @@ error_t tlsWrite(TlsContext *context, const void *data, size_t length,
 
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Check parameters
    if(data == NULL && length != 0)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Ensure the send/receive functions are properly registered
    if(context->socketSendCallback == NULL || context->socketReceiveCallback == NULL)
+   {
       return ERROR_NOT_CONFIGURED;
+   }
 
 #if (DTLS_SUPPORT == ENABLED)
    //Save current time
@@ -2259,7 +2488,9 @@ error_t tlsWrite(TlsContext *context, const void *data, size_t length,
 
       //Any error to report?
       if(error)
+      {
          break;
+      }
    }
 
    //Total number of data that have been written
@@ -2294,15 +2525,21 @@ error_t tlsRead(TlsContext *context, void *data, size_t size, size_t *received,
 
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Check parameters
    if(data == NULL || received == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Ensure the send/receive functions are properly registered
    if(context->socketSendCallback == NULL || context->socketReceiveCallback == NULL)
+   {
       return ERROR_NOT_CONFIGURED;
+   }
 
 #if (DTLS_SUPPORT == ENABLED)
    //Save current time
@@ -2416,7 +2653,9 @@ error_t tlsRead(TlsContext *context, void *data, size_t size, size_t *received,
 
                      //Check whether a break character has been found
                      if(n > 0 && p[n - 1] == c)
+                     {
                         break;
+                     }
                   }
                   else
                   {
@@ -2433,7 +2672,9 @@ error_t tlsRead(TlsContext *context, void *data, size_t size, size_t *received,
                      //The TLS_FLAG_WAIT_ALL flag causes the function to return
                      //only when the requested number of bytes have been read
                      if((flags & TLS_FLAG_WAIT_ALL) == 0)
+                     {
                         break;
+                     }
                   }
 
                   //Advance data pointer
@@ -2524,7 +2765,9 @@ error_t tlsRead(TlsContext *context, void *data, size_t size, size_t *received,
 
       //Any error to report?
       if(error)
+      {
          break;
+      }
    }
 
    //Return status code
@@ -2640,11 +2883,15 @@ error_t tlsShutdownEx(TlsContext *context, bool_t waitForCloseNotify)
 
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Ensure the send/receive functions are properly registered
    if(context->socketSendCallback == NULL || context->socketReceiveCallback == NULL)
+   {
       return ERROR_NOT_CONFIGURED;
+   }
 
 #if (DTLS_SUPPORT == ENABLED)
    //Save current time
@@ -2770,7 +3017,9 @@ error_t tlsShutdownEx(TlsContext *context, bool_t waitForCloseNotify)
 
       //Any error to report?
       if(error)
+      {
          break;
+      }
    }
 
    //Return status code
@@ -2829,21 +3078,21 @@ void tlsFree(TlsContext *context)
       //Release cookie
       if(context->cookie != NULL)
       {
-         osMemset(context->cookie, 0, context->cookieLen);
+         cryptoZeroizeMem(context->cookie, context->cookieLen);
          tlsFreeMem(context->cookie);
       }
 
       //Release send buffer
       if(context->txBuffer != NULL)
       {
-         osMemset(context->txBuffer, 0, context->txBufferSize);
+         cryptoZeroizeMem(context->txBuffer, context->txBufferSize);
          tlsFreeMem(context->txBuffer);
       }
 
       //Release receive buffer
       if(context->rxBuffer != NULL)
       {
-         osMemset(context->rxBuffer, 0, context->rxBufferSize);
+         cryptoZeroizeMem(context->rxBuffer, context->rxBufferSize);
          tlsFreeMem(context->rxBuffer);
       }
 
@@ -2853,7 +3102,7 @@ void tlsFree(TlsContext *context)
       //Release session ticket
       if(context->ticket != NULL)
       {
-         osMemset(context->ticket, 0, context->ticketLen);
+         cryptoZeroizeMem(context->ticket, context->ticketLen);
          tlsFreeMem(context->ticket);
       }
 
@@ -2910,7 +3159,7 @@ void tlsFree(TlsContext *context)
       //Release the pre-shared key
       if(context->psk != NULL)
       {
-         osMemset(context->psk, 0, context->pskLen);
+         cryptoZeroizeMem(context->psk, context->pskLen);
          tlsFreeMem(context->psk);
       }
 
@@ -2968,7 +3217,7 @@ void tlsFree(TlsContext *context)
 #endif
 
       //Clear the TLS context before freeing memory
-      osMemset(context, 0, sizeof(TlsContext));
+      cryptoZeroizeMem(context, sizeof(TlsContext));
       tlsFreeMem(context);
    }
 }
@@ -2984,7 +3233,9 @@ error_t tlsInitSessionState(TlsSessionState *session)
 {
    //Make sure the session state is valid
    if(session == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Erase session state
    osMemset(session, 0, sizeof(TlsSessionState));
@@ -3008,7 +3259,9 @@ error_t tlsSaveSessionState(const TlsContext *context,
 
    //Check parameters
    if(context == NULL || session == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Release previous session state
    tlsFreeSessionState(session);
@@ -3075,7 +3328,9 @@ error_t tlsRestoreSessionState(TlsContext *context,
 {
    //Check parameters
    if(context == NULL || session == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //TLS 1.0, TLS 1.1 or TLS 1.2 currently selected?
@@ -3131,7 +3386,7 @@ void tlsFreeSessionState(TlsSessionState *session)
       //Release session ticket
       if(session->ticket != NULL)
       {
-         osMemset(session->ticket, 0, session->ticketLen);
+         cryptoZeroizeMem(session->ticket, session->ticketLen);
          tlsFreeMem(session->ticket);
       }
 
@@ -3152,7 +3407,7 @@ void tlsFreeSessionState(TlsSessionState *session)
 #endif
 
       //Erase session state
-      osMemset(session, 0, sizeof(TlsSessionState));
+      cryptoZeroizeMem(session, sizeof(TlsSessionState));
    }
 }
 

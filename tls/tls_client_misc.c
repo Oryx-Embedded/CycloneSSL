@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -386,24 +386,35 @@ error_t tlsFormatTrustedAuthorities(TlsContext *context, uint8_t *p,
                //Valid CA certificate?
                if(!error)
                {
-                  //Point to the CA root key identifier
-                  trustedAuthority = (TlsTrustedAuthority *) p;
+                  //Limit the size of the list
+                  if((n + sizeof(TlsTrustedAuthority) + 2 +
+                     certInfo->tbsCert.subject.raw.length) <=
+                     TLS_MAX_CERT_AUTHORITIES_SIZE)
+                  {
+                     //Point to the CA root key identifier
+                     trustedAuthority = (TlsTrustedAuthority *) p;
 
-                  //The CA root key is identified via a distinguished name
-                  trustedAuthority->type = TLS_CA_ROOT_KEY_ID_TYPE_X509_NAME;
+                     //The CA root key is identified via a distinguished name
+                     trustedAuthority->type = TLS_CA_ROOT_KEY_ID_TYPE_X509_NAME;
 
-                  //Each distinguished name is preceded by a 2-byte length field
-                  STORE16BE(certInfo->tbsCert.subject.raw.length,
-                     trustedAuthority->identifier);
+                     //Each distinguished name is preceded by a 2-byte length
+                     //field
+                     STORE16BE(certInfo->tbsCert.subject.raw.length,
+                        trustedAuthority->identifier);
 
-                  //The distinguished name shall be DER-encoded
-                  osMemcpy(trustedAuthority->identifier + 2,
-                     certInfo->tbsCert.subject.raw.value,
-                     certInfo->tbsCert.subject.raw.length);
+                     //The distinguished name shall be DER-encoded
+                     osMemcpy(trustedAuthority->identifier + 2,
+                        certInfo->tbsCert.subject.raw.value,
+                        certInfo->tbsCert.subject.raw.length);
 
-                  //Advance write pointer
-                  p += sizeof(TlsTrustedAuthority) + 2 + certInfo->tbsCert.subject.raw.length;
-                  n += sizeof(TlsTrustedAuthority) + 2 + certInfo->tbsCert.subject.raw.length;
+                     //Advance write pointer
+                     p += sizeof(TlsTrustedAuthority) + 2 + certInfo->tbsCert.subject.raw.length;
+                     n += sizeof(TlsTrustedAuthority) + 2 + certInfo->tbsCert.subject.raw.length;
+                  }
+                  else
+                  {
+                     //The distinguished names that do not fit are omitted
+                  }
                }
                else
                {
@@ -537,14 +548,18 @@ __weak_func error_t tlsFormatClientKeyParams(TlsContext *context, uint8_t *p,
          context->premasterSecret + 2, 46);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Encrypt the premaster secret using the server public key
       error = rsaesPkcs1v15Encrypt(context->prngAlgo, context->prngContext,
          &context->peerRsaPublicKey, context->premasterSecret, 48, p + 2, &n);
       //RSA encryption failed?
       if(error)
+      {
          return error;
+      }
 
       //The RSA-encrypted premaster secret in a ClientKeyExchange is preceded by
       //two length bytes
@@ -568,13 +583,17 @@ __weak_func error_t tlsFormatClientKeyParams(TlsContext *context, uint8_t *p,
          context->prngAlgo, context->prngContext);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Encode the client's public value to an opaque vector
       error = tlsWriteMpi(&context->dhContext.ya, p, &n);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Total number of bytes that have been written
       *written = n;
@@ -585,14 +604,18 @@ __weak_func error_t tlsFormatClientKeyParams(TlsContext *context, uint8_t *p,
          &context->premasterSecretLen);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Leading bytes of Z that contain all zero bits are stripped before
       //it is used as the premaster secret (RFC 4346, section 8.2.1)
       for(n = 0; n < context->premasterSecretLen; n++)
       {
          if(context->premasterSecret[n] != 0x00)
+         {
             break;
+         }
       }
 
       //Any leading zero bytes?
@@ -638,7 +661,9 @@ __weak_func error_t tlsFormatClientKeyParams(TlsContext *context, uint8_t *p,
             context->prngAlgo, context->prngContext);
          //Any error to report?
          if(error)
+         {
             return error;
+         }
 
          //Calculate the negotiated key Z
          error = ecdhComputeSharedSecret(&context->ecdhContext,
@@ -646,7 +671,9 @@ __weak_func error_t tlsFormatClientKeyParams(TlsContext *context, uint8_t *p,
             &context->premasterSecretLen);
          //Any error to report?
          if(error)
+         {
             return error;
+         }
       }
       else if(error != NO_ERROR)
       {
@@ -658,7 +685,9 @@ __weak_func error_t tlsFormatClientKeyParams(TlsContext *context, uint8_t *p,
       error = tlsWriteEcPoint(&context->ecdhContext.da.q, p, &n);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Total number of bytes that have been written
       *written = n;
@@ -704,9 +733,14 @@ error_t tlsParsePskIdentityHint(TlsContext *context, const uint8_t *p,
 
    //Malformed ServerKeyExchange message?
    if(length < sizeof(TlsPskIdentityHint))
+   {
       return ERROR_DECODING_FAILED;
+   }
+
    if(length < (sizeof(TlsPskIdentityHint) + ntohs(pskIdentityHint->length)))
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //Retrieve the length of the PSK identity hint
    n = ntohs(pskIdentityHint->length);
@@ -723,7 +757,9 @@ error_t tlsParsePskIdentityHint(TlsContext *context, const uint8_t *p,
       error = context->pskCallback(context, pskIdentityHint->value, n);
       //Any error to report?
       if(error)
+      {
          return ERROR_UNKNOWN_IDENTITY;
+      }
    }
 #endif
 
@@ -991,9 +1027,14 @@ error_t tlsVerifyServerKeySignature(TlsContext *context,
 
    //Check the length of the digitally-signed element
    if(length < sizeof(TlsDigitalSignature))
+   {
       return ERROR_DECODING_FAILED;
+   }
+
    if(length < (sizeof(TlsDigitalSignature) + ntohs(signature->length)))
+   {
       return ERROR_DECODING_FAILED;
+   }
 
 #if (TLS_RSA_SIGN_SUPPORT == ENABLED)
    //RSA signature algorithm?
@@ -1124,6 +1165,11 @@ error_t tlsVerifyServerKeySignature(TlsContext *context,
          //Release previously allocated memory
          tlsFreeMem(sha1Context);
       }
+      else
+      {
+         //Failed to allocate memory
+         error = ERROR_OUT_OF_MEMORY;
+      }
 
       //Check status code
       if(!error)
@@ -1177,9 +1223,14 @@ __weak_func error_t tls12VerifyServerKeySignature(TlsContext *context,
 
    //Check the length of the digitally-signed element
    if(length < sizeof(Tls12DigitalSignature))
+   {
       return ERROR_DECODING_FAILED;
+   }
+
    if(length < (sizeof(Tls12DigitalSignature) + ntohs(signature->length)))
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //The algorithm field specifies the signature scheme
    signScheme = (TlsSignatureScheme) ntohs(signature->algorithm);
@@ -1188,7 +1239,9 @@ __weak_func error_t tls12VerifyServerKeySignature(TlsContext *context,
    //algorithm and hash algorithm must be a pair listed in that extension (refer
    //to RFC 5246, section 7.4.3)
    if(!tlsIsSignAlgoSupported(context, signScheme))
+   {
       return ERROR_ILLEGAL_PARAMETER;
+   }
 
 #if (TLS_RSA_SIGN_SUPPORT == ENABLED || TLS_RSA_PSS_SIGN_SUPPORT == ENABLED || \
    TLS_DSA_SIGN_SUPPORT == ENABLED || TLS_ECDSA_SIGN_SUPPORT == ENABLED)
@@ -1438,7 +1491,9 @@ error_t tlsSelectClientVersion(TlsContext *context,
       //not request in the associated ClientHello, it must abort the handshake
       //with an unsupported_extension fatal alert
       if(context->versionMax <= TLS_VERSION_1_2)
+      {
          return ERROR_UNSUPPORTED_EXTENSION;
+      }
 
       //DTLS protocol?
       if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_DATAGRAM)
@@ -1446,14 +1501,18 @@ error_t tlsSelectClientVersion(TlsContext *context,
          //The legacy_version field must be set to {254, 253}, which is the
          //version number for DTLS 1.2
          if(ntohs(message->serverVersion) != DTLS_VERSION_1_2)
+         {
             return ERROR_VERSION_NOT_SUPPORTED;
+         }
       }
       else
       {
          //The legacy_version field must be set to 0x0303, which is the version
          //number for TLS 1.2
          if(ntohs(message->serverVersion) != TLS_VERSION_1_2)
+         {
             return ERROR_VERSION_NOT_SUPPORTED;
+         }
       }
 
       //If this extension is present, clients must ignore the legacy_version
@@ -1469,7 +1528,9 @@ error_t tlsSelectClientVersion(TlsContext *context,
          //1.3, the client must abort the handshake with an illegal_parameter
          //alert (refer to RFC 8446, section 4.2.1)
          if(selectedVersion >= DTLS_VERSION_1_2)
+         {
             return ERROR_ILLEGAL_PARAMETER;
+         }
 
          //Check whether the ServerHello message is received in response to an
          //updated ClientHello?
@@ -1480,7 +1541,9 @@ error_t tlsSelectClientVersion(TlsContext *context,
             //client must abort the handshake with an illegal_parameter alert if
             //the value changes (refer to RFC 8446, section 4.1.4)
             if(selectedVersion != dtlsTranslateVersion(context->version))
+            {
                return ERROR_ILLEGAL_PARAMETER;
+            }
          }
       }
       else
@@ -1491,7 +1554,9 @@ error_t tlsSelectClientVersion(TlsContext *context,
          //1.3, the client must abort the handshake with an illegal_parameter
          //alert (refer to RFC 8446, section 4.2.1)
          if(selectedVersion <= TLS_VERSION_1_2)
+         {
             return ERROR_ILLEGAL_PARAMETER;
+         }
 
          //Check whether the ServerHello message is received in response to an
          //updated ClientHello?
@@ -1502,7 +1567,9 @@ error_t tlsSelectClientVersion(TlsContext *context,
             //client must abort the handshake with an illegal_parameter alert if
             //the value changes (refer to RFC 8446, section 4.1.4)
             if(selectedVersion != context->version)
+            {
                return ERROR_ILLEGAL_PARAMETER;
+            }
          }
       }
    }
@@ -1520,7 +1587,9 @@ error_t tlsSelectClientVersion(TlsContext *context,
          //A server which negotiates DTLS 1.3 must set the legacy_version field
          //to 0xfefd (DTLS 1.2) and use the SupportedVersions extension instead
          if(selectedVersion < DTLS_VERSION_1_2)
+         {
             return ERROR_ILLEGAL_PARAMETER;
+         }
       }
       else
 #endif
@@ -1529,7 +1598,9 @@ error_t tlsSelectClientVersion(TlsContext *context,
          //A server which negotiates TLS 1.3 must set the legacy_version field
          //to 0x0303 (TLS 1.2) and use the SupportedVersions extension instead
          if(selectedVersion > TLS_VERSION_1_2)
+         {
             return ERROR_ILLEGAL_PARAMETER;
+         }
       }
    }
 
@@ -1550,7 +1621,9 @@ error_t tlsSelectClientVersion(TlsContext *context,
 
    //Specified TLS/DTLS version not supported?
    if(error)
+   {
       return error;
+   }
 
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
    //If the ServerHello indicates TLS 1.1 or below, TLS 1.3 client must and
@@ -1562,7 +1635,9 @@ error_t tlsSelectClientVersion(TlsContext *context,
       //If a match is found, the client must abort the handshake with an
       //illegal_parameter alert
       if(osMemcmp(message->random + 24, tls11DowngradeRandom, 8) == 0)
+      {
          return ERROR_ILLEGAL_PARAMETER;
+      }
    }
 
    //If the ServerHello indicates TLS 1.2 or below, TLS 1.3 client must check
@@ -1573,7 +1648,9 @@ error_t tlsSelectClientVersion(TlsContext *context,
       //If a match is found, the client must abort the handshake with an
       //illegal_parameter alert
       if(osMemcmp(message->random + 24, tls12DowngradeRandom, 8) == 0)
+      {
          return ERROR_ILLEGAL_PARAMETER;
+      }
    }
 #endif
 

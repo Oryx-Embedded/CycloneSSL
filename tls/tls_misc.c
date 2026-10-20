@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -307,15 +307,49 @@ error_t tlsSelectVersion(TlsContext *context, uint16_t version)
    error_t error;
 
    //Initialize status code
-   error = ERROR_VERSION_NOT_SUPPORTED;
+   error = NO_ERROR;
 
-   //Check TLS version
-   if(version >= context->versionMin && version <= context->versionMax)
+#if (TLS_SECURE_RENEGOTIATION_SUPPORT == ENABLED)
+   //Renegotiation?
+   if(context->clientVerifyDataLen != 0)
    {
-      //Save the TLS protocol version to be used
-      context->version = version;
-      //The specified TLS version is acceptable
-      error = NO_ERROR;
+      //The renegotiated handshake must use the protocol version of the
+      //established connection (refer to RFC 8446, section 4.1.2)
+      if(version != context->version)
+      {
+         error = ERROR_VERSION_NOT_SUPPORTED;
+      }
+   }
+#endif
+
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+   //Updated ClientHello?
+   if(context->entity == TLS_CONNECTION_END_SERVER &&
+      context->state == TLS_STATE_CLIENT_HELLO_2)
+   {
+      //After a HelloRetryRequest, the server must not accept an updated
+      //ClientHello for another protocol version
+      if(version != context->version)
+      {
+         error = ERROR_ILLEGAL_PARAMETER;
+      }
+   }
+#endif
+
+   //Check status code
+   if(!error)
+   {
+      //Check TLS version
+      if(version >= context->versionMin && version <= context->versionMax)
+      {
+         //Save the TLS protocol version to be used
+         context->version = version;
+      }
+      else
+      {
+         //The specified TLS version is not acceptable
+         error = ERROR_VERSION_NOT_SUPPORTED;
+      }
    }
 
    //Return status code
@@ -363,7 +397,9 @@ error_t tlsSelectCipherSuite(TlsContext *context, uint16_t identifier)
       {
          //Compare cipher suite identifiers
          if(context->cipherSuites[i] == identifier)
+         {
             break;
+         }
       }
 
       //Check whether the use of the cipher suite is restricted
@@ -384,6 +420,29 @@ error_t tlsSelectCipherSuite(TlsContext *context, uint16_t identifier)
          cipherSuite = NULL;
       }
    }
+
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+   //Acceptable cipher suite?
+   if(cipherSuite != NULL)
+   {
+      //Server mode?
+      if(context->entity == TLS_CONNECTION_END_SERVER &&
+         context->version == TLS_VERSION_1_3)
+      {
+         //Updated ClientHello?
+         if(context->state == TLS_STATE_CLIENT_HELLO_2)
+         {
+            //Servers must ensure that they negotiate the same cipher suite when
+            //receiving a conformant updated ClientHello (refer to RFC 8446,
+            //section 4.1.4)
+            if(cipherSuite->identifier != context->cipherSuite.identifier)
+            {
+               cipherSuite = NULL;
+            }
+         }
+      }
+   }
+#endif
 
    //Ensure that the selected cipher suite matches all the criteria
    if(cipherSuite != NULL)
@@ -433,15 +492,21 @@ error_t tlsSaveSessionId(const TlsContext *context,
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //Check TLS version
    if(context->version < TLS_VERSION_1_0 || context->version > TLS_VERSION_1_2)
+   {
       return ERROR_INVALID_VERSION;
+   }
 
    //Invalid session identifier?
    if(context->sessionIdLen == 0)
+   {
       return ERROR_INVALID_TICKET;
+   }
 
    //Invalid session parameters?
    if(context->cipherSuite.identifier == 0)
+   {
       return ERROR_INVALID_SESSION;
+   }
 
    //Save current time
    session->timestamp = osGetSystemTime();
@@ -476,7 +541,9 @@ error_t tlsSaveSessionId(const TlsContext *context,
       session->serverName = tlsAllocMem(n + 1);
       //Failed to allocate memory?
       if(session->serverName == NULL)
+      {
          return ERROR_OUT_OF_MEMORY;
+      }
 
       //Copy the server name
       osStrcpy(session->serverName, context->serverName);
@@ -505,15 +572,21 @@ error_t tlsSaveSessionTicket(const TlsContext *context,
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //Check TLS version
    if(context->version < TLS_VERSION_1_0 || context->version > TLS_VERSION_1_2)
+   {
       return ERROR_INVALID_VERSION;
+   }
 
    //Invalid session ticket?
    if(context->ticket == NULL || context->ticketLen == 0)
+   {
       return ERROR_INVALID_TICKET;
+   }
 
    //Invalid session parameters?
    if(context->cipherSuite.identifier == 0)
+   {
       return ERROR_INVALID_SESSION;
+   }
 
    //Save session parameters
    session->version = context->version;
@@ -523,7 +596,9 @@ error_t tlsSaveSessionTicket(const TlsContext *context,
    session->ticket = tlsAllocMem(context->ticketLen);
    //Failed to allocate memory?
    if(session->ticket == NULL)
+   {
       return ERROR_OUT_OF_MEMORY;
+   }
 
    //Copy session ticket
    osMemcpy(session->ticket, context->ticket, context->ticketLen);
@@ -559,15 +634,21 @@ error_t tlsRestoreSessionId(TlsContext *context,
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //Check TLS version
    if(session->version < TLS_VERSION_1_0 || session->version > TLS_VERSION_1_2)
+   {
       return ERROR_INVALID_VERSION;
+   }
 
    //Invalid session identifier?
    if(session->sessionIdLen == 0)
+   {
       return ERROR_INVALID_SESSION;
+   }
 
    //Invalid session parameters?
    if(session->cipherSuite == 0)
+   {
       return ERROR_INVALID_SESSION;
+   }
 
    //Restore session parameters
    context->version = session->version;
@@ -608,15 +689,21 @@ error_t tlsRestoreSessionTicket(TlsContext *context,
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    //Check TLS version
    if(session->version < TLS_VERSION_1_0 || session->version > TLS_VERSION_1_2)
+   {
       return ERROR_INVALID_VERSION;
+   }
 
    //Invalid session ticket?
    if(session->ticket == NULL || session->ticketLen == 0)
+   {
       return ERROR_INVALID_TICKET;
+   }
 
    //Invalid session parameters?
    if(session->cipherSuite == 0)
+   {
       return ERROR_INVALID_SESSION;
+   }
 
    //Restore session parameters
    context->version = session->version;
@@ -626,7 +713,7 @@ error_t tlsRestoreSessionTicket(TlsContext *context,
    //Release existing session ticket, if any
    if(context->ticket != NULL)
    {
-      osMemset(context->ticket, 0, context->ticketLen);
+      cryptoZeroizeMem(context->ticket, context->ticketLen);
       tlsFreeMem(context->ticket);
       context->ticket = NULL;
       context->ticketLen = 0;
@@ -636,7 +723,9 @@ error_t tlsRestoreSessionTicket(TlsContext *context,
    context->ticket = tlsAllocMem(session->ticketLen);
    //Failed to allocate memory?
    if(context->ticket == NULL)
+   {
       return ERROR_OUT_OF_MEMORY;
+   }
 
    //Copy session ticket
    osMemcpy(context->ticket, session->ticket, session->ticketLen);
@@ -731,7 +820,9 @@ __weak_func error_t tlsInitEncryptionEngine(TlsContext *context,
    //Implementations must not allow the epoch to wrap (refer to RFC 6347,
    //section 4.1)
    if(encryptionEngine->epoch == 0)
+   {
       return ERROR_FAILURE;
+   }
 
    //Sequence numbers are maintained separately for each epoch, with each
    //sequence number initially being 0 for each epoch
@@ -782,7 +873,8 @@ __weak_func error_t tlsInitEncryptionEngine(TlsContext *context,
    //Initialize cipher context
    encryptionEngine->cipherContext = NULL;
 
-#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_NULL_CIPHER_SUPPORT == ENABLED || TLS_STREAM_CIPHER_SUPPORT == ENABLED || \
+   TLS_CBC_CIPHER_SUPPORT == ENABLED)
    //Initialize HMAC context
    encryptionEngine->hmacContext = &context->hmacContext;
 #endif
@@ -960,6 +1052,8 @@ __weak_func error_t tlsInitEncryptionEngine(TlsContext *context,
          //Check cipher mode of operation
          if(encryptionEngine->cipherMode == CIPHER_MODE_CCM ||
             encryptionEngine->cipherMode == CIPHER_MODE_GCM ||
+            encryptionEngine->cipherMode == CIPHER_MODE_AEGIS128L ||
+            encryptionEngine->cipherMode == CIPHER_MODE_AEGIS256 ||
             encryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
          {
             const HashAlgo *hashAlgo;
@@ -1165,13 +1259,18 @@ void tlsFreeEncryptionEngine(TlsEncryptionEngine *encryptionEngine)
    if(encryptionEngine->gcmContext != NULL)
    {
       //Erase GCM context
-      osMemset(encryptionEngine->gcmContext, 0, sizeof(GcmContext));
+      gcmDeinit(encryptionEngine->gcmContext);
 
       //Release memory
       tlsFreeMem(encryptionEngine->gcmContext);
       encryptionEngine->gcmContext = NULL;
    }
 #endif
+
+   //Erase key material
+   cryptoZeroizeMem(encryptionEngine->macKey, sizeof(encryptionEngine->macKey));
+   cryptoZeroizeMem(encryptionEngine->encKey, sizeof(encryptionEngine->encKey));
+   cryptoZeroizeMem(encryptionEngine->iv, sizeof(encryptionEngine->iv));
 
 #if (DTLS_SUPPORT == ENABLED && TLS_MAX_VERSION >= TLS_VERSION_1_3)
    //Valid sequence number encryption context?
@@ -1184,6 +1283,9 @@ void tlsFreeEncryptionEngine(TlsEncryptionEngine *encryptionEngine)
       tlsFreeMem(encryptionEngine->snCipherContext);
       encryptionEngine->snCipherContext = NULL;
    }
+
+   //Erase sequence number encryption key
+   cryptoZeroizeMem(encryptionEngine->snKey, sizeof(encryptionEngine->snKey));
 #endif
 
    //Reset encryption parameters
@@ -1219,7 +1321,9 @@ error_t tlsWriteMpi(const Mpi *a, uint8_t *data, size_t *length)
    error = mpiExport(a, data + 2, n, MPI_FORMAT_BIG_ENDIAN);
    //Conversion failed?
    if(error)
+   {
       return error;
+   }
 
    //Return the total number of bytes that have been written
    *length = n + 2;
@@ -1245,24 +1349,32 @@ error_t tlsReadMpi(Mpi *a, const uint8_t *data, size_t size, size_t *length)
 
    //Buffer underrun?
    if(size < 2)
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //Decode the length field
    n = LOAD16BE(data);
 
    //Invalid length?
    if(n < 1)
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //Buffer underrun?
    if(size < (n + 2))
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //Convert the octet string to a multiple precision integer
    error = mpiImport(a, data + 2, n, MPI_FORMAT_BIG_ENDIAN);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Return the total number of bytes that have been read
    *length = n + 2;
@@ -1292,7 +1404,9 @@ error_t tlsWriteEcPoint(const EcPublicKey *publicKey, uint8_t *data,
       EC_PUBLIC_KEY_FORMAT_X963);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Set the length of the opaque vector
    data[0] = (uint8_t) (*length);
@@ -1329,25 +1443,33 @@ error_t tlsReadEcPoint(EcPublicKey *publicKey, const EcCurve *curve,
 
    //Buffer underrun?
    if(size < 1)
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //The EC point representation is preceded by a length field
    n = data[0];
 
    //Invalid EC point representation?
    if(n == 0)
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //Buffer underrun?
    if(size < (n + 1))
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //Convert the octet string to an EC point
    error = ecImportPublicKey(publicKey, curve, data + 1, n,
       EC_PUBLIC_KEY_FORMAT_X963);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Return the total number of bytes that have been read
    *length = n + 1;
@@ -1627,7 +1749,9 @@ const EcCurve *tlsGetCurve(TlsContext *context, uint16_t namedCurve)
       {
          //Compare named groups
          if(context->supportedGroups[i] == namedCurve)
+         {
             break;
+         }
       }
 
       //Check whether the use of the elliptic curve is restricted
@@ -1820,7 +1944,9 @@ size_t tlsComputeEncryptionOverhead(TlsEncryptionEngine *encryptionEngine,
       //Consider the explicit nonce and the authentication tag
       n += encryptionEngine->recordIvLen + encryptionEngine->authTagLen;
    }
-   else if(encryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
+   else if(encryptionEngine->cipherMode == CIPHER_MODE_AEGIS128L ||
+      encryptionEngine->cipherMode == CIPHER_MODE_AEGIS256 ||
+      encryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
    {
       //Consider the authentication tag only
       n += encryptionEngine->authTagLen;

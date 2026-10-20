@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 #ifndef _TLS_QUIC_H

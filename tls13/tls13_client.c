@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -164,20 +164,23 @@ error_t tls13ParseHelloRetryRequest(TlsContext *context,
 
    //Check TLS version
    if(context->versionMax != TLS_VERSION_1_3)
+   {
       return ERROR_UNEXPECTED_MESSAGE;
+   }
 
    //If a client receives a second HelloRetryRequest in the same connection,
    //it must abort the handshake with an unexpected_message alert
    if(context->state != TLS_STATE_SERVER_HELLO &&
       context->state != TLS_STATE_SERVER_HELLO_3)
    {
-      //Report an error
       return ERROR_UNEXPECTED_MESSAGE;
    }
 
    //Check the length of the ServerHello message
    if(length < sizeof(TlsServerHello))
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //Point to the session ID
    p = message->sessionId;
@@ -186,9 +189,14 @@ error_t tls13ParseHelloRetryRequest(TlsContext *context,
 
    //Check the length of the session ID
    if(message->sessionIdLen > length)
+   {
       return ERROR_DECODING_FAILED;
+   }
+
    if(message->sessionIdLen > 32)
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //Point to the next field
    p += message->sessionIdLen;
@@ -197,7 +205,9 @@ error_t tls13ParseHelloRetryRequest(TlsContext *context,
 
    //Malformed ServerHello message?
    if(length < sizeof(uint16_t))
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //Get the negotiated cipher suite
    cipherSuite = LOAD16BE(p);
@@ -208,7 +218,9 @@ error_t tls13ParseHelloRetryRequest(TlsContext *context,
 
    //Malformed ServerHello message?
    if(length < sizeof(uint8_t))
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //Get the value of the legacy_compression_method field
    compressMethod = *p;
@@ -243,26 +255,32 @@ error_t tls13ParseHelloRetryRequest(TlsContext *context,
       //The legacy_version field must be set to {254, 253}, which is the
       //version number for DTLS 1.2
       if(ntohs(message->serverVersion) != DTLS_VERSION_1_2)
+      {
          return ERROR_VERSION_NOT_SUPPORTED;
+      }
 
       //DTLS 1.3 clients must abort the handshake with an illegal_parameter
       //alert if the legacy_session_id_echo field is not empty
       if(message->sessionIdLen != 0)
+      {
          return ERROR_ILLEGAL_PARAMETER;
+      }
    }
    else
    {
       //The legacy_version field must be set to 0x0303, which is the version
       //number for TLS 1.2
       if(ntohs(message->serverVersion) != TLS_VERSION_1_2)
+      {
          return ERROR_VERSION_NOT_SUPPORTED;
+      }
 
       //A client which receives a legacy_session_id_echo field that does not
       //match what it sent in the ClientHello must abort the handshake with an
       //illegal_parameter alert (RFC 8446, section 4.1.4)
       if(message->sessionIdLen != context->sessionIdLen ||
          osMemcmp(message->sessionId, context->sessionId,
-         message->sessionIdLen))
+         message->sessionIdLen) != 0)
       {
          return ERROR_ILLEGAL_PARAMETER;
       }
@@ -271,18 +289,24 @@ error_t tls13ParseHelloRetryRequest(TlsContext *context,
    //Upon receipt of a HelloRetryRequest, the client must check that the
    //legacy_compression_method is 0
    if(compressMethod != TLS_COMPRESSION_METHOD_NULL)
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //Parse the list of extensions offered by the server
    error = tlsParseHelloExtensions(TLS_TYPE_HELLO_RETRY_REQUEST, p, length,
       &extensions);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //The HelloRetryRequest message must contain a SupportedVersions extension
    if(extensions.selectedVersion == NULL)
+   {
       return ERROR_VERSION_NOT_SUPPORTED;
+   }
 
    //TLS protocol?
    if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM ||
@@ -296,7 +320,9 @@ error_t tls13ParseHelloRetryRequest(TlsContext *context,
       error = tlsFormatInitialClientHello(context);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
    }
 
    //The SupportedVersions extension contains the selected version
@@ -304,26 +330,34 @@ error_t tls13ParseHelloRetryRequest(TlsContext *context,
       extensions.selectedVersion);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Check the list of extensions offered by the server
    error = tlsCheckHelloExtensions(TLS_TYPE_HELLO_RETRY_REQUEST,
       context->version, &extensions);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Set cipher suite
    error = tlsSelectCipherSuite(context, cipherSuite);
    //Specified cipher suite not supported?
    if(error)
+   {
       return error;
+   }
 
    //Initialize handshake message hashing
    error = tlsInitTranscriptHash(context);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
 #if (DTLS_SUPPORT == ENABLED)
    //DTLS protocol?
@@ -340,27 +374,35 @@ error_t tls13ParseHelloRetryRequest(TlsContext *context,
    error = tls13DigestClientHello1(context);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //When sending a HelloRetryRequest, the server may provide a Cookie
    //extension to the client
    error = tls13ParseServerCookieExtension(context, extensions.cookie);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //The KeyShare extension contains the mutually supported group the server
    //intends to negotiate
    error = tls13ParseSelectedGroupExtension(context, extensions.selectedGroup);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Point to the cipher suite hash algorithm
    hashAlgo = context->cipherSuite.prfHashAlgo;
    //Make sure the hash algorithm is valid
    if(hashAlgo == NULL)
+   {
       return ERROR_FAILURE;
+   }
 
    //In addition, in its updated ClientHello, the client should not offer any
    //pre-shared keys associated with a hash other than that of the selected
@@ -398,14 +440,15 @@ error_t tls13ParseHelloRetryRequest(TlsContext *context,
    //HelloRetryRequest would not result in any change in the ClientHello
    if(context->cookieLen == 0 && context->namedGroup == context->preferredGroup)
    {
-      //Report an error
       return ERROR_ILLEGAL_PARAMETER;
    }
 
    //Another handshake message cannot be packed in the same record as the
    //HelloRetryRequest
    if(context->rxBufferLen != 0)
+   {
       return ERROR_UNEXPECTED_MESSAGE;
+   }
 
 #if (TLS13_MIDDLEBOX_COMPAT_SUPPORT == ENABLED)
    //The middlebox compatibility mode improves the chance of successfully
@@ -454,29 +497,39 @@ error_t tls13ParseEncryptedExtensions(TlsContext *context,
 
    //Check TLS version
    if(context->version != TLS_VERSION_1_3)
+   {
       return ERROR_UNEXPECTED_MESSAGE;
+   }
 
    //Check current state
    if(context->state != TLS_STATE_ENCRYPTED_EXTENSIONS)
+   {
       return ERROR_UNEXPECTED_MESSAGE;
+   }
 
    //Check the length of the EncryptedExtensions message
    if(length < sizeof(Tls13EncryptedExtensions))
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //Parse the list of extensions offered by the server
    error = tlsParseHelloExtensions(TLS_TYPE_ENCRYPTED_EXTENSIONS,
       (uint8_t *) message, length, &extensions);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Check the list of extensions offered by the server
    error = tlsCheckHelloExtensions(TLS_TYPE_ENCRYPTED_EXTENSIONS,
       context->version, &extensions);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
 #if (TLS_SNI_SUPPORT == ENABLED)
    //When the server includes a ServerName extension, the data field of
@@ -484,7 +537,9 @@ error_t tls13ParseEncryptedExtensions(TlsContext *context,
    error = tlsParseServerSniExtension(context, extensions.serverNameList);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 #endif
 
 #if (TLS_MAX_FRAG_LEN_SUPPORT == ENABLED && TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)
@@ -492,7 +547,9 @@ error_t tls13ParseEncryptedExtensions(TlsContext *context,
    //extensions as a fatal error, and it should generate an illegal_parameter
    //alert (refer to RFC 8449, section 5)
    if(extensions.maxFragLen != NULL && extensions.recordSizeLimit != NULL)
+   {
       return ERROR_ILLEGAL_PARAMETER;
+   }
 #endif
 
 #if (TLS_MAX_FRAG_LEN_SUPPORT == ENABLED)
@@ -502,7 +559,9 @@ error_t tls13ParseEncryptedExtensions(TlsContext *context,
    error = tlsParseServerMaxFragLenExtension(context, extensions.maxFragLen);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 #endif
 
 #if (TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)
@@ -512,7 +571,9 @@ error_t tls13ParseEncryptedExtensions(TlsContext *context,
       extensions.recordSizeLimit);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 #endif
 
 #if (TLS_ALPN_SUPPORT == ENABLED)
@@ -520,7 +581,9 @@ error_t tls13ParseEncryptedExtensions(TlsContext *context,
    error = tlsParseServerAlpnExtension(context, extensions.protocolNameList);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 #endif
 
 #if (TLS_RAW_PUBLIC_KEY_SUPPORT == ENABLED)
@@ -528,13 +591,17 @@ error_t tls13ParseEncryptedExtensions(TlsContext *context,
    error = tlsParseClientCertTypeExtension(context, extensions.clientCertType);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Parse ServerCertType extension
    error = tlsParseServerCertTypeExtension(context, extensions.serverCertType);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 #endif
 
 #if (TLS13_EARLY_DATA_SUPPORT == ENABLED)
@@ -543,7 +610,9 @@ error_t tls13ParseEncryptedExtensions(TlsContext *context,
       TLS_TYPE_ENCRYPTED_EXTENSIONS, extensions.earlyDataIndication);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Check whether the server has accepted the early data
    if(context->earlyDataExtReceived)
@@ -579,7 +648,9 @@ error_t tls13ParseEncryptedExtensions(TlsContext *context,
          context->clientEarlyTrafficSecret);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Restore sequence number
       context->encryptionEngine[0].seqNum = context->earlyDataSeqNum;
@@ -592,13 +663,16 @@ error_t tls13ParseEncryptedExtensions(TlsContext *context,
       extensions.quicTransportParams);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 #endif
 
    //PSK key exchange method?
    if(context->keyExchMethod == TLS13_KEY_EXCH_PSK ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_DHE ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE ||
+      context->keyExchMethod == TLS13_KEY_EXCH_PSK_MLKEM ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_HYBRID)
    {
       //As the server is authenticating via a PSK, it does not send a
@@ -644,7 +718,9 @@ error_t tls13ParseNewSessionTicket(TlsContext *context,
 
    //Check TLS version
    if(context->version != TLS_VERSION_1_3)
+   {
       return ERROR_UNEXPECTED_MESSAGE;
+   }
 
    //Check current state
    if(context->state != TLS_STATE_APPLICATION_DATA &&
@@ -652,13 +728,14 @@ error_t tls13ParseNewSessionTicket(TlsContext *context,
       context->state != TLS_STATE_KEY_UPDATE_ACK &&
       context->state != TLS_STATE_CLOSING)
    {
-      //Report an error
       return ERROR_UNEXPECTED_MESSAGE;
    }
 
    //Check the length of the NewSessionTicket message
    if(length < sizeof(Tls13NewSessionTicket))
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //Point to the ticket nonce
    p = message->ticketNonce;
@@ -667,7 +744,9 @@ error_t tls13ParseNewSessionTicket(TlsContext *context,
 
    //Malformed NewSessionTicket message?
    if(length < message->ticketNonceLen)
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //Point to the next field
    p += message->ticketNonceLen;
@@ -676,7 +755,9 @@ error_t tls13ParseNewSessionTicket(TlsContext *context,
 
    //Malformed NewSessionTicket message?
    if(length < sizeof(Tls13Ticket))
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //Point to the session ticket
    ticket = (Tls13Ticket *) p;
@@ -685,11 +766,15 @@ error_t tls13ParseNewSessionTicket(TlsContext *context,
 
    //Empty tickets are not allowed
    if(n == 0)
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //Malformed NewSessionTicket message?
    if(length < (sizeof(Tls13Ticket) + n))
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //Point to the next field
    p += sizeof(Tls13Ticket) + n;
@@ -701,14 +786,18 @@ error_t tls13ParseNewSessionTicket(TlsContext *context,
       &extensions);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Check the list of extensions offered by the server
    error = tlsCheckHelloExtensions(TLS_TYPE_NEW_SESSION_TICKET,
       context->version, &extensions);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //A ticket_lifetime value of zero indicates that the ticket should be
    //discarded immediately
@@ -721,7 +810,7 @@ error_t tls13ParseNewSessionTicket(TlsContext *context,
          if(context->ticket != NULL)
          {
             //Release memory
-            osMemset(context->ticket, 0, context->ticketLen);
+            cryptoZeroizeMem(context->ticket, context->ticketLen);
             tlsFreeMem(context->ticket);
             context->ticket = NULL;
             context->ticketLen = 0;
@@ -731,7 +820,9 @@ error_t tls13ParseNewSessionTicket(TlsContext *context,
          context->ticket = tlsAllocMem(n);
          //Failed to allocate memory?
          if(context->ticket == NULL)
+         {
             return ERROR_OUT_OF_MEMORY;
+         }
 
          //Copy session ticket
          osMemcpy(context->ticket, ticket->data, n);
@@ -758,13 +849,17 @@ error_t tls13ParseNewSessionTicket(TlsContext *context,
             TLS_TYPE_NEW_SESSION_TICKET, extensions.earlyDataIndication);
          //Any error to report?
          if(error)
+         {
             return error;
+         }
 
          //The hash function used by HKDF is the cipher suite hash algorithm
          hashAlgo = context->cipherSuite.prfHashAlgo;
          //Make sure the hash algorithm is valid
          if(hashAlgo == NULL)
+         {
             return ERROR_FAILURE;
+         }
 
          //Calculate the PSK associated with the ticket
          error = tls13HkdfExpandLabel(context->transportProtocol, hashAlgo,
@@ -773,7 +868,9 @@ error_t tls13ParseNewSessionTicket(TlsContext *context,
             hashAlgo->digestSize);
          //Any error to report?
          if(error)
+         {
             return error;
+         }
 
          //Set the length of the PSK associated with the ticket
          context->ticketPskLen = hashAlgo->digestSize;

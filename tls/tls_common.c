@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -515,11 +515,26 @@ error_t tlsSendAlert(TlsContext *context, uint8_t level, uint8_t description)
    size_t length;
    TlsAlert *message;
 
-   //Point to the buffer where to format the message
-   message = (TlsAlert *) (context->txBuffer + context->txBufferLen);
+   //Initialize status code
+   error = NO_ERROR;
 
-   //Format Alert message
-   error = tlsFormatAlert(context, level, description, message, &length);
+   //TLS protocol?
+   if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM ||
+      context->transportProtocol == TLS_TRANSPORT_PROTOCOL_EAP)
+   {
+      //Flush send buffer
+      error = tlsWriteProtocolData(context, NULL, 0, TLS_TYPE_NONE);
+   }
+
+   //Check status code
+   if(!error)
+   {
+      //Point to the buffer where to format the message
+      message = (TlsAlert *) (context->txBuffer + context->txBufferLen);
+
+      //Format Alert message
+      error = tlsFormatAlert(context, level, description, message, &length);
+   }
 
    //Check status code
    if(!error)
@@ -651,6 +666,7 @@ error_t tlsFormatCertificate(TlsContext *context, TlsCertificate *message,
       else
       {
          //In the case of server authentication, this field shall be zero length
+         //(refer to RFC 8446, section 4.4.2)
          certRequestContext->length = 0;
       }
 
@@ -969,16 +985,26 @@ error_t tlsFormatCertAuthorities(TlsContext *context, uint8_t *p,
                //Valid CA certificate?
                if(!error)
                {
-                  //Each distinguished name is preceded by a 2-byte length field
-                  STORE16BE(certInfo->tbsCert.subject.raw.length, p);
+                  //Limit the size of the list
+                  if((n + certInfo->tbsCert.subject.raw.length + 2) <=
+                     TLS_MAX_CERT_AUTHORITIES_SIZE)
+                  {
+                     //Each distinguished name is preceded by a 2-byte length
+                     //field
+                     STORE16BE(certInfo->tbsCert.subject.raw.length, p);
 
-                  //The distinguished name shall be DER-encoded
-                  osMemcpy(p + 2, certInfo->tbsCert.subject.raw.value,
-                     certInfo->tbsCert.subject.raw.length);
+                     //The distinguished name shall be DER-encoded
+                     osMemcpy(p + 2, certInfo->tbsCert.subject.raw.value,
+                        certInfo->tbsCert.subject.raw.length);
 
-                  //Advance write pointer
-                  p += certInfo->tbsCert.subject.raw.length + 2;
-                  n += certInfo->tbsCert.subject.raw.length + 2;
+                     //Advance write pointer
+                     p += certInfo->tbsCert.subject.raw.length + 2;
+                     n += certInfo->tbsCert.subject.raw.length + 2;
+                  }
+                  else
+                  {
+                     //The distinguished names that do not fit are omitted
+                  }
                }
                else
                {
@@ -1059,7 +1085,9 @@ error_t tlsParseCertificate(TlsContext *context, const TlsCertificate *message,
       {
          //Check current state
          if(context->state != TLS_STATE_SERVER_CERTIFICATE)
+         {
             return ERROR_UNEXPECTED_MESSAGE;
+         }
       }
       else
       {
@@ -1075,7 +1103,9 @@ error_t tlsParseCertificate(TlsContext *context, const TlsCertificate *message,
    {
       //Check current state
       if(context->state != TLS_STATE_CLIENT_CERTIFICATE)
+      {
          return ERROR_UNEXPECTED_MESSAGE;
+      }
    }
 
    //Point to the beginning of the handshake message
@@ -1092,9 +1122,21 @@ error_t tlsParseCertificate(TlsContext *context, const TlsCertificate *message,
 
       //Malformed Certificate message?
       if(length < sizeof(Tls13CertRequestContext))
+      {
          return ERROR_DECODING_FAILED;
+      }
+
       if(length < (sizeof(Tls13CertRequestContext) + certRequestContext->length))
+      {
          return ERROR_DECODING_FAILED;
+      }
+
+      //The certificate_request_context field shall be zero length (refer to
+      //RFC 8446, section 4.4.2)
+      if(certRequestContext->length != 0)
+      {
+         return ERROR_DECODING_FAILED;
+      }
 
       //Point to the next field
       p += sizeof(Tls13CertRequestContext) + certRequestContext->length;
@@ -1108,7 +1150,9 @@ error_t tlsParseCertificate(TlsContext *context, const TlsCertificate *message,
 
    //Malformed Certificate message?
    if(length < sizeof(TlsCertList))
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //Get the size occupied by the certificate list
    n = LOAD24BE(certList->length);
@@ -1117,7 +1161,9 @@ error_t tlsParseCertificate(TlsContext *context, const TlsCertificate *message,
 
    //Malformed Certificate message?
    if(n != length)
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //Non-empty certificate list?
    if(n > 0)
@@ -1262,13 +1308,17 @@ error_t tlsParseCertificateVerify(TlsContext *context,
    {
       //Check current state
       if(context->state != TLS_STATE_SERVER_CERTIFICATE_VERIFY)
+      {
          return ERROR_UNEXPECTED_MESSAGE;
+      }
    }
    else
    {
       //Check current state
       if(context->state != TLS_STATE_CLIENT_CERTIFICATE_VERIFY)
+      {
          return ERROR_UNEXPECTED_MESSAGE;
+      }
    }
 
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
@@ -1356,11 +1406,15 @@ error_t tlsParseChangeCipherSpec(TlsContext *context,
 
    //Check the length of the ChangeCipherSpec message
    if(length != sizeof(TlsChangeCipherSpec))
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //The message consists of a single byte of value 1
    if(message->type != 0x01)
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //Version of TLS prior to TLS 1.3?
    if(context->version <= TLS_VERSION_1_2)
@@ -1370,13 +1424,17 @@ error_t tlsParseChangeCipherSpec(TlsContext *context,
       {
          //Check current state
          if(context->state != TLS_STATE_SERVER_CHANGE_CIPHER_SPEC)
+         {
             return ERROR_UNEXPECTED_MESSAGE;
+         }
       }
       else
       {
          //Check current state
          if(context->state != TLS_STATE_CLIENT_CHANGE_CIPHER_SPEC)
+         {
             return ERROR_UNEXPECTED_MESSAGE;
+         }
       }
 
       //Check whether TLS operates as a client or a server
@@ -1387,7 +1445,9 @@ error_t tlsParseChangeCipherSpec(TlsContext *context,
             TLS_CONNECTION_END_SERVER, TLS_ENCRYPTION_LEVEL_APPLICATION, NULL);
          //Any error to report?
          if(error)
+         {
             return error;
+         }
 
          //Wait for a Finished message from the server
          tlsChangeState(context, TLS_STATE_SERVER_FINISHED);
@@ -1399,7 +1459,9 @@ error_t tlsParseChangeCipherSpec(TlsContext *context,
             TLS_CONNECTION_END_CLIENT, TLS_ENCRYPTION_LEVEL_APPLICATION, NULL);
          //Any error to report?
          if(error)
+         {
             return error;
+         }
 
          //Wait for a Finished message from the client
          tlsChangeState(context, TLS_STATE_CLIENT_FINISHED);
@@ -1422,7 +1484,6 @@ error_t tlsParseChangeCipherSpec(TlsContext *context,
             context->state != TLS_STATE_SERVER_CERTIFICATE_VERIFY &&
             context->state != TLS_STATE_SERVER_FINISHED)
          {
-            //Report an error
             return ERROR_UNEXPECTED_MESSAGE;
          }
       }
@@ -1436,7 +1497,6 @@ error_t tlsParseChangeCipherSpec(TlsContext *context,
             context->state != TLS_STATE_CLIENT_CERTIFICATE_VERIFY &&
             context->state != TLS_STATE_CLIENT_FINISHED)
          {
-            //Report an error
             return ERROR_UNEXPECTED_MESSAGE;
          }
       }
@@ -1447,7 +1507,9 @@ error_t tlsParseChangeCipherSpec(TlsContext *context,
 
       //Do not allow too many consecutive ChangeCipherSpec messages
       if(context->changeCipherSpecCount > TLS_MAX_CHANGE_CIPHER_SPEC_MESSAGES)
+      {
          return ERROR_UNEXPECTED_MESSAGE;
+      }
 #endif
    }
 
@@ -1478,7 +1540,9 @@ error_t tlsParseFinished(TlsContext *context, const TlsFinished *message,
    {
       //Check current state
       if(context->state != TLS_STATE_SERVER_FINISHED)
+      {
          return ERROR_UNEXPECTED_MESSAGE;
+      }
 
       //The verify data is generated from all messages in this handshake
       //up to but not including the Finished message
@@ -1486,27 +1550,30 @@ error_t tlsParseFinished(TlsContext *context, const TlsFinished *message,
          context->serverVerifyData, &context->serverVerifyDataLen);
       //Unable to generate the verify data?
       if(error)
+      {
          return error;
+      }
 
       //Check the length of the Finished message
       if(length != context->serverVerifyDataLen)
       {
-#if (TLS_MAX_EMPTY_RECORDS > 0)
-         return ERROR_INVALID_SIGNATURE;
-#else
          return ERROR_DECODING_FAILED;
-#endif
       }
 
       //Check the resulting verify data
-      if(osMemcmp(message, context->serverVerifyData, context->serverVerifyDataLen))
+      if(cryptoCompMem(message, context->serverVerifyData,
+         context->serverVerifyDataLen) != 0)
+      {
          return ERROR_INVALID_SIGNATURE;
+      }
    }
    else
    {
       //Check current state
       if(context->state != TLS_STATE_CLIENT_FINISHED)
+      {
          return ERROR_UNEXPECTED_MESSAGE;
+      }
 
       //The verify data is generated from all messages in this handshake
       //up to but not including the Finished message
@@ -1514,21 +1581,22 @@ error_t tlsParseFinished(TlsContext *context, const TlsFinished *message,
          context->clientVerifyData, &context->clientVerifyDataLen);
       //Unable to generate the verify data?
       if(error)
+      {
          return error;
+      }
 
       //Check the length of the Finished message
       if(length != context->clientVerifyDataLen)
       {
-#if (TLS_MAX_EMPTY_RECORDS > 0)
-         return ERROR_INVALID_SIGNATURE;
-#else
          return ERROR_DECODING_FAILED;
-#endif
       }
 
       //Check the resulting verify data
-      if(osMemcmp(message, context->clientVerifyData, context->clientVerifyDataLen))
+      if(cryptoCompMem(message, context->clientVerifyData,
+         context->clientVerifyDataLen) != 0)
+      {
          return ERROR_INVALID_SIGNATURE;
+      }
    }
 
    //Version of TLS prior to TLS 1.3?
@@ -1537,7 +1605,9 @@ error_t tlsParseFinished(TlsContext *context, const TlsFinished *message,
       //Another handshake message cannot be packed in the same record as the
       //Finished
       if(context->rxBufferLen != 0)
+      {
          return ERROR_UNEXPECTED_MESSAGE;
+      }
 
       //Check whether TLS operates as a client or a server
       if(context->entity == TLS_CONNECTION_END_CLIENT)
@@ -1619,7 +1689,9 @@ error_t tlsParseAlert(TlsContext *context, const TlsAlert *message,
 
    //Check message length
    if(length != sizeof(TlsAlert))
+   {
       return ERROR_INVALID_LENGTH;
+   }
 
    //Debug message
    TRACE_DEBUG("  Level = %" PRIu8 "\r\n", message->level);
@@ -1634,7 +1706,9 @@ error_t tlsParseAlert(TlsContext *context, const TlsAlert *message,
 
       //Do not allow too many consecutive warning alerts
       if(context->alertCount > TLS_MAX_WARNING_ALERTS)
+      {
          return ERROR_UNEXPECTED_MESSAGE;
+      }
 #endif
 
       //Check alert type

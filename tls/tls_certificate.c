@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -105,7 +105,6 @@ error_t tlsFormatCertificateList(TlsContext *context, uint8_t *p,
       //Buffer overflow?
       if((*written + n + 3) > context->txBufferMaxLen)
       {
-         //Report an error
          error = ERROR_MESSAGE_TOO_LONG;
          break;
       }
@@ -117,7 +116,9 @@ error_t tlsFormatCertificateList(TlsContext *context, uint8_t *p,
       error = pemImportCertificate(certChain, certChainLen, p + 3, &n, &m);
       //Any error to report?
       if(error)
+      {
          break;
+      }
 
       //Advance read pointer
       certChain += m;
@@ -135,7 +136,9 @@ error_t tlsFormatCertificateList(TlsContext *context, uint8_t *p,
          error = tls13FormatCertExtensions(p, &n);
          //Any error to report?
          if(error)
+         {
             break;
+         }
 
          //Advance write pointer
          p += n;
@@ -189,7 +192,9 @@ error_t tlsFormatRawPublicKey(TlsContext *context, uint8_t *p,
             context->cert->certChainLen, NULL, &derCertLen, NULL);
          //Any error to report?
          if(error)
+         {
             break;
+         }
 
          //Allocate a memory buffer to hold the DER-encoded certificate
          derCert = tlsAllocMem(derCertLen);
@@ -205,7 +210,9 @@ error_t tlsFormatRawPublicKey(TlsContext *context, uint8_t *p,
             context->cert->certChainLen, derCert, &derCertLen, NULL);
          //Any error to report?
          if(error)
+         {
             break;
+         }
 
          //Allocate a memory buffer to store X.509 certificate info
          certInfo = tlsAllocMem(sizeof(X509CertInfo));
@@ -220,7 +227,9 @@ error_t tlsFormatRawPublicKey(TlsContext *context, uint8_t *p,
          error = x509ParseCertificate(derCert, derCertLen, certInfo);
          //Failed to parse the X.509 certificate?
          if(error)
+         {
             break;
+         }
 
          //Retrieve the length of the raw public key
          n = certInfo->tbsCert.subjectPublicKeyInfo.raw.length;
@@ -243,7 +252,9 @@ error_t tlsFormatRawPublicKey(TlsContext *context, uint8_t *p,
             error = tls13FormatCertExtensions(p, &n);
             //Any error to report?
             if(error)
+            {
                break;
+            }
 
             //Advance data pointer
             p += n;
@@ -307,7 +318,6 @@ __weak_func error_t tlsParseCertificateList(TlsContext *context,
       //Failed to allocate memory?
       if(certInfo == NULL)
       {
-         //Report an error
          error = ERROR_OUT_OF_MEMORY;
          break;
       }
@@ -317,7 +327,6 @@ __weak_func error_t tlsParseCertificateList(TlsContext *context,
       //Failed to allocate memory?
       if(issuerCertInfo == NULL)
       {
-         //Report an error
          error = ERROR_OUT_OF_MEMORY;
          break;
       }
@@ -325,7 +334,6 @@ __weak_func error_t tlsParseCertificateList(TlsContext *context,
       //The end-user certificate is preceded by a 3-byte length field
       if(length < 3)
       {
-         //Report an error
          error = ERROR_DECODING_FAILED;
          break;
       }
@@ -339,7 +347,6 @@ __weak_func error_t tlsParseCertificateList(TlsContext *context,
       //Malformed Certificate message?
       if(n == 0 || n > length)
       {
-         //Report an error
          error = ERROR_DECODING_FAILED;
          break;
       }
@@ -348,19 +355,16 @@ __weak_func error_t tlsParseCertificateList(TlsContext *context,
       error = asn1DumpObject(p, n, 0);
       //Any error to report?
       if(error)
+      {
          break;
+      }
 
       //Parse end-user certificate
       error = x509ParseCertificate(p, n, certInfo);
       //Failed to parse the X.509 certificate?
       if(error)
       {
-         //Report an error
-#if (TLS_MAX_EMPTY_RECORDS > 0)
-         error = ERROR_DECODING_FAILED;
-#else
          error = ERROR_BAD_CERTIFICATE;
-#endif
          break;
       }
 
@@ -369,14 +373,18 @@ __weak_func error_t tlsParseCertificateList(TlsContext *context,
          context->keyExchMethod);
       //Any error to report?
       if(error)
+      {
          break;
+      }
 
       //Extract the public key from the end-user certificate
       error = tlsReadSubjectPublicKey(context,
          &certInfo->tbsCert.subjectPublicKeyInfo);
       //Any error to report?
       if(error)
+      {
          break;
+      }
 
 #if (TLS_CLIENT_SUPPORT == ENABLED)
       //Client mode?
@@ -389,7 +397,9 @@ __weak_func error_t tlsParseCertificateList(TlsContext *context,
          error = tlsGetCertificateType(certInfo, &certType, &namedCurve);
          //Unsupported certificate?
          if(error)
+         {
             break;
+         }
 
          //Version of TLS prior to TLS 1.3?
          if(context->version <= TLS_VERSION_1_2)
@@ -455,7 +465,9 @@ __weak_func error_t tlsParseCertificateList(TlsContext *context,
          error = tls13ParseCertExtensions(p, length, &n);
          //Any error to report?
          if(error)
+         {
             break;
+         }
 
          //Point to the next field
          p += n;
@@ -470,7 +482,6 @@ __weak_func error_t tlsParseCertificateList(TlsContext *context,
          //Each intermediate certificate is preceded by a 3-byte length field
          if(length < 3)
          {
-            //Report an error
             error = ERROR_DECODING_FAILED;
             break;
          }
@@ -485,7 +496,6 @@ __weak_func error_t tlsParseCertificateList(TlsContext *context,
          //Malformed Certificate message?
          if(n == 0 || n > length)
          {
-            //Report an error
             error = ERROR_DECODING_FAILED;
             break;
          }
@@ -494,14 +504,15 @@ __weak_func error_t tlsParseCertificateList(TlsContext *context,
          error = asn1DumpObject(p, n, 0);
          //Any error to report?
          if(error)
+         {
             break;
+         }
 
          //Parse intermediate certificate
          error = x509ParseCertificate(p, n, issuerCertInfo);
          //Failed to parse the X.509 certificate?
          if(error)
          {
-            //Report an error
             error = ERROR_DECODING_FAILED;
             break;
          }
@@ -509,18 +520,26 @@ __weak_func error_t tlsParseCertificateList(TlsContext *context,
          //Certificate chain validation in progress?
          if(certValidResult == ERROR_UNKNOWN_CA)
          {
+            X509Options options;
+
+            //Certificate validation options
+            options = X509_DEFAULT_OPTIONS;
+            options.disableValidityCheck = !context->certValidityCheck;
+
             //Validate current certificate
-            error = x509ValidateCertificate(certInfo, issuerCertInfo, i);
+            error = x509ValidateCertificateEx(certInfo, issuerCertInfo, i,
+               &options);
             //Certificate validation failed?
             if(error)
+            {
                break;
+            }
 
             //Check name constraints
             error = x509CheckNameConstraints(subjectName, issuerCertInfo);
             //Should the application reject the certificate?
             if(error)
             {
-               //Report an error
                error = ERROR_BAD_CERTIFICATE;
                break;
             }
@@ -538,7 +557,7 @@ __weak_func error_t tlsParseCertificateList(TlsContext *context,
             //Check if the intermediate certificate can be matched with a
             //trusted CA
             certValidResult = tlsValidateCertificate(context, issuerCertInfo,
-               i, subjectName);
+               i + 1, subjectName);
 
             //Check validation result
             if(certValidResult != NO_ERROR && certValidResult != ERROR_UNKNOWN_CA)
@@ -564,7 +583,9 @@ __weak_func error_t tlsParseCertificateList(TlsContext *context,
             error = tls13ParseCertExtensions(p, length, &n);
             //Any error to report?
             if(error)
+            {
                break;
+            }
 
             //Point to the next field
             p += n;
@@ -623,7 +644,9 @@ error_t tlsParseRawPublicKey(TlsContext *context, const uint8_t *p,
       {
          //The raw public key is preceded by a 3-byte length field
          if(length < 3)
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //Get the size occupied by the raw public key
          rawPublicKeyLen = LOAD24BE(p);
@@ -634,25 +657,35 @@ error_t tlsParseRawPublicKey(TlsContext *context, const uint8_t *p,
 
          //Malformed Certificate message?
          if(length < rawPublicKeyLen)
+         {
             return ERROR_DECODING_FAILED;
+         }
       }
       else
 #endif
       {
-         //The payload of the Certificate message contains a SubjectPublicKeyInfo
-         //structure
+         //The SubjectPublicKeyInfo structure contains length information (refer
+         //to RFC 7250, section 3)
          rawPublicKeyLen = length;
       }
 
       //Point to the raw public key
       rawPublicKey = p;
 
-      //Decode the SubjectPublicKeyInfo structure
+      //The payload contains the DER encoding of the SubjectPublicKeyInfo
       error = x509ParseSubjectPublicKeyInfo(rawPublicKey, rawPublicKeyLen, &n,
          &subjectPublicKeyInfo);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
+
+      //Trailing bytes after a raw public key must be rejected
+      if(n != rawPublicKeyLen)
+      {
+         return ERROR_DECODING_FAILED;
+      }
 
       //Advance data pointer
       p += rawPublicKeyLen;
@@ -667,7 +700,9 @@ error_t tlsParseRawPublicKey(TlsContext *context, const uint8_t *p,
          error = tls13ParseCertExtensions(p, length, &n);
          //Any error to report?
          if(error)
+         {
             return error;
+         }
 
          //Advance data pointer
          p += n;
@@ -680,13 +715,17 @@ error_t tlsParseRawPublicKey(TlsContext *context, const uint8_t *p,
       //list must contain no more than one CertificateEntry (refer to RFC 8446,
       //section 4.4.2)
       if(length != 0)
+      {
          return ERROR_DECODING_FAILED;
+      }
 
       //Extract the public key from the SubjectPublicKeyInfo structure
       error = tlsReadSubjectPublicKey(context, &subjectPublicKeyInfo);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //When raw public keys are used, authentication of the peer is supported
       //only through authentication of the received SubjectPublicKeyInfo via an
@@ -734,7 +773,9 @@ bool_t tlsIsCertificateAcceptable(TlsContext *context,
 
    //Make sure that a valid certificate has been loaded
    if(cert->certChain == NULL || cert->certChainLen == 0)
+   {
       return FALSE;
+   }
 
    //This flag tells whether the certificate is acceptable
    acceptable = TRUE;
@@ -940,7 +981,9 @@ bool_t tlsIsCertificateAcceptable(TlsContext *context,
                         {
                            //Sanity check
                            if((i + 2) > length)
+                           {
                               break;
+                           }
 
                            //Each distinguished name is preceded by a 2-byte
                            //length field
@@ -948,7 +991,9 @@ bool_t tlsIsCertificateAcceptable(TlsContext *context,
 
                            //Make sure the length field is valid
                            if((i + n + 2) > length)
+                           {
                               break;
+                           }
 
                            //Check if the distinguished name matches the root CA
                            if(x509CompareName(certAuthorities->value + i + 2, n,
@@ -1000,12 +1045,6 @@ error_t tlsValidateCertificate(TlsContext *context,
    const X509CertInfo *certInfo, uint_t pathLen, const char_t *subjectName)
 {
    error_t error;
-   size_t pemCertLen;
-   const char_t *trustedCaList;
-   size_t trustedCaListLen;
-   uint8_t *derCert;
-   size_t derCertLen;
-   X509CertInfo *caCertInfo;
 
    //Initialize status code
    error = ERROR_UNKNOWN_CA;
@@ -1025,9 +1064,26 @@ error_t tlsValidateCertificate(TlsContext *context,
    }
    else if(error == ERROR_UNKNOWN_CA)
    {
-      //Check whether the certificate should be checked against root CAs
-      if(context->trustedCaList != NULL)
+      //Check whether the certificate chain should be validated
+      if(!context->certChainValidation)
       {
+         //Do not check the certificate against root CAs
+         error = NO_ERROR;
+      }
+      else if(context->trustedCaList != NULL && context->trustedCaListLen > 0)
+      {
+         size_t pemCertLen;
+         const char_t *trustedCaList;
+         size_t trustedCaListLen;
+         uint8_t *derCert;
+         size_t derCertLen;
+         X509CertInfo *caCertInfo;
+         X509Options options;
+
+         //Certificate validation options
+         options = X509_DEFAULT_OPTIONS;
+         options.disableValidityCheck = !context->certValidityCheck;
+
          //Point to the first trusted CA certificate
          trustedCaList = context->trustedCaList;
          //Get the total length, in bytes, of the trusted CA list
@@ -1072,8 +1128,8 @@ error_t tlsValidateCertificate(TlsContext *context,
                      if(!error)
                      {
                         //Validate the certificate with the current CA
-                        error = x509ValidateCertificate(certInfo, caCertInfo,
-                           pathLen);
+                        error = x509ValidateCertificateEx(certInfo, caCertInfo,
+                           pathLen, &options);
                      }
 
                      //Check status code
@@ -1127,8 +1183,8 @@ error_t tlsValidateCertificate(TlsContext *context,
       }
       else
       {
-         //Do not check the certificate against root CAs
-         error = NO_ERROR;
+         //The certificate chain cannot be validated without a trusted CA list
+         error = ERROR_UNKNOWN_CA;
       }
    }
    else if(error == ERROR_BAD_CERTIFICATE ||
@@ -1167,7 +1223,9 @@ error_t tlsGetCertificateType(const X509CertInfo *certInfo,
 
    //Check parameters
    if(certInfo == NULL || certType == NULL || namedCurve == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Point to the public key identifier
    oid = certInfo->tbsCert.subjectPublicKeyInfo.oid.value;
@@ -1320,7 +1378,9 @@ error_t tlsGetCertificateSignAlgo(const X509CertInfo *certInfo,
 
    //Check parameters
    if(certInfo == NULL || signScheme == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Point to the signature algorithm
    oid = certInfo->signatureAlgo.oid.value;
@@ -1543,12 +1603,38 @@ error_t tlsReadSubjectPublicKey(TlsContext *context,
       //Check status code
       if(!error)
       {
+         //The RSA modulus must be an odd integer
+         if(mpiIsEven(&context->peerRsaPublicKey.n))
+         {
+            //Report an error
+            error = ERROR_BAD_CERTIFICATE;
+         }
+
          //Get the length of the modulus, in bits
          k = mpiGetBitLength(&context->peerRsaPublicKey.n);
 
          //Applications should also enforce minimum and maximum key sizes (refer
          //to RFC 8446, appendix C.2)
          if(k < TLS_MIN_RSA_MODULUS_SIZE || k > TLS_MAX_RSA_MODULUS_SIZE)
+         {
+            //Report an error
+            error = ERROR_BAD_CERTIFICATE;
+         }
+
+         //The public exponent must be an odd integer greater than 1
+         if(mpiCompInt(&context->peerRsaPublicKey.e, 1) <= 0 ||
+            mpiIsEven(&context->peerRsaPublicKey.e))
+         {
+            //Report an error
+            error = ERROR_BAD_CERTIFICATE;
+         }
+
+         //Get the length of the public exponent, in bits
+         k = mpiGetBitLength(&context->peerRsaPublicKey.e);
+
+         //Limit the size of the public exponent to bound the cost of the RSA
+         //public operation
+         if(k > TLS_MAX_RSA_PUBLIC_EXPONENT_SIZE)
          {
             //Report an error
             error = ERROR_BAD_CERTIFICATE;
@@ -1872,7 +1958,8 @@ error_t tlsCheckKeyUsage(const X509CertInfo *certInfo,
       if(entity == TLS_CONNECTION_END_CLIENT)
       {
          //Make sure the certificate can be used for server authentication
-         if((extKeyUsage->bitmap & X509_EXT_KEY_USAGE_SERVER_AUTH) == 0)
+         if((extKeyUsage->bitmap & X509_EXT_KEY_USAGE_SERVER_AUTH) == 0 &&
+            (extKeyUsage->bitmap & X509_EXT_KEY_USAGE_ANY) == 0)
          {
             error = ERROR_BAD_CERTIFICATE;
          }
@@ -1880,7 +1967,8 @@ error_t tlsCheckKeyUsage(const X509CertInfo *certInfo,
       else
       {
          //Make sure the certificate can be used for client authentication
-         if((extKeyUsage->bitmap & X509_EXT_KEY_USAGE_CLIENT_AUTH) == 0)
+         if((extKeyUsage->bitmap & X509_EXT_KEY_USAGE_CLIENT_AUTH) == 0 &&
+            (extKeyUsage->bitmap & X509_EXT_KEY_USAGE_ANY) == 0)
          {
             error = ERROR_BAD_CERTIFICATE;
          }

@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -207,11 +207,15 @@ error_t tls13ParseKeyUpdate(TlsContext *context, const Tls13KeyUpdate *message,
 
    //Check TLS version
    if(context->version != TLS_VERSION_1_3)
+   {
       return ERROR_UNEXPECTED_MESSAGE;
+   }
 
    //Check the length of the KeyUpdate message
    if(length != sizeof(Tls13KeyUpdate))
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //Ensure the value of the request_update field is valid
    if(message->requestUpdate != TLS_KEY_UPDATE_NOT_REQUESTED &&
@@ -230,7 +234,6 @@ error_t tls13ParseKeyUpdate(TlsContext *context, const Tls13KeyUpdate *message,
       context->state != TLS_STATE_KEY_UPDATE_ACK &&
       context->state != TLS_STATE_CLOSING)
    {
-      //Report an error
       return ERROR_UNEXPECTED_MESSAGE;
    }
 
@@ -240,14 +243,18 @@ error_t tls13ParseKeyUpdate(TlsContext *context, const Tls13KeyUpdate *message,
 
    //Do not allow too many consecutive KeyUpdate message
    if(context->keyUpdateCount > TLS_MAX_KEY_UPDATE_MESSAGES)
+   {
       return ERROR_UNEXPECTED_MESSAGE;
+   }
 #endif
 
    //The hash function used by HKDF is the cipher suite hash algorithm
    hash = context->cipherSuite.prfHashAlgo;
    //Make sure the hash algorithm is valid
    if(hash == NULL)
+   {
       return ERROR_FAILURE;
+   }
 
    //Upon receiving a KeyUpdate, the receiver must update its receiving keys
    if(context->entity == TLS_CONNECTION_END_CLIENT)
@@ -267,12 +274,16 @@ error_t tls13ParseKeyUpdate(TlsContext *context, const Tls13KeyUpdate *message,
       appTrafficSecret, hash->digestSize);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //The implementation must verify that its receive buffer is empty before
    //rekeying
    if(context->rxBufferLen != 0)
+   {
       return ERROR_UNEXPECTED_MESSAGE;
+   }
 
    //All the traffic keying material is recomputed whenever the underlying
    //secret changes
@@ -280,7 +291,9 @@ error_t tls13ParseKeyUpdate(TlsContext *context, const Tls13KeyUpdate *message,
       entity, TLS_ENCRYPTION_LEVEL_APPLICATION, appTrafficSecret);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Check the value of the request_update field
    if(message->requestUpdate == TLS_KEY_UPDATE_REQUESTED &&

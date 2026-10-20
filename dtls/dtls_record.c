@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -295,7 +295,9 @@ error_t dtlsWriteRecord(TlsContext *context, const uint8_t *data,
 
    //Make sure the buffer is large enough to hold the DTLSPlaintext record
    if((context->txBufferLen + n) > context->txBufferSize)
+   {
       return ERROR_BUFFER_OVERFLOW;
+   }
 
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
    //Implementations must not send records with the new keys until the previous
@@ -352,19 +354,24 @@ error_t dtlsWriteRecord(TlsContext *context, const uint8_t *data,
          if(context->version == TLS_VERSION_1_3)
          {
             //Overhead caused by record encryption must be considered
-            n = length + dtls13ComputeEncryptionOverhead(encryptionEngine);
+            n = length + dtls13ComputeEncryptionOverhead(encryptionEngine,
+               length);
 
             //Make sure the buffer is large enough to hold the DTLSCiphertext
             //record
             if((context->txBufferLen + n) > context->txBufferSize)
+            {
                return ERROR_BUFFER_OVERFLOW;
+            }
 
             //Encrypt DTLS 1.3 record
             error = dtls13EncryptRecord(context, encryptionEngine, record->type,
                record->data, ntohs(record->length), (uint8_t *) record, &n);
             //Any error to report?
             if(error)
+            {
                return error;
+            }
          }
          else
 #endif
@@ -375,13 +382,17 @@ error_t dtlsWriteRecord(TlsContext *context, const uint8_t *data,
             //Make sure the buffer is large enough to hold the DTLSCiphertext
             //record
             if((context->txBufferLen + n) > context->txBufferSize)
+            {
                return ERROR_BUFFER_OVERFLOW;
+            }
 
             //Encrypt DTLS record
             error = tlsEncryptRecord(context, encryptionEngine, record);
             //Any error to report?
             if(error)
+            {
                return error;
+            }
 
             //Length of the resulting datagram, in bytes
             n = ntohs(record->length) + sizeof(DtlsRecord);
@@ -407,7 +418,9 @@ error_t dtlsWriteRecord(TlsContext *context, const uint8_t *data,
       error = context->socketSendCallback(context->socketHandle, record, n, &n, 0);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
    }
 
    //Successful processing
@@ -468,11 +481,15 @@ error_t dtlsReadRecord(TlsContext *context)
    //Compliant servers must accept any value {254,XX} as the record layer
    //version number for ClientHello
    if(MSB(ntohs(record->version)) != MSB(DTLS_VERSION_1_0))
+   {
       return ERROR_VERSION_NOT_SUPPORTED;
+   }
 
    //Discard packets from earlier epochs
    if(ntohs(record->epoch) != decryptionEngine->epoch)
+   {
       return ERROR_INVALID_EPOCH;
+   }
 
    //Check whether anti-replay mechanism is enabled
    if(context->replayDetectionEnabled)
@@ -481,7 +498,9 @@ error_t dtlsReadRecord(TlsContext *context)
       error = dtlsCheckReplayWindow(decryptionEngine, &record->seqNum);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
    }
 
    //Check whether the record payload is protected
@@ -492,11 +511,15 @@ error_t dtlsReadRecord(TlsContext *context)
       error = tlsDecryptRecord(context, decryptionEngine, record);
       //If the MAC validation fails, the receiver must discard the record
       if(error)
+      {
          return error;
+      }
 
       //The length of the plaintext record must not exceed 2^14 bytes
       if(ntohs(record->length) > TLS_MAX_RECORD_LENGTH)
+      {
          return ERROR_RECORD_OVERFLOW;
+      }
    }
 
    //The receive window is updated only if the MAC verification succeeds
@@ -584,11 +607,15 @@ error_t dtlsProcessRecord(TlsContext *context)
 
       //Invalid fragment length?
       if(LOAD24BE(message->fragLength) > LOAD24BE(message->length))
+      {
          return ERROR_INVALID_LENGTH;
+      }
 
       //Empty fragment?
       if(LOAD24BE(message->fragLength) == 0 && LOAD24BE(message->length) != 0)
+      {
          return ERROR_INVALID_LENGTH;
+      }
 
       //Check whether TLS operates as a client or a server
       if(context->entity == TLS_CONNECTION_END_CLIENT)
@@ -637,7 +664,9 @@ error_t dtlsProcessRecord(TlsContext *context)
          {
             //Epoch value 0 is used with unencrypted messages
             if(context->rxRecordNum.epoch != 0)
+            {
                return ERROR_INVALID_EPOCH;
+            }
          }
          else if(message->msgType == TLS_TYPE_NEW_SESSION_TICKET ||
             message->msgType == TLS_TYPE_REQUEST_CONNECTION_ID ||
@@ -646,14 +675,18 @@ error_t dtlsProcessRecord(TlsContext *context)
          {
             //Epoch values 3 to 2^64-1 are used for post-handshake messages
             if(context->rxRecordNum.epoch < 3)
+            {
                return ERROR_INVALID_EPOCH;
+            }
          }
          else
          {
             //Epoch value 2 is used for messages transmitted during the initial
             //handshake
             if(context->rxRecordNum.epoch != 2)
+            {
                return ERROR_INVALID_EPOCH;
+            }
          }
 
          //Check current state
@@ -744,7 +777,9 @@ error_t dtlsProcessRecord(TlsContext *context)
          //Once the server has sent the ServerHello message, enforce the version
          //of incoming records
          if(context->rxRecordVersion != dtlsTranslateVersion(context->version))
+         {
             return ERROR_VERSION_NOT_SUPPORTED;
+         }
       }
 
       //When a DTLS implementation receives a handshake message fragment, it
@@ -968,7 +1003,9 @@ error_t dtlsSendFlight(TlsContext *context)
 
    //Make sure the PMTU value is acceptable
    if(pmtu < DTLS_MIN_PMTU)
+   {
       return ERROR_BUFFER_OVERFLOW;
+   }
 
    //Point to the buffer where to format the datagram
    datagram = context->txBuffer + context->txBufferLen;
@@ -1022,7 +1059,9 @@ error_t dtlsSendFlight(TlsContext *context)
 
       //Invalid keying material?
       if(encryptionEngine == NULL)
+      {
          return ERROR_INVALID_EPOCH;
+      }
 
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
       //Save the sequence number of the first packet of the flight
@@ -1052,7 +1091,9 @@ error_t dtlsSendFlight(TlsContext *context)
             encryptionEngine, message);
          //Any error to report?
          if(error)
+         {
             return error;
+         }
       }
       else
       {
@@ -1076,7 +1117,9 @@ error_t dtlsSendFlight(TlsContext *context)
                   datagram, context->txDatagramLen, &n, 0);
                //Any error to report?
                if(error)
+               {
                   return error;
+               }
 
                //The datagram has been successfully transmitted
                context->txDatagramLen = 0;
@@ -1091,7 +1134,9 @@ error_t dtlsSendFlight(TlsContext *context)
          //Make sure the buffer is large enough to hold the DTLSCiphertext
          //record
          if((context->txBufferLen + context->txDatagramLen + n) > context->txBufferSize)
+         {
             return ERROR_BUFFER_OVERFLOW;
+         }
 
          //Multiple DTLS records may be placed in a single datagram. They are
          //simply encoded consecutively
@@ -1113,7 +1158,9 @@ error_t dtlsSendFlight(TlsContext *context)
             error = tlsEncryptRecord(context, encryptionEngine, record);
             //Any error to report?
             if(error)
+            {
                return error;
+            }
          }
 
          //Debug message
@@ -1140,7 +1187,9 @@ error_t dtlsSendFlight(TlsContext *context)
          context->txDatagramLen, &n, 0);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //The datagram has been successfully transmitted
       context->txDatagramLen = 0;
@@ -1191,7 +1240,7 @@ error_t dtlsFragmentHandshakeMessage(TlsContext *context, uint16_t version,
       //DTLS handshake messages have 12 bytes of overhead
       n = sizeof(DtlsHandshake);
       //Overhead caused by record encryption must be considered
-      n += dtls13ComputeEncryptionOverhead(encryptionEngine);
+      n += dtls13ComputeEncryptionOverhead(encryptionEngine, n);
    }
    else
 #endif
@@ -1204,7 +1253,9 @@ error_t dtlsFragmentHandshakeMessage(TlsContext *context, uint16_t version,
 
    //Make sure the PMTU value is acceptable
    if(pmtu <= n || pmtu < DTLS_MIN_PMTU)
+   {
       return ERROR_BUFFER_OVERFLOW;
+   }
 
    //Determine the maximum payload size for fragmented messages
    maxFragSize = pmtu - n;
@@ -1234,7 +1285,7 @@ error_t dtlsFragmentHandshakeMessage(TlsContext *context, uint16_t version,
             //Estimate the length of the DTLS handshake message
             n = fragLen + sizeof(DtlsHandshake);
             //Overhead caused by record encryption must be considered
-            n += dtls13ComputeEncryptionOverhead(encryptionEngine);
+            n += dtls13ComputeEncryptionOverhead(encryptionEngine, n);
          }
          else
 #endif
@@ -1257,7 +1308,9 @@ error_t dtlsFragmentHandshakeMessage(TlsContext *context, uint16_t version,
                datagram, context->txDatagramLen, &n, 0);
             //Any error to report?
             if(error)
+            {
                return error;
+            }
 
             //The datagram has been successfully transmitted
             context->txDatagramLen = 0;
@@ -1326,7 +1379,9 @@ error_t dtlsFragmentHandshakeMessage(TlsContext *context, uint16_t version,
                fragLen + sizeof(DtlsHandshake), (uint8_t *) record, &n);
             //Any error to report?
             if(error)
+            {
                return error;
+            }
          }
          else
 #endif
@@ -1335,7 +1390,9 @@ error_t dtlsFragmentHandshakeMessage(TlsContext *context, uint16_t version,
             error = tlsEncryptRecord(context, encryptionEngine, record);
             //Any error to report?
             if(error)
+            {
                return error;
+            }
 
             //Length of the resulting datagram, in bytes
             n = ntohs(record->length) + sizeof(DtlsRecord);
@@ -1376,7 +1433,7 @@ error_t dtlsFragmentHandshakeMessage(TlsContext *context, uint16_t version,
             //An implementation should omit ACKed records from any future
             //retransmissions
             if(retransmitState->index < 32 &&
-               (retransmitState->mask & (1 << retransmitState->index)) == 0)
+               (retransmitState->mask & (1U << retransmitState->index)) == 0)
             {
                n = 0;
             }
@@ -1435,15 +1492,21 @@ error_t dtlsReassembleHandshakeMessage(TlsContext *context,
 
       //Message type mismatch?
       if(message->msgType != fragment->msgType)
+      {
          return ERROR_UNEXPECTED_MESSAGE;
+      }
 
       //Message length mismatch?
       if(LOAD24BE(message->length) != LOAD24BE(fragment->length))
+      {
          return ERROR_UNEXPECTED_MESSAGE;
+      }
 
       //Sort fragments in ascending order
       if(fragOffset < LOAD24BE(fragment->fragOffset))
+      {
          break;
+      }
 
       //Next fragment
       pos += LOAD24BE(fragment->fragLength) + sizeof(DtlsHandshake);
@@ -1498,8 +1561,8 @@ error_t dtlsReassembleHandshakeMessage(TlsContext *context,
          {
             //Coalesce overlapping fragments
             osMemmove(prevFragment->data + fragOffset - prevFragOffset,
-               fragment->data,
-               context->rxFragQueueLen - pos - sizeof(DtlsHandshake));
+               fragment->data, context->rxFragQueueLen - pos -
+               sizeof(DtlsHandshake));
 
             //Number of bytes that do not overlap with the previous fragment
             n = fragOffset + fragLen - prevFragOffset - prevFragLen;
@@ -1519,7 +1582,7 @@ error_t dtlsReassembleHandshakeMessage(TlsContext *context,
          {
             //Drop current fragment
             osMemmove(fragment, fragment->data + fragLen,
-               context->rxFragQueueLen - fragLen - sizeof(DtlsHandshake));
+               context->rxFragQueueLen - pos - fragLen - sizeof(DtlsHandshake));
 
             //Update the length of the reassembly queue
             context->rxFragQueueLen -= fragLen + sizeof(DtlsHandshake);

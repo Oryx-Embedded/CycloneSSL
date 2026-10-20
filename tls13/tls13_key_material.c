@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -173,7 +173,9 @@ error_t tls13GenerateEarlyTrafficKeys(TlsContext *context)
    hash = context->cipherSuite.prfHashAlgo;
    //Make sure the hash algorithm is valid
    if(hash == NULL)
+   {
       return ERROR_FAILURE;
+   }
 
    //Although PSKs can be established out of band, PSKs can also be established
    //in a previous connection
@@ -200,7 +202,9 @@ error_t tls13GenerateEarlyTrafficKeys(TlsContext *context)
    error = hkdfExtract(hash, ikm, ikmLen, NULL, 0, context->secret);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Debug message
    TRACE_DEBUG("Early secret:\r\n");
@@ -212,7 +216,9 @@ error_t tls13GenerateEarlyTrafficKeys(TlsContext *context)
       hash->digestSize);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Debug message
    TRACE_DEBUG("Client early secret:\r\n");
@@ -245,14 +251,18 @@ error_t tls13GenerateEarlyTrafficKeys(TlsContext *context)
 
    //Failed to generate traffic keying material?
    if(error)
+   {
       return error;
+   }
 
    //Calculate early exporter master secret
    error = tls13DeriveSecret(context, context->secret, hash->digestSize,
       "e exp master", NULL, 0, context->exporterMasterSecret, hash->digestSize);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Debug message
    TRACE_DEBUG("Early exporter master secret:\r\n");
@@ -265,7 +275,9 @@ error_t tls13GenerateEarlyTrafficKeys(TlsContext *context)
       context->clientEarlyTrafficSecret, NULL, hash->digestSize);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 #endif
 
 #if (TLS_KEY_LOG_SUPPORT == ENABLED)
@@ -304,7 +316,9 @@ error_t tls13GenerateHandshakeTrafficKeys(TlsContext *context)
    hash = context->cipherSuite.prfHashAlgo;
    //Make sure the hash algorithm is valid
    if(hash == NULL)
+   {
       return ERROR_FAILURE;
+   }
 
 #if (TLS13_DHE_KE_SUPPORT == ENABLED || TLS13_ECDHE_KE_SUPPORT == ENABLED || \
    TLS13_MLKEM_KE_SUPPORT == ENABLED || TLS13_HYBRID_KE_SUPPORT == ENABLED)
@@ -366,7 +380,9 @@ error_t tls13GenerateHandshakeTrafficKeys(TlsContext *context)
    error = hkdfExtract(hash, ikm, ikmLen, NULL, 0, context->secret);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Debug message
    TRACE_DEBUG("Early secret:\r\n");
@@ -377,7 +393,9 @@ error_t tls13GenerateHandshakeTrafficKeys(TlsContext *context)
       "derived", "", 0, context->secret, hash->digestSize);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Debug message
    TRACE_DEBUG("Derived secret:\r\n");
@@ -398,7 +416,14 @@ error_t tls13GenerateHandshakeTrafficKeys(TlsContext *context)
       context->secret);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
+
+   //The (EC)DHE shared secret should be deleted from memory once the
+   //handshake secret has been computed
+   cryptoZeroizeMem(context->premasterSecret, TLS_PREMASTER_SECRET_SIZE);
+   context->premasterSecretLen = 0;
 
    //Debug message
    TRACE_DEBUG("Handshake secret:\r\n");
@@ -410,7 +435,9 @@ error_t tls13GenerateHandshakeTrafficKeys(TlsContext *context)
       hash->digestSize);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Debug message
    TRACE_DEBUG("Client handshake secret:\r\n");
@@ -422,7 +449,9 @@ error_t tls13GenerateHandshakeTrafficKeys(TlsContext *context)
       hash->digestSize);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Debug message
    TRACE_DEBUG("Server handshake secret:\r\n");
@@ -431,7 +460,9 @@ error_t tls13GenerateHandshakeTrafficKeys(TlsContext *context)
    //The implementation must verify that its receive buffer is empty before
    //switching to encrypted handshake
    if(context->rxBufferLen != 0)
+   {
       return ERROR_HANDSHAKE_FAILED;
+   }
 
    //The traffic keying material is generated from the traffic secret value
    if(context->entity == TLS_CONNECTION_END_CLIENT)
@@ -469,7 +500,9 @@ error_t tls13GenerateHandshakeTrafficKeys(TlsContext *context)
 
    //Failed to generate traffic keying material?
    if(error)
+   {
       return error;
+   }
 
 #if (TLS_QUIC_SUPPORT == ENABLED)
    //As keys at a given encryption level become available to TLS, TLS indicates
@@ -480,7 +513,9 @@ error_t tls13GenerateHandshakeTrafficKeys(TlsContext *context)
       hash->digestSize);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 #endif
 
 #if (TLS_KEY_LOG_SUPPORT == ENABLED)
@@ -518,14 +553,18 @@ error_t tls13GenerateServerAppTrafficKeys(TlsContext *context)
    hash = context->cipherSuite.prfHashAlgo;
    //Make sure the hash algorithm is valid
    if(hash == NULL)
+   {
       return ERROR_FAILURE;
+   }
 
    //Derive handshake secret
    error = tls13DeriveSecret(context, context->secret, hash->digestSize,
       "derived", "", 0, context->secret, hash->digestSize);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Debug message
    TRACE_DEBUG("Derived secret:\r\n");
@@ -539,7 +578,9 @@ error_t tls13GenerateServerAppTrafficKeys(TlsContext *context)
       hash->digestSize, context->secret);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Debug message
    TRACE_DEBUG("Master secret:\r\n");
@@ -551,7 +592,9 @@ error_t tls13GenerateServerAppTrafficKeys(TlsContext *context)
       hash->digestSize);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Debug message
    TRACE_DEBUG("Client application secret:\r\n");
@@ -563,7 +606,9 @@ error_t tls13GenerateServerAppTrafficKeys(TlsContext *context)
       hash->digestSize);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Debug message
    TRACE_DEBUG("Server application secret:\r\n");
@@ -600,14 +645,18 @@ error_t tls13GenerateServerAppTrafficKeys(TlsContext *context)
 
    //Failed to generate traffic keying material?
    if(error)
+   {
       return error;
+   }
 
    //Calculate exporter master secret
    error = tls13DeriveSecret(context, context->secret, hash->digestSize,
       "exp master", NULL, 0, context->exporterMasterSecret, hash->digestSize);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Debug message
    TRACE_DEBUG("Exporter master secret:\r\n");
@@ -622,7 +671,9 @@ error_t tls13GenerateServerAppTrafficKeys(TlsContext *context)
       hash->digestSize);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 #endif
 
 #if (TLS_KEY_LOG_SUPPORT == ENABLED)
@@ -659,6 +710,7 @@ error_t tls13GenerateServerAppTrafficKeys(TlsContext *context)
          if(context->keyExchMethod == TLS13_KEY_EXCH_PSK ||
             context->keyExchMethod == TLS13_KEY_EXCH_PSK_DHE ||
             context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE ||
+            context->keyExchMethod == TLS13_KEY_EXCH_PSK_MLKEM ||
             context->keyExchMethod == TLS13_KEY_EXCH_PSK_HYBRID)
          {
             //Send a Finished message to the server
@@ -677,6 +729,7 @@ error_t tls13GenerateServerAppTrafficKeys(TlsContext *context)
       if(context->keyExchMethod == TLS13_KEY_EXCH_PSK ||
          context->keyExchMethod == TLS13_KEY_EXCH_PSK_DHE ||
          context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE ||
+         context->keyExchMethod == TLS13_KEY_EXCH_PSK_MLKEM ||
          context->keyExchMethod == TLS13_KEY_EXCH_PSK_HYBRID)
       {
          //Wait for a Finished message from the client
@@ -716,7 +769,9 @@ error_t tls13GenerateClientAppTrafficKeys(TlsContext *context)
    hash = context->cipherSuite.prfHashAlgo;
    //Make sure the hash algorithm is valid
    if(hash == NULL)
+   {
       return ERROR_FAILURE;
+   }
 
    //At this point, the handshake is complete, and the client and server
    //derive the keying material required by the record layer to exchange
@@ -750,14 +805,18 @@ error_t tls13GenerateClientAppTrafficKeys(TlsContext *context)
 
    //Failed to generate traffic keying material?
    if(error)
+   {
       return error;
+   }
 
    //Calculate resumption master secret
    error = tls13DeriveSecret(context, context->secret, hash->digestSize,
       "res master", NULL, 0, context->resumptionMasterSecret, hash->digestSize);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Debug message
    TRACE_DEBUG("Resumption master secret:\r\n");
@@ -765,10 +824,10 @@ error_t tls13GenerateClientAppTrafficKeys(TlsContext *context)
 
    //Once all the values which are to be derived from a given secret have been
    //computed, that secret should be erased
-   osMemset(context->secret, 0, TLS13_MAX_HKDF_DIGEST_SIZE);
-   osMemset(context->clientEarlyTrafficSecret, 0, TLS13_MAX_HKDF_DIGEST_SIZE);
-   osMemset(context->clientHsTrafficSecret, 0, TLS13_MAX_HKDF_DIGEST_SIZE);
-   osMemset(context->serverHsTrafficSecret, 0, TLS13_MAX_HKDF_DIGEST_SIZE);
+   cryptoZeroizeMem(context->secret, TLS13_MAX_HKDF_DIGEST_SIZE);
+   cryptoZeroizeMem(context->clientEarlyTrafficSecret, TLS13_MAX_HKDF_DIGEST_SIZE);
+   cryptoZeroizeMem(context->clientHsTrafficSecret, TLS13_MAX_HKDF_DIGEST_SIZE);
+   cryptoZeroizeMem(context->serverHsTrafficSecret, TLS13_MAX_HKDF_DIGEST_SIZE);
 
    //DTLS protocol?
    if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_DATAGRAM)

@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -1079,7 +1079,9 @@ bool_t tlsIsSignAlgoSupported(TlsContext *context, uint16_t signScheme)
       {
          //Compare signature schemes
          if(context->supportedSignAlgos[i] == signScheme)
+         {
             break;
+         }
       }
 
       //Check whether the use of the signature algorithm is restricted

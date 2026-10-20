@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -205,7 +205,9 @@ error_t tls13FormatServerKeyShareExtension(TlsContext *context,
             keyShareEntry->keyExchange, &n, MPI_FORMAT_BIG_ENDIAN);
          //Any error to report?
          if(error)
+         {
             return error;
+         }
       }
       else
 #endif
@@ -220,7 +222,9 @@ error_t tls13FormatServerKeyShareExtension(TlsContext *context,
             keyShareEntry->keyExchange, &n, EC_PUBLIC_KEY_FORMAT_X963);
          //Any error to report?
          if(error)
+         {
             return error;
+         }
       }
       else
 #endif
@@ -241,7 +245,9 @@ error_t tls13FormatServerKeyShareExtension(TlsContext *context,
             context->premasterSecret);
          //Any error to report?
          if(error)
+         {
             return error;
+         }
 
          //The length of the ciphertext is fixed
          n = kemAlgo->ciphertextSize;
@@ -268,7 +274,8 @@ error_t tls13FormatServerKeyShareExtension(TlsContext *context,
          //convention outlined in Section 3.2 of RFC 9954. Specifically, the
          //order of shares in the concatenation has been reversed. This is due
          //to historical reasons (refer to RFC 10024, section 4.1)
-         if(context->namedGroup == TLS_GROUP_X25519_MLKEM768)
+         if(context->namedGroup == TLS_GROUP_MLKEM512_X25519 ||
+            context->namedGroup == TLS_GROUP_X25519_MLKEM768)
          {
             keyShareOffset = kemAlgo->ciphertextSize;
          }
@@ -284,10 +291,13 @@ error_t tls13FormatServerKeyShareExtension(TlsContext *context,
             EC_PUBLIC_KEY_FORMAT_X963);
          //Any error to report?
          if(error)
+         {
             return error;
+         }
 
-         //X25519MLKEM768 group?
-         if(context->namedGroup == TLS_GROUP_X25519_MLKEM768)
+         //MLKEM512X25519 or X25519MLKEM768 group?
+         if(context->namedGroup == TLS_GROUP_MLKEM512_X25519 ||
+            context->namedGroup == TLS_GROUP_X25519_MLKEM768)
          {
             keyShareOffset = 0;
             sharedSecretOffset = 0;
@@ -305,7 +315,9 @@ error_t tls13FormatServerKeyShareExtension(TlsContext *context,
             context->premasterSecret + sharedSecretOffset);
          //Any error to report?
          if(error)
+         {
             return error;
+         }
 
          //The server's share is a fixed-size concatenation of ECDHE share and
          //Kyber's ciphertext returned from encapsulation
@@ -358,11 +370,13 @@ error_t tls13FormatServerPreSharedKeyExtension(TlsContext *context,
    size_t n = 0;
 
 #if (TLS13_PSK_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
-   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
+   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_MLKEM_KE_SUPPORT == ENABLED || \
+   TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
    //PSK key exchange method?
    if(context->keyExchMethod == TLS13_KEY_EXCH_PSK ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_DHE ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE ||
+      context->keyExchMethod == TLS13_KEY_EXCH_PSK_MLKEM ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_HYBRID)
    {
       TlsExtension *extension;
@@ -507,7 +521,9 @@ error_t tls13ParseClientKeyShareExtension(TlsContext *context,
       {
          //Malformed extension?
          if(length < sizeof(Tls13KeyShareEntry))
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //Point to the current key share entry
          keyShareEntry = (Tls13KeyShareEntry *) p;
@@ -516,12 +532,16 @@ error_t tls13ParseClientKeyShareExtension(TlsContext *context,
 
          //Malformed extension?
          if(length < (sizeof(Tls13KeyShareEntry) + n))
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //Each KeyShareEntry value must correspond to a group offered in the
          //SupportedGroups extension (refer to RFC 8446, section 4.2.8)
          if(!tls13IsGroupOffered(ntohs(keyShareEntry->group), groupList))
+         {
             return ERROR_ILLEGAL_PARAMETER;
+         }
 
          //Initial or updated ClientHello?
          if(context->state == TLS_STATE_CLIENT_HELLO)
@@ -561,23 +581,33 @@ error_t tls13ParseClientKeyShareExtension(TlsContext *context,
             error = tls13GenerateKeyShare(context, namedGroup);
             //Any error to report?
             if(error)
+            {
                return error;
+            }
 
             //Compute DHE shared secret
             error = tls13GenerateSharedSecret(context,
                keyShareEntry->keyExchange, ntohs(keyShareEntry->length));
             //Any error to report?
             if(error)
+            {
                return error;
+            }
 
-            //DHE key exchange mechanism provides forward secrecy
+#if (TLS13_PSK_DHE_KE_SUPPORT == ENABLED)
+            //Valid PSK?
             if(context->keyExchMethod == TLS13_KEY_EXCH_PSK)
             {
+               //Select PSK with DHE key establishment
                context->keyExchMethod = TLS13_KEY_EXCH_PSK_DHE;
             }
             else
+#endif
             {
+               //Select DHE key establishment
                context->keyExchMethod = TLS13_KEY_EXCH_DHE;
+               context->selectedIdentity = -1;
+               context->earlyDataRejected = TRUE;
             }
          }
          //Elliptic curve group?
@@ -587,23 +617,33 @@ error_t tls13ParseClientKeyShareExtension(TlsContext *context,
             error = tls13GenerateKeyShare(context, namedGroup);
             //Any error to report?
             if(error)
+            {
                return error;
+            }
 
             //Compute ECDHE shared secret
             error = tls13GenerateSharedSecret(context,
                keyShareEntry->keyExchange, ntohs(keyShareEntry->length));
             //Any error to report?
             if(error)
+            {
                return error;
+            }
 
-            //ECDHE key exchange mechanism provides forward secrecy
+#if (TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
+            //Valid PSK?
             if(context->keyExchMethod == TLS13_KEY_EXCH_PSK)
             {
+               //Select PSK with ECDHE key establishment
                context->keyExchMethod = TLS13_KEY_EXCH_PSK_ECDHE;
             }
             else
+#endif
             {
+               //Select ECDHE key establishment
                context->keyExchMethod = TLS13_KEY_EXCH_ECDHE;
+               context->selectedIdentity = -1;
+               context->earlyDataRejected = TRUE;
             }
          }
          //ML-KEM key exchange method?
@@ -614,17 +654,24 @@ error_t tls13ParseClientKeyShareExtension(TlsContext *context,
                keyShareEntry->keyExchange, ntohs(keyShareEntry->length));
             //Any error to report?
             if(error)
+            {
                return error;
+            }
 
-            //ML-KEM-512, ML-KEM-768, and ML-KEM-1024 can be used as a
-            //standalone algorithm to achieve post-quantum key agreement
+#if (TLS13_PSK_MLKEM_KE_SUPPORT == ENABLED)
+            //Valid PSK?
             if(context->keyExchMethod == TLS13_KEY_EXCH_PSK)
             {
+               //Select PSK with ML-KEM key establishment
                context->keyExchMethod = TLS13_KEY_EXCH_PSK_MLKEM;
             }
             else
+#endif
             {
+               //Select ML-KEM key establishment
                context->keyExchMethod = TLS13_KEY_EXCH_MLKEM;
+               context->selectedIdentity = -1;
+               context->earlyDataRejected = TRUE;
             }
          }
          //Hybrid key exchange method?
@@ -635,17 +682,24 @@ error_t tls13ParseClientKeyShareExtension(TlsContext *context,
                keyShareEntry->keyExchange, ntohs(keyShareEntry->length));
             //Any error to report?
             if(error)
+            {
                return error;
+            }
 
-            //Hybrid key exchange makes use of two key exchange algorithms
-            //based on different cryptographic assumptions
+#if (TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
+            //Valid PSK?
             if(context->keyExchMethod == TLS13_KEY_EXCH_PSK)
             {
+               //Select PSK with hybrid key establishment
                context->keyExchMethod = TLS13_KEY_EXCH_PSK_HYBRID;
             }
             else
+#endif
             {
+               //Select hybrid key establishment
                context->keyExchMethod = TLS13_KEY_EXCH_HYBRID;
+               context->selectedIdentity = -1;
+               context->earlyDataRejected = TRUE;
             }
          }
          //Unknown group?
@@ -660,7 +714,9 @@ error_t tls13ParseClientKeyShareExtension(TlsContext *context,
          //If no common cryptographic parameters can be negotiated, the server
          //must abort the handshake with an appropriate alert
          if(context->state == TLS_STATE_CLIENT_HELLO_2)
+         {
             return ERROR_HANDSHAKE_FAILED;
+         }
       }
    }
 #endif
@@ -702,6 +758,7 @@ error_t tls13ParsePskKeModesExtension(TlsContext *context,
    if(context->keyExchMethod == TLS13_KEY_EXCH_PSK ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_DHE ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE ||
+      context->keyExchMethod == TLS13_KEY_EXCH_PSK_MLKEM ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_HYBRID)
    {
       //PskKeyExchangeModes extension found?
@@ -727,7 +784,7 @@ error_t tls13ParsePskKeModesExtension(TlsContext *context,
             else
 #endif
 #if (TLS13_PSK_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || \
-   TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
+   TLS13_PSK_MLKEM_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
             //PSK with (EC)DHE key establishment?
             if(pskKeModeList->value[i] == TLS_PSK_KEY_EXCH_MODE_PSK_DHE_KE)
             {
@@ -735,6 +792,7 @@ error_t tls13ParsePskKeModesExtension(TlsContext *context,
                //by the client
                if(context->keyExchMethod == TLS13_KEY_EXCH_PSK_DHE ||
                   context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE ||
+                  context->keyExchMethod == TLS13_KEY_EXCH_PSK_MLKEM ||
                   context->keyExchMethod == TLS13_KEY_EXCH_PSK_HYBRID)
                {
                   error = NO_ERROR;
@@ -784,7 +842,8 @@ error_t tls13ParseClientPreSharedKeyExtension(TlsContext *context,
    const Tls13PskIdentityList *identityList, const Tls13PskBinderList *binderList)
 {
 #if (TLS13_PSK_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
-   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
+   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_MLKEM_KE_SUPPORT == ENABLED || \
+   TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
    //PreSharedKey extension found?
    if(identityList != NULL && binderList != NULL)
    {
@@ -830,9 +889,14 @@ error_t tls13ParseClientPreSharedKeyExtension(TlsContext *context,
 
          //Malformed PreSharedKey extension?
          if(n < sizeof(TlsPskIdentity))
+         {
             return ERROR_DECODING_FAILED;
+         }
+
          if(n < (sizeof(TlsPskIdentity) + ntohs(identity->length)))
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //Debug message
          TRACE_DEBUG("PSK identity #%u:\r\n", i);
@@ -844,7 +908,9 @@ error_t tls13ParseClientPreSharedKeyExtension(TlsContext *context,
 
          //Malformed PreSharedKey extension?
          if(n < sizeof(uint32_t))
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //The obfuscated_ticket_age field is a 32-bit unsigned integer
          obfuscatedTicketAge = LOAD32BE(p);
@@ -858,13 +924,20 @@ error_t tls13ParseClientPreSharedKeyExtension(TlsContext *context,
 
          //If the binder is not present, the server must abort the handshake
          if(context->selectedIdentity >= 0 && m == 0)
+         {
             return ERROR_ILLEGAL_PARAMETER;
+         }
 
          //Malformed PreSharedKey extension?
          if(m < sizeof(Tls13PskBinder))
+         {
             return ERROR_DECODING_FAILED;
+         }
+
          if(m < (sizeof(Tls13PskBinder) + binder->length))
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //Debug message
          TRACE_DEBUG("PSK binder #%u:\r\n", i);
@@ -911,7 +984,7 @@ error_t tls13ParseClientPreSharedKeyExtension(TlsContext *context,
          {
             //Decrypt the received ticket and verify the ticket's validity
             error = tls13VerifyTicket(context, identity->value,
-               htons(identity->length), obfuscatedTicketAge);
+               ntohs(identity->length), obfuscatedTicketAge);
 
             //Valid ticket?
             if(!error)

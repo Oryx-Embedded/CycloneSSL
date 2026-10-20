@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -64,7 +64,9 @@ error_t tlsGenerateSessionKeys(TlsContext *context)
 
    //Make sure that the key block is large enough
    if(keyBlockLen > sizeof(context->keyBlock))
+   {
       return ERROR_FAILURE;
+   }
 
    //Debug message
    TRACE_DEBUG("Generating session keys...\r\n");
@@ -98,11 +100,13 @@ error_t tlsGenerateSessionKeys(TlsContext *context)
 
       //Failed to generate master secret?
       if(error)
+      {
          return error;
+      }
 
       //The premaster secret should be deleted from memory once the master
       //secret has been computed
-      osMemset(context->premasterSecret, 0, TLS_PREMASTER_SECRET_SIZE);
+      cryptoZeroizeMem(context->premasterSecret, TLS_PREMASTER_SECRET_SIZE);
    }
 
    //Debug message
@@ -119,7 +123,9 @@ error_t tlsGenerateSessionKeys(TlsContext *context)
    error = tlsGenerateKeyBlock(context, keyBlockLen);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Debug message
    TRACE_DEBUG("  Key block:\r\n");

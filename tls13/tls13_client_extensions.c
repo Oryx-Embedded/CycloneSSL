@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -146,7 +146,9 @@ error_t tls13FormatClientKeyShareExtension(TlsContext *context,
          keyShareEntry->keyExchange, &n, MPI_FORMAT_BIG_ENDIAN);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Set the length of the key_exchange field
       keyShareEntry->length = htons(n);
@@ -169,7 +171,9 @@ error_t tls13FormatClientKeyShareExtension(TlsContext *context,
          keyShareEntry->keyExchange, &n, EC_PUBLIC_KEY_FORMAT_X963);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Set the length of the key_exchange field
       keyShareEntry->length = htons(n);
@@ -224,7 +228,8 @@ error_t tls13FormatClientKeyShareExtension(TlsContext *context,
       //outlined in Section 3.2 of RFC 9954. Specifically, the order of shares
       //in the concatenation has been reversed. This is due to historical
       //reasons (refer to RFC 10024, section 4.1)
-      if(context->namedGroup == TLS_GROUP_X25519_MLKEM768)
+      if(context->namedGroup == TLS_GROUP_MLKEM512_X25519 ||
+         context->namedGroup == TLS_GROUP_X25519_MLKEM768)
       {
          offset = kemAlgo->publicKeySize;
       }
@@ -239,10 +244,13 @@ error_t tls13FormatClientKeyShareExtension(TlsContext *context,
          keyShareEntry->keyExchange + offset, &n, EC_PUBLIC_KEY_FORMAT_X963);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
-      //X25519MLKEM768 group?
-      if(context->namedGroup == TLS_GROUP_X25519_MLKEM768)
+      //MLKEM512X25519 or X25519MLKEM768 group?
+      if(context->namedGroup == TLS_GROUP_MLKEM512_X25519 ||
+         context->namedGroup == TLS_GROUP_X25519_MLKEM768)
       {
          offset = 0;
       }
@@ -308,7 +316,8 @@ error_t tls13FormatPskKeModesExtension(TlsContext *context,
    size_t n = 0;
 
 #if (TLS13_PSK_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
-   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
+   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_MLKEM_KE_SUPPORT == ENABLED || \
+   TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
    TlsExtension *extension;
    Tls13PskKeModeList *pskKeModeList;
 
@@ -323,7 +332,7 @@ error_t tls13FormatPskKeModesExtension(TlsContext *context,
    n = 0;
 
 #if (TLS13_PSK_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || \
-   TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
+   TLS13_PSK_MLKEM_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
    //PSK with (EC)DHE key establishment
    pskKeModeList->value[n++] = TLS_PSK_KEY_EXCH_MODE_PSK_DHE_KE;
 #endif
@@ -371,7 +380,8 @@ error_t tls13FormatClientPreSharedKeyExtension(TlsContext *context,
    size_t n = 0;
 
 #if (TLS13_PSK_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
-   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
+   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_MLKEM_KE_SUPPORT == ENABLED || \
+   TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
    //Check whether the client is attempting a PSK key establishment
    if(tls13IsPskValid(context) || tls13IsTicketValid(context))
    {
@@ -445,23 +455,32 @@ error_t tls13FormatClientPreSharedKeyExtension(TlsContext *context,
          return ERROR_FAILURE;
       }
 
-      //Valid cipher suite provisioned?
-      if(cipherSuite != 0)
+      //The updated ClientHello must preserve the cipher suite selected by the
+      //server in the HelloRetryRequest (refer to RFC 8446, section 4.1.4)
+      if(context->state != TLS_STATE_CLIENT_HELLO_2)
       {
-         //Restore the cipher suite associated with the PSK
-         error = tlsSelectCipherSuite(context, cipherSuite);
-         //Any error to report?
-         if(error)
-            return error;
-      }
-      else
-      {
-         //Make sure the hash algorithm is valid
-         if(hashAlgo == NULL)
-            return ERROR_FAILURE;
+         //Valid cipher suite provisioned?
+         if(cipherSuite != 0)
+         {
+            //Restore the cipher suite associated with the PSK
+            error = tlsSelectCipherSuite(context, cipherSuite);
+            //Any error to report?
+            if(error)
+            {
+               return error;
+            }
+         }
+         else
+         {
+            //Make sure the hash algorithm is valid
+            if(hashAlgo == NULL)
+            {
+               return ERROR_FAILURE;
+            }
 
-         //Restore the hash algorithm associated with the PSK
-         context->cipherSuite.prfHashAlgo = hashAlgo;
+            //Restore the hash algorithm associated with the PSK
+            context->cipherSuite.prfHashAlgo = hashAlgo;
+         }
       }
 
       //Fix the length of the PSK identity
@@ -640,11 +659,15 @@ error_t tls13ParseServerCookieExtension(TlsContext *context,
       //Clients must abort the handshake with an illegal_parameter alert if the
       //HelloRetryRequest would not result in any change in the ClientHello
       if(n == 0)
+      {
          return ERROR_ILLEGAL_PARAMETER;
+      }
 
       //Check the length of the cookie
       if(n > TLS13_MAX_COOKIE_SIZE)
+      {
          return ERROR_ILLEGAL_PARAMETER;
+      }
 
       //Release cookie
       if(context->cookie != NULL)
@@ -658,7 +681,9 @@ error_t tls13ParseServerCookieExtension(TlsContext *context,
       context->cookie = tlsAllocMem(n);
       //Failed to allocate memory?
       if(context->cookie == NULL)
+      {
          return ERROR_OUT_OF_MEMORY;
+      }
 
       //Save cookie
       osMemcpy(context->cookie, cookie->value, n);
@@ -698,11 +723,19 @@ error_t tls13ParseSelectedGroupExtension(TlsContext *context,
       //intends to negotiate
       namedGroup = LOAD16BE(selectedGroup->value);
 
-      //Check whether the server has selected a different ECDHE or FFDHE group
+      //The client must verify that the selected_group field does not correspond
+      //to a group which was provided in the KeyShare extension in the original
+      //ClientHello (refer to RFC 8446, section 4.2.8)
       if(namedGroup != context->namedGroup)
       {
          //Generate an ephemeral key pair
          error = tls13GenerateKeyShare(context, namedGroup);
+      }
+      else
+      {
+         //If this check fails, then the client must abort the handshake with
+         //an illegal_parameter alert
+         error = ERROR_ILLEGAL_PARAMETER;
       }
    }
 #else
@@ -851,7 +884,8 @@ error_t tls13ParseServerPreSharedKeyExtension(TlsContext *context,
    context->selectedIdentity = -1;
 
 #if (TLS13_PSK_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
-   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
+   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_MLKEM_KE_SUPPORT == ENABLED || \
+   TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
    //PreSharedKey extension found?
    if(selectedIdentity != NULL)
    {
@@ -861,7 +895,9 @@ error_t tls13ParseServerPreSharedKeyExtension(TlsContext *context,
       //ClientHello, it must abort the handshake with an unsupported_extension
       //fatal alert
       if(!tls13IsPskValid(context) && !tls13IsTicketValid(context))
+      {
          return ERROR_UNSUPPORTED_EXTENSION;
+      }
 
       //In order to accept PSK key establishment, the server sends a
       //PreSharedKey extension indicating the selected identity
@@ -870,13 +906,17 @@ error_t tls13ParseServerPreSharedKeyExtension(TlsContext *context,
       //Clients must verify that the server's selected_identity is within the
       //range supplied by the client (refer to RFC 8446, section 4.2.11)
       if(context->selectedIdentity != 0)
+      {
          return ERROR_ILLEGAL_PARAMETER;
+      }
 
       //Point to the cipher suite hash algorithm
       hashAlgo = context->cipherSuite.prfHashAlgo;
       //Make sure the hash algorithm is valid
       if(hashAlgo == NULL)
+      {
          return ERROR_FAILURE;
+      }
 
       //Clients must also verify that the server has selected a cipher suite
       //indicating a hash algorithm associated with the PSK
@@ -884,13 +924,17 @@ error_t tls13ParseServerPreSharedKeyExtension(TlsContext *context,
       {
          //PSK incompatible with the selected cipher suite?
          if(tlsGetHashAlgo(context->pskHashAlgo) != hashAlgo)
+         {
             return ERROR_ILLEGAL_PARAMETER;
+         }
       }
       else if(tls13IsTicketValid(context))
       {
          //PSK incompatible with the selected cipher suite?
          if(tlsGetHashAlgo(context->ticketHashAlgo) != hashAlgo)
+         {
             return ERROR_ILLEGAL_PARAMETER;
+         }
       }
       else
       {
@@ -903,33 +947,46 @@ error_t tls13ParseServerPreSharedKeyExtension(TlsContext *context,
 #if (TLS13_PSK_KE_SUPPORT == ENABLED)
       if(context->keyExchMethod == TLS_KEY_EXCH_NONE)
       {
+         //Select PSK key establishment
          context->keyExchMethod = TLS13_KEY_EXCH_PSK;
       }
+      else
 #endif
 #if (TLS13_PSK_DHE_KE_SUPPORT == ENABLED)
       if(context->keyExchMethod == TLS13_KEY_EXCH_DHE)
       {
+         //Select PSK with DHE key establishment
          context->keyExchMethod = TLS13_KEY_EXCH_PSK_DHE;
       }
+      else
 #endif
 #if (TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
       if(context->keyExchMethod == TLS13_KEY_EXCH_ECDHE)
       {
+         //Select PSK with ECDHE key establishment
          context->keyExchMethod = TLS13_KEY_EXCH_PSK_ECDHE;
       }
+      else
 #endif
 #if (TLS13_PSK_MLKEM_KE_SUPPORT == ENABLED)
       if(context->keyExchMethod == TLS13_KEY_EXCH_MLKEM)
       {
+         //Select PSK with ML-KEM key establishment
          context->keyExchMethod = TLS13_KEY_EXCH_PSK_MLKEM;
       }
+      else
 #endif
 #if (TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
       if(context->keyExchMethod == TLS13_KEY_EXCH_HYBRID)
       {
+         //Select PSK with hybrid key establishment
          context->keyExchMethod = TLS13_KEY_EXCH_PSK_HYBRID;
       }
+      else
 #endif
+      {
+         //Just for sanity
+      }
    }
 #else
    //PreSharedKey extension found?
@@ -970,14 +1027,18 @@ error_t tls13ParseServerEarlyDataExtension(TlsContext *context,
          //ClientHello, it must abort the handshake with an unsupported_extension
          //fatal alert
          if(!context->earlyDataEnabled || context->earlyDataRejected)
+         {
             return ERROR_UNSUPPORTED_EXTENSION;
+         }
 
          //If the server has supplied an EarlyData extension, the client must
          //verify that the server's selected_identity is 0. If any other value
          //is returned, it must abort the handshake with an illegal_parameter
          //fatal alert
          if(context->selectedIdentity != 0)
+         {
             return ERROR_ILLEGAL_PARAMETER;
+         }
 
          //A valid EarlyData extension has been received
          context->earlyDataExtReceived = TRUE;

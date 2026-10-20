@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -557,7 +557,9 @@ error_t tlsFormatServerHello(TlsContext *context,
       error = tlsFormatServerSniExtension(context, p, &n);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Fix the length of the extension list
       extensionList->length += (uint16_t) n;
@@ -572,7 +574,9 @@ error_t tlsFormatServerHello(TlsContext *context,
       error = tlsFormatServerMaxFragLenExtension(context, p, &n);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Fix the length of the extension list
       extensionList->length += (uint16_t) n;
@@ -586,7 +590,9 @@ error_t tlsFormatServerHello(TlsContext *context,
       error = tlsFormatServerRecordSizeLimitExtension(context, p, &n);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Fix the length of the extension list
       extensionList->length += (uint16_t) n;
@@ -602,7 +608,9 @@ error_t tlsFormatServerHello(TlsContext *context,
       error = tlsFormatServerEcPointFormatsExtension(context, p, &n);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Fix the length of the extension list
       extensionList->length += (uint16_t) n;
@@ -615,7 +623,9 @@ error_t tlsFormatServerHello(TlsContext *context,
       error = tlsFormatServerAlpnExtension(context, p, &n);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Fix the length of the extension list
       extensionList->length += (uint16_t) n;
@@ -630,7 +640,9 @@ error_t tlsFormatServerHello(TlsContext *context,
       error = tlsFormatClientCertTypeExtension(context, p, &n);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Fix the length of the extension list
       extensionList->length += (uint16_t) n;
@@ -642,7 +654,9 @@ error_t tlsFormatServerHello(TlsContext *context,
       error = tlsFormatServerCertTypeExtension(context, p, &n);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Fix the length of the extension list
       extensionList->length += (uint16_t) n;
@@ -658,7 +672,9 @@ error_t tlsFormatServerHello(TlsContext *context,
       error = tlsFormatServerEtmExtension(context, p, &n);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Fix the length of the extension list
       extensionList->length += (uint16_t) n;
@@ -672,7 +688,9 @@ error_t tlsFormatServerHello(TlsContext *context,
       error = tlsFormatServerEmsExtension(context, p, &n);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Fix the length of the extension list
       extensionList->length += (uint16_t) n;
@@ -687,7 +705,9 @@ error_t tlsFormatServerHello(TlsContext *context,
       error = tlsFormatServerSessionTicketExtension(context, p, &n);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Fix the length of the extension list
       extensionList->length += (uint16_t) n;
@@ -701,7 +721,9 @@ error_t tlsFormatServerHello(TlsContext *context,
       error = tlsFormatServerRenegoInfoExtension(context, p, &n);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Fix the length of the extension list
       extensionList->length += (uint16_t) n;
@@ -720,7 +742,9 @@ error_t tlsFormatServerHello(TlsContext *context,
       error = tls13FormatServerSupportedVersionsExtension(context, p, &n);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Fix the length of the extension list
       extensionList->length += (uint16_t) n;
@@ -732,7 +756,9 @@ error_t tlsFormatServerHello(TlsContext *context,
       error = tls13FormatServerKeyShareExtension(context, p, &n);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Fix the length of the extension list
       extensionList->length += (uint16_t) n;
@@ -744,7 +770,9 @@ error_t tlsFormatServerHello(TlsContext *context,
       error = tls13FormatServerPreSharedKeyExtension(context, p, &n);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Fix the length of the extension list
       extensionList->length += (uint16_t) n;
@@ -808,7 +836,9 @@ error_t tlsFormatServerKeyExchange(TlsContext *context,
       error = tlsFormatPskIdentityHint(context, p, &n);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Advance data pointer
       p += n;
@@ -834,7 +864,9 @@ error_t tlsFormatServerKeyExchange(TlsContext *context,
       error = tlsFormatServerKeyParams(context, p, &paramsLen);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Advance data pointer
       p += paramsLen;
@@ -882,7 +914,9 @@ error_t tlsFormatServerKeyExchange(TlsContext *context,
 
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Advance data pointer
       p += n;
@@ -1226,6 +1260,10 @@ error_t tlsParseClientHello(TlsContext *context,
             //Secure renegotiation is disabled
             return ERROR_HANDSHAKE_FAILED;
          }
+
+         //The client certificate of the previous handshake must not be taken
+         //into account in the renegotiated handshake
+         context->peerCertType = TLS_CERT_NONE;
       }
       else
 #endif
@@ -1244,7 +1282,9 @@ error_t tlsParseClientHello(TlsContext *context,
 
    //Check the length of the ClientHello message
    if(length < sizeof(TlsClientHello))
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //Get the version the client wishes to use during this session
    context->clientVersion = ntohs(message->clientVersion);
@@ -1256,9 +1296,14 @@ error_t tlsParseClientHello(TlsContext *context,
 
    //Check the length of the session ID
    if(message->sessionIdLen > n)
+   {
       return ERROR_DECODING_FAILED;
+   }
+
    if(message->sessionIdLen > 32)
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //Debug message
    TRACE_DEBUG("Session ID (%" PRIu8 " bytes):\r\n", message->sessionIdLen);
@@ -1278,13 +1323,20 @@ error_t tlsParseClientHello(TlsContext *context,
 
       //Malformed ClientHello message?
       if(n < sizeof(DtlsCookie))
+      {
          return ERROR_DECODING_FAILED;
+      }
+
       if(n < (sizeof(DtlsCookie) + cookie->length))
+      {
          return ERROR_DECODING_FAILED;
+      }
 
       //Check the length of the cookie
       if(cookie->length > DTLS_MAX_COOKIE_SIZE)
+      {
          return ERROR_ILLEGAL_PARAMETER;
+      }
 
       //Point to the next field
       p += sizeof(DtlsCookie) + cookie->length;
@@ -1303,15 +1355,25 @@ error_t tlsParseClientHello(TlsContext *context,
 
    //Malformed ClientHello message?
    if(n < sizeof(TlsCipherSuites))
+   {
       return ERROR_DECODING_FAILED;
+   }
+
    if(n < (sizeof(TlsCipherSuites) + ntohs(cipherSuites->length)))
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //Check the length of the list
    if(ntohs(cipherSuites->length) == 0)
+   {
       return ERROR_DECODING_FAILED;
+   }
+
    if((ntohs(cipherSuites->length) % 2) != 0)
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //Point to the next field
    p += sizeof(TlsCipherSuites) + ntohs(cipherSuites->length);
@@ -1323,13 +1385,20 @@ error_t tlsParseClientHello(TlsContext *context,
 
    //Malformed ClientHello message?
    if(n < sizeof(TlsCompressMethods))
+   {
       return ERROR_DECODING_FAILED;
+   }
+
    if(n < (sizeof(TlsCompressMethods) + compressMethods->length))
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //Check the length of the list
    if(compressMethods->length == 0)
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //Point to the next field
    p += sizeof(TlsCompressMethods) + compressMethods->length;
@@ -1340,20 +1409,26 @@ error_t tlsParseClientHello(TlsContext *context,
    error = tlsParseHelloExtensions(TLS_TYPE_CLIENT_HELLO, p, n, &extensions);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Check whether the ClientHello includes any SCSV cipher suites
    error = tlsCheckSignalingCipherSuiteValues(context, cipherSuites);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
 #if (TLS_SECURE_RENEGOTIATION_SUPPORT == ENABLED)
    //Parse RenegotiationInfo extension
    error = tlsParseClientRenegoInfoExtension(context, &extensions);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 #endif
 
    //Perform version negotiation
@@ -1361,14 +1436,18 @@ error_t tlsParseClientHello(TlsContext *context,
       extensions.supportedVersionList);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Check the list of extensions offered by the client
    error = tlsCheckHelloExtensions(TLS_TYPE_CLIENT_HELLO, context->version,
       &extensions);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //The SignatureAlgorithms extension is not meaningful for TLS versions
    //prior to 1.2 (refer to RFC 5246, section 7.4.1.4.1)
@@ -1389,7 +1468,9 @@ error_t tlsParseClientHello(TlsContext *context,
    error = tlsParseClientSniExtension(context, extensions.serverNameList);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 #endif
 
 #if (TLS_ALPN_SUPPORT == ENABLED)
@@ -1397,7 +1478,9 @@ error_t tlsParseClientHello(TlsContext *context,
    error = tlsParseClientAlpnExtension(context, extensions.protocolNameList);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 #endif
 
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
@@ -1428,7 +1511,9 @@ error_t tlsParseClientHello(TlsContext *context,
          error = dtlsVerifyCookie(context, cookie, &clientParams);
          //Any error to report?
          if(error)
+         {
             return error;
+         }
 
          //The server may respond with a HelloVerifyRequest message containing
          //a stateless cookie
@@ -1446,7 +1531,9 @@ error_t tlsParseClientHello(TlsContext *context,
          extensions.sessionTicket);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //The server attempts to resume TLS session via session ticket
       error = tlsResumeStatelessSession(context, message->sessionId,
@@ -1466,7 +1553,9 @@ error_t tlsParseClientHello(TlsContext *context,
             message->sessionIdLen, cipherSuites, &extensions);
          //Any error to report?
          if(error)
+         {
             return error;
+         }
       }
 
       //Full handshake?
@@ -1477,20 +1566,26 @@ error_t tlsParseClientHello(TlsContext *context,
             &extensions);
          //If no acceptable choices are presented, terminate the handshake
          if(error)
+         {
             return ERROR_HANDSHAKE_FAILED;
+         }
 
          //Parse the list of compression methods supported by the client
          error = tlsParseCompressMethods(context, compressMethods);
          //Any error to report?
          if(error)
+         {
             return error;
+         }
       }
 
       //Initialize handshake message hashing
       error = tlsInitTranscriptHash(context);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
 #if (TLS_ECDH_ANON_KE_SUPPORT == ENABLED || TLS_ECDHE_RSA_KE_SUPPORT == ENABLED || \
    TLS_ECDHE_ECDSA_KE_SUPPORT == ENABLED || TLS_ECDHE_PSK_KE_SUPPORT == ENABLED)
@@ -1500,7 +1595,9 @@ error_t tlsParseClientHello(TlsContext *context,
          extensions.ecPointFormatList);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 #endif
 
 #if (TLS_ENCRYPT_THEN_MAC_SUPPORT == ENABLED)
@@ -1511,7 +1608,9 @@ error_t tlsParseClientHello(TlsContext *context,
          extensions.encryptThenMac);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 #endif
 
 #if (TLS_EXT_MASTER_SECRET_SUPPORT == ENABLED)
@@ -1520,7 +1619,9 @@ error_t tlsParseClientHello(TlsContext *context,
          extensions.extendedMasterSecret);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 #endif
    }
    else
@@ -1542,13 +1643,17 @@ error_t tlsParseClientHello(TlsContext *context,
          &extensions);
       //If no acceptable choices are presented, terminate the handshake
       if(error)
+      {
          return error;
+      }
 
       //Parse the list of compression methods supported by the client
       error = tlsParseCompressMethods(context, compressMethods);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //When a PSK is used and early data is allowed for that PSK, the client
       //can send application data in its first flight of messages
@@ -1586,7 +1691,9 @@ error_t tlsParseClientHello(TlsContext *context,
    error = tlsParseClientMaxFragLenExtension(context, extensions.maxFragLen);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 #endif
 
 #if (TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)
@@ -1596,7 +1703,9 @@ error_t tlsParseClientHello(TlsContext *context,
       extensions.recordSizeLimit);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 #endif
 
 #if (TLS_RAW_PUBLIC_KEY_SUPPORT == ENABLED)
@@ -1605,20 +1714,26 @@ error_t tlsParseClientHello(TlsContext *context,
       extensions.clientCertTypeList);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Parse ServerCertType extension
    error = tlsParseServerCertTypeListExtension(context,
       extensions.serverCertTypeList);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 #endif
 
    //Another handshake message cannot be packed in the same record as the
    //ClientHello
    if(context->rxBufferLen != 0)
+   {
       return ERROR_UNEXPECTED_MESSAGE;
+   }
 
    //Version of TLS prior to TLS 1.3?
    if(context->version <= TLS_VERSION_1_2)
@@ -1675,7 +1790,9 @@ error_t tlsParseClientKeyExchange(TlsContext *context,
 
    //Check TLS version
    if(context->version > TLS_VERSION_1_2)
+   {
       return ERROR_UNEXPECTED_MESSAGE;
+   }
 
    //Check current state
    if(context->state == TLS_STATE_CLIENT_CERTIFICATE)
@@ -1691,7 +1808,9 @@ error_t tlsParseClientKeyExchange(TlsContext *context,
          //If client authentication is required by the server for the handshake
          //to continue, it may respond with a fatal handshake failure alert
          if(context->clientAuthMode == TLS_CLIENT_AUTH_REQUIRED)
+         {
             return ERROR_HANDSHAKE_FAILED;
+         }
       }
    }
    else if(context->state != TLS_STATE_CLIENT_KEY_EXCHANGE)
@@ -1715,7 +1834,9 @@ error_t tlsParseClientKeyExchange(TlsContext *context,
       error = tlsParsePskIdentity(context, p, length, &n);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Point to the next field
       p += n;
@@ -1731,7 +1852,9 @@ error_t tlsParseClientKeyExchange(TlsContext *context,
       error = tlsParseClientKeyParams(context, p, length, &n);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Point to the next field
       p += n;
@@ -1742,7 +1865,9 @@ error_t tlsParseClientKeyExchange(TlsContext *context,
    //If the amount of data in the message does not precisely match the format
    //of the ClientKeyExchange message, then send a fatal alert
    if(length != 0)
+   {
       return ERROR_DECODING_FAILED;
+   }
 
 #if (TLS_PSK_KE_SUPPORT == ENABLED || TLS_RSA_PSK_KE_SUPPORT == ENABLED || \
    TLS_DHE_PSK_KE_SUPPORT == ENABLED || TLS_ECDHE_PSK_KE_SUPPORT == ENABLED)
@@ -1754,13 +1879,17 @@ error_t tlsParseClientKeyExchange(TlsContext *context,
    {
       //Invalid pre-shared key?
       if(context->pskLen == 0)
+      {
          return ERROR_INVALID_KEY_LENGTH;
+      }
 
       //Generate premaster secret
       error = tlsGeneratePskPremasterSecret(context);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
    }
 #endif
 
@@ -1768,7 +1897,9 @@ error_t tlsParseClientKeyExchange(TlsContext *context,
    error = tlsGenerateSessionKeys(context);
    //Unable to generate key material?
    if(error)
+   {
       return error;
+   }
 
    //The client must send a CertificateVerify message when the Certificate
    //message is non-empty

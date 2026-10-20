@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -271,7 +271,9 @@ error_t dtls13ParseAck(TlsContext *context, const Dtls13Ack *message,
 
    //Check transport protocol
    if(context->transportProtocol != TLS_TRANSPORT_PROTOCOL_DATAGRAM)
+   {
       return ERROR_UNEXPECTED_MESSAGE;
+   }
 
    //Check TLS version
    if(context->version != TLS_VERSION_1_3)
@@ -293,11 +295,15 @@ error_t dtls13ParseAck(TlsContext *context, const Dtls13Ack *message,
 
    //Check message length
    if(length < sizeof(Dtls13Ack))
+   {
       return ERROR_INVALID_LENGTH;
+   }
 
    //Malformed ACK message?
    if(((length - sizeof(Dtls13Ack)) % sizeof(Dtls13RecordNumber)) != 0)
+   {
       return ERROR_INVALID_LENGTH;
+   }
 
    //Dtermine the number of records in the list
    numRecords = (length - sizeof(Dtls13Ack)) / sizeof(Dtls13RecordNumber);
@@ -335,13 +341,13 @@ error_t dtls13ParseAck(TlsContext *context, const Dtls13Ack *message,
                if(seqNum < (state->start + state->count))
                {
                   index = (uint_t) (seqNum - state->start);
-                  state->mask &= ~(1 << index);
+                  state->mask &= ~(1U << index);
                }
             }
             else
             {
                index = (seqNum - state->start) % state->count;
-               state->mask &= ~(1 << index);
+               state->mask &= ~(1U << index);
             }
          }
       }
@@ -410,27 +416,44 @@ void dtls13FormatNonce(TlsEncryptionEngine *encryptionEngine,
 /**
  * @brief Compute overhead caused by encryption
  * @param[in] encryptionEngine Pointer to the encryption engine
+ * @param[in] payloadLen Length of the payload, in bytes
  * @return Overhead, in bytes, caused by encryption
  **/
 
-size_t dtls13ComputeEncryptionOverhead(TlsEncryptionEngine *encryptionEngine)
+size_t dtls13ComputeEncryptionOverhead(TlsEncryptionEngine *encryptionEngine,
+   size_t payloadLen)
 {
    size_t n;
-
-   //Initialize variable
-   n = 6;
+   size_t authTagLen;
 
    //Check cipher mode of operation
-   //Message authentication?
    if(encryptionEngine->cipherMode == CIPHER_MODE_CCM ||
       encryptionEngine->cipherMode == CIPHER_MODE_GCM ||
+      encryptionEngine->cipherMode == CIPHER_MODE_AEGIS128L ||
+      encryptionEngine->cipherMode == CIPHER_MODE_AEGIS256 ||
       encryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
    {
-      n += encryptionEngine->authTagLen;
+      authTagLen = encryptionEngine->authTagLen;
    }
    else if(encryptionEngine->cipherMode == CIPHER_MODE_NULL)
    {
-      n += encryptionEngine->hashAlgo->digestSize;
+      authTagLen = encryptionEngine->hashAlgo->digestSize;
+   }
+   else
+   {
+      //Just for sanity
+      authTagLen = 0;
+   }
+
+   //The unified header is 5 bytes long and the encrypted record contains the
+   //content type and the authentication tag
+   n = 6 + authTagLen;
+
+   //Short plaintexts are padded in order to make a ciphertext of at least 16
+   //bytes (refer to RFC 9147, section 4.2.3)
+   if((payloadLen + 1 + authTagLen) < DTLS13_MIN_CIPHERTEXT_LEN)
+   {
+      n += DTLS13_MIN_CIPHERTEXT_LEN - (payloadLen + 1 + authTagLen);
    }
 
    //Return the total overhead caused by encryption

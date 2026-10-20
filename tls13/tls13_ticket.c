@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -93,11 +93,15 @@ error_t tls13SaveSessionTicket(const TlsContext *context,
 
    //Check TLS version
    if(context->version != TLS_VERSION_1_3)
+   {
       return ERROR_INVALID_VERSION;
+   }
 
    //Invalid session ticket?
    if(context->ticket == NULL || context->ticketLen == 0)
+   {
       return ERROR_INVALID_TICKET;
+   }
 
    //Invalid session parameters?
    if(context->cipherSuite.identifier == 0 ||
@@ -113,7 +117,9 @@ error_t tls13SaveSessionTicket(const TlsContext *context,
    session->ticket = tlsAllocMem(context->ticketLen);
    //Failed to allocate memory?
    if(session->ticket == NULL)
+   {
       return ERROR_OUT_OF_MEMORY;
+   }
 
    //Get current time
    session->timestamp = osGetSystemTime();
@@ -124,7 +130,7 @@ error_t tls13SaveSessionTicket(const TlsContext *context,
    session->ticketTimestamp = context->ticketTimestamp;
    session->ticketLifetime = context->ticketLifetime;
    session->ticketAgeAdd = context->ticketAgeAdd;
-   session->maxEarlyDataSize = context->maxEarlyDataSize;
+   session->maxEarlyDataSize = (uint32_t) context->maxEarlyDataSize;
 
    //Copy session ticket
    osMemcpy(session->ticket, context->ticket, context->ticketLen);
@@ -165,7 +171,9 @@ error_t tls13SaveSessionTicket(const TlsContext *context,
       session->ticketAlpn = tlsAllocMem(n + 1);
       //Failed to allocate memory?
       if(session->ticketAlpn == NULL)
+      {
          return ERROR_OUT_OF_MEMORY;
+      }
 
       //Copy the ALPN protocol associated with the ticket
       osStrcpy(session->ticketAlpn, context->selectedProtocol);
@@ -191,11 +199,15 @@ error_t tls13RestoreSessionTicket(TlsContext *context,
 
    //Check TLS version
    if(session->version != TLS_VERSION_1_3)
+   {
       return ERROR_INVALID_VERSION;
+   }
 
    //Invalid session ticket?
    if(session->ticket == NULL || session->ticketLen == 0)
+   {
       return ERROR_INVALID_TICKET;
+   }
 
    //Invalid session parameters?
    if(session->cipherSuite == 0 ||
@@ -209,7 +221,9 @@ error_t tls13RestoreSessionTicket(TlsContext *context,
 
    //Verify ticket's validity
    if(serverTicketAge >= (session->ticketLifetime * 1000))
+   {
       return ERROR_TICKET_EXPIRED;
+   }
 
    //Restore session parameters
    context->version = session->version;
@@ -224,7 +238,7 @@ error_t tls13RestoreSessionTicket(TlsContext *context,
    //Release existing session ticket, if any
    if(context->ticket != NULL)
    {
-      osMemset(context->ticket, 0, context->ticketLen);
+      cryptoZeroizeMem(context->ticket, context->ticketLen);
       tlsFreeMem(context->ticket);
       context->ticket = NULL;
       context->ticketLen = 0;
@@ -234,7 +248,9 @@ error_t tls13RestoreSessionTicket(TlsContext *context,
    context->ticket = tlsAllocMem(session->ticketLen);
    //Failed to allocate memory?
    if(context->ticket == NULL)
+   {
       return ERROR_OUT_OF_MEMORY;
+   }
 
    //Copy session ticket
    osMemcpy(context->ticket, session->ticket, session->ticketLen);
@@ -282,7 +298,9 @@ error_t tls13RestoreSessionTicket(TlsContext *context,
       context->ticketAlpn = tlsAllocMem(n + 1);
       //Failed to allocate memory?
       if(context->ticketAlpn == NULL)
+      {
          return ERROR_OUT_OF_MEMORY;
+      }
 
       //Copy the ALPN protocol associated with the ticket
       osStrcpy(context->ticketAlpn, session->ticketAlpn);
@@ -328,7 +346,9 @@ error_t tls13GenerateTicket(TlsContext *context,
    hashAlgo = context->cipherSuite.prfHashAlgo;
    //Make sure the hash algorithm is valid
    if(hashAlgo == NULL)
+   {
       return ERROR_FAILURE;
+   }
 
    //Compute the PSK associated with the ticket
    error = tls13HkdfExpandLabel(context->transportProtocol, hashAlgo,
@@ -337,7 +357,9 @@ error_t tls13GenerateTicket(TlsContext *context,
       hashAlgo->digestSize);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Save the length of the ticket PSK
    state->ticketPskLen = hashAlgo->digestSize;
@@ -347,14 +369,18 @@ error_t tls13GenerateTicket(TlsContext *context,
 
    //Make sure a valid callback has been registered
    if(context->ticketEncryptCallback == NULL)
+   {
       return ERROR_FAILURE;
+   }
 
    //Encrypt the state information
    error = context->ticketEncryptCallback(context, (uint8_t *) state, n,
       ticket, length, context->ticketParam);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Successful processing
    return NO_ERROR;
@@ -389,17 +415,23 @@ error_t tls13VerifyTicket(TlsContext *context, const uint8_t *ticket,
 
    //Make sure a valid callback has been registered
    if(context->ticketDecryptCallback == NULL)
+   {
       return ERROR_DECRYPTION_FAILED;
+   }
 
    //Check the length of the ticket
    if(length == 0 || length > TLS13_MAX_TICKET_SIZE)
+   {
       return ERROR_DECRYPTION_FAILED;
+   }
 
    //Allocate a buffer to store the decrypted state information
    state = tlsAllocMem(length);
    //Failed to allocate memory?
    if(state == NULL)
+   {
       return ERROR_OUT_OF_MEMORY;
+   }
 
    //Start of exception handling block
    do
@@ -409,7 +441,9 @@ error_t tls13VerifyTicket(TlsContext *context, const uint8_t *ticket,
          (uint8_t *) state, &length, context->ticketParam);
       //Any error to report?
       if(error)
+      {
          break;
+      }
 
       //Check the length of the decrypted ticket
       if(length != sizeof(Tls13PlaintextSessionState))
@@ -471,7 +505,9 @@ error_t tls13VerifyTicket(TlsContext *context, const uint8_t *ticket,
       error = tlsSelectCipherSuite(context, state->cipherSuite);
       //Any error to report?
       if(error)
+      {
          break;
+      }
 
       //Point to the cipher suite hash algorithm
       hashAlgo = context->cipherSuite.prfHashAlgo;
@@ -517,7 +553,7 @@ error_t tls13VerifyTicket(TlsContext *context, const uint8_t *ticket,
    } while(0);
 
    //Release state information
-   osMemset(state, 0, length);
+   cryptoZeroizeMem(state, length);
    tlsFreeMem(state);
 
    //Return status code

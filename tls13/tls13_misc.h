@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 #ifndef _TLS13_MISC_H
@@ -141,6 +141,13 @@
    #define TLS13_NEW_SESSION_TICKET_COUNT 2
 #elif (TLS13_NEW_SESSION_TICKET_COUNT < 0)
    #error TLS13_NEW_SESSION_TICKET_COUNT parameter is not valid
+#endif
+
+//Maximum number of key share entries in a ClientHello
+#ifndef TLS13_MAX_KEY_SHARE_ENTRIES
+   #define TLS13_MAX_KEY_SHARE_ENTRIES 16
+#elif (TLS13_MAX_KEY_SHARE_ENTRIES < 1)
+   #error TLS13_MAX_KEY_SHARE_ENTRIES parameter is not valid
 #endif
 
 //Maximum size for HKDF digests

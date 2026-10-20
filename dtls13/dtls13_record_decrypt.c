@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -145,11 +145,15 @@ error_t dtls13ReadPlaintextRecord(TlsContext *context, uint8_t *record)
    //Compliant servers must accept any value {254,XX} as the record layer
    //version number for ClientHello
    if(MSB(ntohs(header->version)) != MSB(DTLS_VERSION_1_0))
+   {
       return ERROR_VERSION_NOT_SUPPORTED;
+   }
 
    //Discard packets from earlier epochs
    if(ntohs(header->epoch) != decryptionEngine->epoch)
+   {
       return ERROR_INVALID_EPOCH;
+   }
 
    //Check whether anti-replay mechanism is enabled
    if(context->replayDetectionEnabled)
@@ -158,7 +162,9 @@ error_t dtls13ReadPlaintextRecord(TlsContext *context, uint8_t *record)
       error = dtlsCheckReplayWindow(decryptionEngine, &header->seqNum);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
    }
 
    //Update the receive window
@@ -266,6 +272,17 @@ error_t dtls13ReadCiphertextRecord(TlsContext *context, uint8_t *record)
       return ERROR_INVALID_LENGTH;
    }
 
+   //The ciphertext length must be at least 16 bytes. Receivers must reject
+   //shorter records as if they had failed deprotection (refer to RFC 9147,
+   //section 4.2)
+   if(dataLen < DTLS13_MIN_CIPHERTEXT_LEN)
+   {
+      //Drop the received datagram
+      context->rxDatagramLen = 0;
+      //Report an error
+      return ERROR_INVALID_LENGTH;
+   }
+
    //Point to the payload data
    context->rxRecordPos = context->rxDatagramPos + headerLen;
 
@@ -296,14 +313,18 @@ error_t dtls13ReadCiphertextRecord(TlsContext *context, uint8_t *record)
 
    //Invalid keying material?
    if(decryptionEngine == NULL)
+   {
       return ERROR_INVALID_EPOCH;
+   }
 
    //In DTLS 1.3, when records are encrypted, record sequence numbers are
    //also encrypted (refer to RFC 9147, section 4.2.3)
    error = dtls13DecryptSequenceNumber(decryptionEngine, record);
    //Chek status code
    if(error)
+   {
       return error;
+   }
 
    //Reconstruct the sequence number
    dtls13ReconstructSequenceNumber(decryptionEngine, record, &seqNum);
@@ -315,7 +336,9 @@ error_t dtls13ReadCiphertextRecord(TlsContext *context, uint8_t *record)
       error = dtlsCheckReplayWindow(decryptionEngine, &seqNum);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
    }
 
    //DTLSCiphertext records are used to send protected records
@@ -333,11 +356,15 @@ error_t dtls13ReadCiphertextRecord(TlsContext *context, uint8_t *record)
          record, headerLen, record + headerLen, &dataLen, &type);
       //If the MAC validation fails, the receiver must discard the record
       if(error)
+      {
          return error;
+      }
 
       //The length of the plaintext record must not exceed 2^14 bytes
       if(dataLen > TLS_MAX_RECORD_LENGTH)
+      {
          return ERROR_RECORD_OVERFLOW;
+      }
    }
    else
    {
@@ -427,22 +454,28 @@ error_t dtls13DecryptRecord(TlsContext *context,
 
    //Make sure the message length is acceptable
    if(n < authTagLen)
+   {
       return ERROR_BAD_RECORD_MAC;
+   }
 
    //Calculate the length of the ciphertext
    n -= authTagLen;
 
    //The length must not exceed 2^14 octets + 1 octet for ContentType + the
-   //maximum AEAD expansion. An endpoint that receives a record that exceeds
-   //this length must terminate the connection with a record_overflow alert
+   //maximum AEAD expansion
    if(n > (TLS_MAX_RECORD_LENGTH + 1))
-      return ERROR_RECORD_OVERFLOW;
+   {
+      return ERROR_INVALID_LENGTH;
+   }
 
 #if (TLS_CCM_CIPHER_SUPPORT == ENABLED || TLS_CCM_8_CIPHER_SUPPORT == ENABLED || \
-   TLS_GCM_CIPHER_SUPPORT == ENABLED || TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
+   TLS_GCM_CIPHER_SUPPORT == ENABLED || TLS_AEGIS128L_SUPPORT == ENABLED || \
+   TLS_AEGIS256_SUPPORT == ENABLED || TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
    //AEAD cipher?
    if(decryptionEngine->cipherMode == CIPHER_MODE_CCM ||
       decryptionEngine->cipherMode == CIPHER_MODE_GCM ||
+      decryptionEngine->cipherMode == CIPHER_MODE_AEGIS128L ||
+      decryptionEngine->cipherMode == CIPHER_MODE_AEGIS256 ||
       decryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
    {
       //Perform authenticated decryption
@@ -469,7 +502,9 @@ error_t dtls13DecryptRecord(TlsContext *context,
 
    //Wrong authentication tag?
    if(error)
+   {
       return ERROR_BAD_RECORD_MAC;
+   }
 
    //Upon successful decryption of an encrypted record, the receiving
    //implementation scans the field from the end toward the beginning
@@ -483,7 +518,9 @@ error_t dtls13DecryptRecord(TlsContext *context,
    //cleartext, it must terminate the connection with an unexpected_message
    //alert
    if(n == 0)
+   {
       return ERROR_UNEXPECTED_MESSAGE;
+   }
 
    //Retrieve the length of the plaintext
    n--;
@@ -545,13 +582,35 @@ error_t dtls13DecryptAeadRecord(TlsContext *context,
    }
    else
 #endif
+#if (TLS_AEGIS128L_SUPPORT == ENABLED)
+   //AEGIS-128L AEAD cipher?
+   if(decryptionEngine->cipherMode == CIPHER_MODE_AEGIS128L)
+   {
+      //Authenticated decryption using AEGIS-128L
+      error = aegis128lDecrypt(decryptionEngine->encKey,
+         decryptionEngine->encKeyLen, nonce, nonceLen, aad, aadLen, data,
+         data, dataLen, tag, decryptionEngine->authTagLen);
+   }
+   else
+#endif
+#if (TLS_AEGIS256_SUPPORT == ENABLED)
+   //AEGIS-256 AEAD cipher?
+   if(decryptionEngine->cipherMode == CIPHER_MODE_AEGIS256)
+   {
+      //Authenticated decryption using AEGIS-256
+      error = aegis256Decrypt(decryptionEngine->encKey,
+         decryptionEngine->encKeyLen, nonce, nonceLen, aad, aadLen, data,
+         data, dataLen, tag, decryptionEngine->authTagLen);
+   }
+   else
+#endif
 #if (TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
    //ChaCha20Poly1305 AEAD cipher?
    if(decryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
    {
       //Authenticated decryption using ChaCha20Poly1305
       error = chacha20Poly1305Decrypt(decryptionEngine->encKey,
-         decryptionEngine->encKeyLen, nonce, 12, aad, aadLen, data,
+         decryptionEngine->encKeyLen, nonce, nonceLen, aad, aadLen, data,
          data, dataLen, tag, decryptionEngine->authTagLen);
    }
    else
@@ -586,8 +645,7 @@ error_t dtls13VerifyMac(TlsContext *context,
    size_t nonceLen, const uint8_t *aad, size_t aadLen, const uint8_t *data,
    size_t dataLen, uint8_t *mac)
 {
-   size_t i;
-   uint8_t mask;
+   error_t error;
    HmacContext *hmacContext;
    uint8_t temp[MAX_HASH_DIGEST_SIZE];
 
@@ -596,26 +654,30 @@ error_t dtls13VerifyMac(TlsContext *context,
 
    //The protect operation provides the integrity protection using HMAC SHA-256
    //or HMAC SHA-384 (refer to RFC 9150, section 5)
-   hmacInit(hmacContext, decryptionEngine->hashAlgo,
+   error = hmacInit(hmacContext, decryptionEngine->hashAlgo,
       decryptionEngine->encKey, decryptionEngine->encKeyLen);
 
-   //Compute HMAC(write_key, nonce || additional_data || DTLSInnerPlaintext)
-   hmacUpdate(hmacContext, nonce, nonceLen);
-   hmacUpdate(hmacContext, aad, aadLen);
-   hmacUpdate(hmacContext, data, dataLen);
-
-   //Finalize HMAC computation
-   hmacFinal(hmacContext, temp);
-
-   //The calculated MAC is bitwise compared to the received message
-   //authentication code
-   for(mask = 0, i = 0; i < decryptionEngine->hashAlgo->digestSize; i++)
+   //Check status code
+   if(!error)
    {
-      mask |= mac[i] ^ temp[i];
+      //Compute HMAC(write_key, nonce || additional_data || DTLSInnerPlaintext)
+      hmacUpdate(hmacContext, nonce, nonceLen);
+      hmacUpdate(hmacContext, aad, aadLen);
+      hmacUpdate(hmacContext, data, dataLen);
+
+      //Finalize HMAC computation
+      hmacFinal(hmacContext, temp);
+
+      //The calculated MAC is compared to the received message authentication
+      //code. The message is authenticated if and only if the MAC values match
+      if(cryptoCompMem(mac, temp, decryptionEngine->hashAlgo->digestSize) != 0)
+      {
+         error = ERROR_BAD_RECORD_MAC;
+      }
    }
 
-   //The message is authenticated if and only if the MAC values match
-   return (mask == 0) ? NO_ERROR : ERROR_BAD_RECORD_MAC;
+   //Return status code
+   return error;
 }
 
 
@@ -667,6 +729,33 @@ error_t dtls13DecryptSequenceNumber(TlsEncryptionEngine *decryptionEngine,
       //section 4.2.3)
       decryptionEngine->cipherAlgo->encryptBlock(
          decryptionEngine->snCipherContext, record + n, mask);
+   }
+   else
+#endif
+#if (TLS_AEGIS128L_SUPPORT == ENABLED)
+   //AEGIS-128L AEAD cipher?
+   if(decryptionEngine->cipherMode == CIPHER_MODE_AEGIS128L)
+   {
+      //The mask is generated using the AEGIS Stream function
+      error = aegis128lStream(decryptionEngine->snKey,
+         decryptionEngine->encKeyLen, record + n, 16, mask, 2);
+   }
+   else
+#endif
+#if (TLS_AEGIS256_SUPPORT == ENABLED)
+   //AEGIS-256 AEAD cipher?
+   if(decryptionEngine->cipherMode == CIPHER_MODE_AEGIS256)
+   {
+      uint8_t nonce[32];
+
+      //Copy the first 16 bytes of the DTLS ciphertext
+      osMemcpy(nonce, record + n, 16);
+      //Append zeroes to form the 256-bit nonce
+      osMemset(nonce + 16, 0, 16);
+
+      //The mask is generated using the AEGIS Stream function
+      error = aegis256Stream(decryptionEngine->snKey,
+         decryptionEngine->encKeyLen, nonce, 32, mask, 2);
    }
    else
 #endif

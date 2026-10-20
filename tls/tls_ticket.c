@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -50,7 +50,9 @@ error_t tlsInitTicketContext(TlsTicketContext *ticketContext)
 {
    //Make sure the ticket encryption context is valid
    if(ticketContext == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Erase ticket encryption context
    osMemset(ticketContext, 0, sizeof(TlsTicketContext));
@@ -58,7 +60,6 @@ error_t tlsInitTicketContext(TlsTicketContext *ticketContext)
    //Create a mutex to prevent simultaneous access to the context
    if(!osCreateMutex(&ticketContext->mutex))
    {
-      //Report an error
       return ERROR_OUT_OF_RESOURCES;
    }
 
@@ -91,9 +92,14 @@ error_t tlsEncryptTicket(TlsContext *context, const uint8_t *plaintext,
 
    //Check parameters
    if(context == NULL || param == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
+
    if(plaintext == NULL || ciphertext == NULL || ciphertextLen == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Initialize status code
    error = NO_ERROR;
@@ -230,15 +236,19 @@ error_t tlsDecryptTicket(TlsContext *context, const uint8_t *ciphertext,
 
    //Check parameters
    if(context == NULL || param == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
+
    if(ciphertext == NULL || plaintext == NULL || plaintextLen == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Check the length of the encrypted ticket
    if(ciphertextLen < (TLS_TICKET_KEY_NAME_SIZE + TLS_TICKET_IV_SIZE +
       TLS_TICKET_TAG_SIZE))
    {
-      //Report an error
       return ERROR_DECRYPTION_FAILED;
    }
 
@@ -361,13 +371,17 @@ error_t tlsGenerateTicketKeys(TlsTicketContext *ticketContext,
       TLS_TICKET_KEY_NAME_SIZE);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Generate a random encryption key
    error = prngAlgo->generate(prngContext, state->key, TLS_TICKET_KEY_SIZE);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Save current time
    state->timestamp = osGetSystemTime();
@@ -398,7 +412,7 @@ void tlsCheckTicketKeyLifetime(TlsTicketEncryptionState *state)
       if((time - state->timestamp) >= (2 * TLS_TICKET_LIFETIME))
       {
          //Clear ticket keys
-         osMemset(state, 0, sizeof(TlsTicketEncryptionState));
+         cryptoZeroizeMem(state, sizeof(TlsTicketEncryptionState));
       }
    }
 }
@@ -454,7 +468,7 @@ void tlsFreeTicketContext(TlsTicketContext *ticketContext)
       osDeleteMutex(&ticketContext->mutex);
 
       //Erase ticket encryption context
-      osMemset(ticketContext, 0, sizeof(TlsTicketContext));
+      cryptoZeroizeMem(ticketContext, sizeof(TlsTicketContext));
    }
 }
 

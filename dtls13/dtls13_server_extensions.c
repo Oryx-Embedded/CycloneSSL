@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -341,7 +341,9 @@ error_t dtls13ParseCookie(TlsContext *context, const uint8_t *cookie,
 
    //Invalid cipher suite?
    if(context->cipherSuite.identifier != cipherSuite)
+   {
       return ERROR_HANDSHAKE_FAILED;
+   }
 
    //Incorrect (EC)DHE share in the initial ClientHello?
    if(context->state == TLS_STATE_CLIENT_HELLO &&

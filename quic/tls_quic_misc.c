@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -113,7 +113,9 @@ error_t tlsParseQuicTransportParamsExtension(TlsContext *context,
       //Endpoints must send the QuicTransportParameters extension (refer to
       //RFC 9001, section 8.2)
       if(quicTransportParams == NULL)
+      {
          return ERROR_MISSING_EXTENSION;
+      }
 
       //Check whether the QUIC transport parameters have already been received
       if(context->remoteQuicTransportParams != NULL)
@@ -131,7 +133,9 @@ error_t tlsParseQuicTransportParamsExtension(TlsContext *context,
       context->remoteQuicTransportParams = tlsAllocMem(length);
       //Failed to allocate memory?
       if(context->remoteQuicTransportParams == NULL)
+      {
          return ERROR_OUT_OF_MEMORY;
+      }
 
       //The extension_data field of the QuicTransportParameters extension
       //contains a value that is defined by the version of QUIC that is in use
@@ -144,7 +148,9 @@ error_t tlsParseQuicTransportParamsExtension(TlsContext *context,
       //that supports this extension if the extension is received when the
       //transport is not QUIC (refer to RFC 9001, section 8.2)
       if(quicTransportParams != NULL)
+      {
          return ERROR_UNSUPPORTED_EXTENSION;
+      }
    }
 
    //Successful processing

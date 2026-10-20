@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -351,7 +351,9 @@ const TlsFfdheGroup *tlsGetFfdheGroup(TlsContext *context, uint16_t namedGroup)
       {
          //Compare named groups
          if(context->supportedGroups[i] == namedGroup)
+         {
             break;
+         }
       }
 
       //Check whether the use of the FFDHE group is restricted

@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -67,20 +67,29 @@ error_t tls13VerifySignature(TlsContext *context, const uint8_t *p,
 
    //Malformed CertificateVerify message?
    if(length < sizeof(Tls13DigitalSignature))
+   {
       return ERROR_DECODING_FAILED;
+   }
+
    if(length != (sizeof(Tls13DigitalSignature) + ntohs(signature->length)))
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //The signature algorithm must be one of those offered in the
    //SignatureAlgorithms extension (refer to RFC 8446, section 4.4.3)
    if(!tlsIsSignAlgoSupported(context, ntohs(signature->algorithm)))
+   {
       return ERROR_ILLEGAL_PARAMETER;
+   }
 
    //The hash function used by HKDF is the cipher suite hash algorithm
    hashAlgo = context->cipherSuite.prfHashAlgo;
    //Make sure the hash algorithm is valid
    if(hashAlgo == NULL)
+   {
       return ERROR_FAILURE;
+   }
 
    //Calculate the length of the content covered by the digital signature
    n = hashAlgo->digestSize + 98;

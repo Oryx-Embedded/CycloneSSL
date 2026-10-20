@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -858,9 +858,12 @@ error_t tlsResumeStatefulSession(TlsContext *context, const uint8_t *sessionId,
       uint_t n;
       TlsSessionState *session;
 
+      //Acquire exclusive access to the session cache
+      tlsLockCache(context->cache);
+
       //If the session ID was non-empty, the server will look in its session
       //cache for a match
-      session = tlsFindCache(context->cache, sessionId, sessionIdLen);
+      session = tlsFindSession(context->cache, sessionId, sessionIdLen);
 
       //Matching session found?
       if(session != NULL)
@@ -937,8 +940,19 @@ error_t tlsResumeStatefulSession(TlsContext *context, const uint8_t *sessionId,
          {
             //If the original session did not use the ExtendedMasterSecret
             //extension but the new ClientHello contains the extension, then
-            //the server must not perform the abbreviated handshake
+            //the server must not perform the abbreviated handshake (refer to
+            //RFC 7627, section 5.3)
             if(!session->extendedMasterSecret)
+            {
+               session = NULL;
+            }
+         }
+         else
+         {
+            //If the original session used the ExtendedMasterSecret extension
+            //but the new ClientHello does not contain it, the server must
+            //abort the abbreviated handshake
+            if(session->extendedMasterSecret)
             {
                session = NULL;
             }
@@ -978,6 +992,9 @@ error_t tlsResumeStatefulSession(TlsContext *context, const uint8_t *sessionId,
          //Generate a new random session ID
          error = tlsGenerateSessionId(context, 32);
       }
+
+      //Release exclusive access to the session cache
+      tlsUnlockCache(context->cache);
    }
    else
 #endif
@@ -1025,7 +1042,20 @@ error_t tlsResumeStatelessSession(TlsContext *context, const uint8_t *sessionId,
       length = ntohs(extensions->sessionTicket->length);
 
       //Check the length of the ticket
-      if(length > 0 && length <= TLS_MAX_TICKET_SIZE)
+      if(length == 0)
+      {
+         //The extension will be empty if the client does not already possess
+         //a ticket for the server (refer to RFC 5077, section 3.1)
+         error = ERROR_NO_TICKET;
+      }
+      else if(length > TLS_MAX_TICKET_SIZE)
+      {
+         //The ticket is too large to be processed. Since a ticket has been
+         //presented, the server must not attempt to use the session ID for
+         //stateful session resumption (refer to RFC 5077, section 3.4)
+         error = ERROR_INVALID_TICKET;
+      }
+      else
       {
          //Allocate a buffer to store the decrypted state information
          state = tlsAllocMem(length);
@@ -1064,7 +1094,7 @@ error_t tlsResumeStatelessSession(TlsContext *context, const uint8_t *sessionId,
                   serverTicketAge = osGetSystemTime() - state->ticketTimestamp;
 
                   //Verify ticket's validity
-                  if(serverTicketAge >= (state->ticketLifetime * 1000))
+                  if(serverTicketAge >= state->ticketLifetime)
                   {
                      //The ticket is not valid
                      error = ERROR_INVALID_TICKET;
@@ -1099,7 +1129,19 @@ error_t tlsResumeStatelessSession(TlsContext *context, const uint8_t *sessionId,
                      //If the original session did not use the ExtendedMasterSecret
                      //extension but the new ClientHello contains the extension,
                      //then the server must not perform the abbreviated handshake
+                     //(refer to RFC 7627, section 5.3)
                      if(!state->extendedMasterSecret)
+                     {
+                        //The ticket is not valid
+                        error = ERROR_INVALID_TICKET;
+                     }
+                  }
+                  else
+                  {
+                     //If the original session used the ExtendedMasterSecret
+                     //extension but the new ClientHello does not contain it,
+                     //the server must abort the abbreviated handshake
+                     if(state->extendedMasterSecret)
                      {
                         //The ticket is not valid
                         error = ERROR_INVALID_TICKET;
@@ -1139,7 +1181,7 @@ error_t tlsResumeStatelessSession(TlsContext *context, const uint8_t *sessionId,
             }
 
             //Release state information
-            osMemset(state, 0, length);
+            cryptoZeroizeMem(state, length);
             tlsFreeMem(state);
          }
          else
@@ -1147,12 +1189,6 @@ error_t tlsResumeStatelessSession(TlsContext *context, const uint8_t *sessionId,
             //Failed to allocate memory
             error = ERROR_OUT_OF_MEMORY;
          }
-      }
-      else
-      {
-         //The extension will be empty if the client does not already possess
-         //a ticket for the server (refer to RFC 5077, section 3.1)
-         error = ERROR_NO_TICKET;
       }
 
       //Valid ticket?
@@ -1176,14 +1212,17 @@ error_t tlsResumeStatelessSession(TlsContext *context, const uint8_t *sessionId,
       }
       else
       {
+         //The ticket cannot be used to resume the session
+         context->resume = FALSE;
+
          //If a server is planning on issuing a session ticket to a client that
          //does not present one, it should include an empty Session ID in the
          //ServerHello
          context->sessionIdLen = 0;
 
-         //The server uses a zero-length SessionTicket extension to indicate to the
-         //client that it will send a new session ticket using the NewSessionTicket
-         //handshake message
+         //The server uses a zero-length SessionTicket extension to indicate to
+         //the client that it will send a new session ticket using the
+         //NewSessionTicket handshake message
          context->sessionTicketExtSent = TRUE;
       }
    }
@@ -1332,6 +1371,12 @@ error_t tlsNegotiateCipherSuite(TlsContext *context, const HashAlgo *hashAlgo,
    //Select the most appropriate cipher suite (2-pass process)
    for(k = 0; k < 2 && error; k++)
    {
+      //The second pass relaxes the constraints
+      if(k == 1)
+      {
+         extensions->certSignAlgoList = NULL;
+      }
+
       //Any preferred cipher suites?
       if(context->numCipherSuites > 0)
       {
@@ -1376,8 +1421,13 @@ error_t tlsNegotiateCipherSuite(TlsContext *context, const HashAlgo *hashAlgo,
                   //Check status code
                   if(!error)
                   {
-                     //Select the appropriate certificate
-                     error = tlsSelectCertificate(context, extensions);
+                     //In TLS 1.3, the certificate is selected once the key
+                     //exchange method is known
+                     if(context->version <= TLS_VERSION_1_2)
+                     {
+                        //Select the appropriate certificate
+                        error = tlsSelectCertificate(context, extensions);
+                     }
                   }
                }
             }
@@ -1419,14 +1469,16 @@ error_t tlsNegotiateCipherSuite(TlsContext *context, const HashAlgo *hashAlgo,
             //Check status code
             if(!error)
             {
-               //Select the appropriate certificate
-               error = tlsSelectCertificate(context, extensions);
+               //In TLS 1.3, the certificate is selected once the key exchange
+               //method is known
+               if(context->version <= TLS_VERSION_1_2)
+               {
+                  //Select the appropriate certificate
+                  error = tlsSelectCertificate(context, extensions);
+               }
             }
          }
       }
-
-      //The second pass relaxes the constraints
-      extensions->certSignAlgoList = NULL;
    }
 
    //Return status code
@@ -1847,9 +1899,14 @@ error_t tlsParsePskIdentity(TlsContext *context,
 
    //Malformed ClientKeyExchange message?
    if(length < sizeof(TlsPskIdentity))
+   {
       return ERROR_DECODING_FAILED;
+   }
+
    if(length < (sizeof(TlsPskIdentity) + ntohs(pskIdentity->length)))
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //Retrieve the length of the PSK identity
    n = ntohs(pskIdentity->length);
@@ -1866,7 +1923,9 @@ error_t tlsParsePskIdentity(TlsContext *context,
       error = context->pskCallback(context, pskIdentity->value, n);
       //Any error to report?
       if(error)
+      {
          return ERROR_UNKNOWN_IDENTITY;
+      }
    }
 #endif
 
@@ -1909,7 +1968,9 @@ error_t tlsParseClientKeyParams(TlsContext *context,
 
       //Malformed ClientKeyExchange message?
       if(length < 2)
+      {
          return ERROR_DECODING_FAILED;
+      }
 
       //The RSA-encrypted premaster secret in a ClientKeyExchange is preceded by
       //two length bytes
@@ -1917,7 +1978,9 @@ error_t tlsParseClientKeyParams(TlsContext *context,
 
       //Check the length of the RSA-encrypted premaster secret
       if(n > (length - 2))
+      {
          return ERROR_DECODING_FAILED;
+      }
 
       //Save the length of the RSA-encrypted premaster secret
       length = n;
@@ -2013,7 +2076,9 @@ error_t tlsParseClientKeyParams(TlsContext *context,
          for(n = 0; n < context->premasterSecretLen; n++)
          {
             if(context->premasterSecret[n] != 0x00)
+            {
                break;
+            }
          }
 
          //Any leading zero bytes?

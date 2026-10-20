@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -57,6 +57,7 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
    size_t length, TlsHelloExtensions *extensions)
 {
    error_t error;
+   uint_t i;
    size_t n;
    uint16_t type;
    const TlsExtension *extension;
@@ -82,12 +83,16 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
 
    //Malformed message?
    if(length < sizeof(TlsExtensionList))
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //If the amount of data in the message does not precisely match the format
    //of the message, then send a fatal alert
    if(length != (sizeof(TlsExtensionList) + ntohs(extensionList->length)))
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //Point to the first extension of the list
    p += sizeof(TlsExtensionList);
@@ -95,16 +100,28 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
    length -= sizeof(TlsExtensionList);
 
    //Parse the list of extensions offered by the peer
-   while(length > 0)
+   for(i = 0; length > 0; i++)
    {
+      //Limit the number of extensions (the duplicate check below takes a time
+      //that is quadratic in the number of extensions)
+      if(i >= TLS_MAX_EXTENSIONS)
+      {
+         return ERROR_DECODING_FAILED;
+      }
+
       //Point to the current extension
       extension = (TlsExtension *) p;
 
       //Check the length of the extension
       if(length < sizeof(TlsExtension))
+      {
          return ERROR_DECODING_FAILED;
+      }
+
       if(length < (sizeof(TlsExtension) + ntohs(extension->length)))
+      {
          return ERROR_DECODING_FAILED;
+      }
 
       //Get extension type
       type = ntohs(extension->type);
@@ -120,7 +137,9 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
       error = tlsCheckDuplicateExtension(type, p, length);
       //Duplicate extension found?
       if(error)
+      {
          return error;
+      }
 
       //When multiple extensions of different types are present in the ClientHello
       //or ServerHello messages, the extensions may appear in any order
@@ -136,15 +155,25 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
 
             //Malformed extension?
             if(n < sizeof(TlsSupportedVersionList))
+            {
                return ERROR_DECODING_FAILED;
+            }
+
             if(n != (sizeof(TlsSupportedVersionList) + supportedVersionList->length))
+            {
                return ERROR_DECODING_FAILED;
+            }
 
             //Check the length of the list
             if(supportedVersionList->length == 0)
+            {
                return ERROR_DECODING_FAILED;
+            }
+
             if((supportedVersionList->length % 2) != 0)
+            {
                return ERROR_DECODING_FAILED;
+            }
 
             //The SupportedVersions extension is valid
             extensions->supportedVersionList = supportedVersionList;
@@ -154,7 +183,9 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
          {
             //The extension contains the selected version value
             if(n != sizeof(uint16_t))
+            {
                return ERROR_DECODING_FAILED;
+            }
 
             //The SupportedVersions extension is valid
             extensions->selectedVersion = extension;
@@ -178,19 +209,28 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
             //When the server includes a ServerName extension, the data field
             //of this extension may be empty
             if(msgType == TLS_TYPE_CLIENT_HELLO)
+            {
                return ERROR_DECODING_FAILED;
+            }
          }
          else
          {
             //Malformed extension?
             if(n < sizeof(TlsServerNameList))
+            {
                return ERROR_DECODING_FAILED;
+            }
+
             if(n != (sizeof(TlsServerNameList) + ntohs(serverNameList->length)))
+            {
                return ERROR_DECODING_FAILED;
+            }
 
             //Check the length of the list
             if(ntohs(serverNameList->length) == 0)
+            {
                return ERROR_DECODING_FAILED;
+            }
          }
 
          //The ServerName extension is valid
@@ -205,15 +245,25 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
 
          //Malformed extension?
          if(n < sizeof(TlsSupportedGroupList))
+         {
             return ERROR_DECODING_FAILED;
+         }
+
          if(n != (sizeof(TlsSupportedGroupList) + ntohs(supportedGroupList->length)))
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //Check the length of the list
          if(ntohs(supportedGroupList->length) == 0)
+         {
             return ERROR_DECODING_FAILED;
+         }
+
          if((ntohs(supportedGroupList->length) % 2) != 0)
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //The SupportedGroups extension is valid
          extensions->supportedGroupList = supportedGroupList;
@@ -227,13 +277,20 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
 
          //Malformed extension?
          if(n < sizeof(TlsEcPointFormatList))
+         {
             return ERROR_DECODING_FAILED;
+         }
+
          if(n != (sizeof(TlsEcPointFormatList) + ecPointFormatList->length))
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //Check the length of the list
-         if(ntohs(ecPointFormatList->length) == 0)
+         if(ecPointFormatList->length == 0)
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //The EcPointFormats extension is valid
          extensions->ecPointFormatList = ecPointFormatList;
@@ -247,15 +304,25 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
 
          //Malformed extension?
          if(n < sizeof(TlsSignSchemeList))
+         {
             return ERROR_DECODING_FAILED;
+         }
+
          if(n != (sizeof(TlsSignSchemeList) + ntohs(signAlgoList->length)))
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //Check the length of the list
          if(ntohs(signAlgoList->length) == 0)
+         {
             return ERROR_DECODING_FAILED;
+         }
+
          if((ntohs(signAlgoList->length) % 2) != 0)
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //The SignatureAlgorithms extension is valid
          extensions->signAlgoList = signAlgoList;
@@ -269,15 +336,25 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
 
          //Malformed extension?
          if(n < sizeof(TlsSignSchemeList))
+         {
             return ERROR_DECODING_FAILED;
+         }
+
          if(n != (sizeof(TlsSignSchemeList) + ntohs(certSignAlgoList->length)))
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //Check the length of the list
          if(ntohs(certSignAlgoList->length) == 0)
+         {
             return ERROR_DECODING_FAILED;
+         }
+
          if((ntohs(certSignAlgoList->length) % 2) != 0)
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //The SignatureAlgorithmsCert extension is valid
          extensions->certSignAlgoList = certSignAlgoList;
@@ -287,7 +364,9 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
       {
          //Malformed extension?
          if(n != sizeof(uint8_t))
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //The MaxFragmentLength extension is valid
          extensions->maxFragLen = extension;
@@ -298,7 +377,9 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
       {
          //Malformed extension?
          if(n != sizeof(uint16_t))
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //The RecordSizeLimit extension is valid
          extensions->recordSizeLimit = extension;
@@ -314,9 +395,14 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
 
          //Malformed extension?
          if(n < sizeof(TlsProtocolNameList))
+         {
             return ERROR_DECODING_FAILED;
+         }
+
          if(n != (sizeof(TlsProtocolNameList) + ntohs(protocolNameList->length)))
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //The ALPN extension is valid
          extensions->protocolNameList = protocolNameList;
@@ -335,9 +421,14 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
 
             //Malformed extension?
             if(n < sizeof(TlsCertTypeList))
+            {
                return ERROR_DECODING_FAILED;
+            }
+
             if(n != (sizeof(TlsCertTypeList) + clientCertTypeList->length))
+            {
                return ERROR_DECODING_FAILED;
+            }
 
             //The ClientCertType extension is valid
             extensions->clientCertTypeList = clientCertTypeList;
@@ -347,7 +438,9 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
             //Only a single value is permitted in the ClientCertType extension
             //when carried in the ServerHello
             if(n != sizeof(uint8_t))
+            {
                return ERROR_DECODING_FAILED;
+            }
 
             //The ClientCertType extension is valid
             extensions->clientCertType = extension;
@@ -365,9 +458,14 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
 
             //Malformed extension?
             if(n < sizeof(TlsCertTypeList))
+            {
                return ERROR_DECODING_FAILED;
+            }
+
             if(n != (sizeof(TlsCertTypeList) + serverCertTypeList->length))
+            {
                return ERROR_DECODING_FAILED;
+            }
 
             //The ServerCertType extension is valid
             extensions->serverCertTypeList = serverCertTypeList;
@@ -377,7 +475,9 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
             //Only a single value is permitted in the ServerCertType extension
             //when carried in the ServerHello
             if(n != sizeof(uint8_t))
+            {
                return ERROR_DECODING_FAILED;
+            }
 
             //The ServerCertType extension is valid
             extensions->serverCertType = extension;
@@ -390,7 +490,9 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
          //The extension data field of this extension shall be empty (refer to
          //RFC 7366, section 2)
          if(n != 0)
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //The EncryptThenMac extension is valid
          extensions->encryptThenMac = extension;
@@ -401,7 +503,9 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
       {
          //Malformed extension?
          if(n != 0)
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //The ExtendedMasterSecret extension is valid
          extensions->extendedMasterSecret = extension;
@@ -416,7 +520,9 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
             //The server uses a zero-length SessionTicket extension to indicate
             //to the client that it will send a new session ticket
             if(n != 0)
+            {
                return ERROR_DECODING_FAILED;
+            }
          }
 
          //The SessionTicket extension is valid
@@ -433,9 +539,14 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
 
          //Malformed extension?
          if(n < sizeof(TlsRenegoInfo))
+         {
             return ERROR_DECODING_FAILED;
+         }
+
          if(n != (sizeof(TlsRenegoInfo) + renegoInfo->length))
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //The RenegotiationInfo extension is valid
          extensions->renegoInfo = renegoInfo;
@@ -458,13 +569,20 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
 
          //Malformed extension?
          if(n < sizeof(Tls13Cookie))
+         {
             return ERROR_DECODING_FAILED;
+         }
+
          if(n != (sizeof(Tls13Cookie) + ntohs(cookie->length)))
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //Check the length of the cookie
          if(ntohs(cookie->length) == 0)
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //The Cookie extension is valid
          extensions->cookie = cookie;
@@ -478,13 +596,20 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
 
          //Malformed extension?
          if(n < sizeof(TlsCertAuthorities))
+         {
             return ERROR_DECODING_FAILED;
+         }
+
          if(n != (sizeof(TlsCertAuthorities) + ntohs(certAuthorities->length)))
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //Check the length of the list
          if(ntohs(certAuthorities->length) < 3)
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //The CertificateAuthorities extension is valid
          extensions->certAuthorities = certAuthorities;
@@ -494,6 +619,7 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
          //Check message type
          if(msgType == TLS_TYPE_CLIENT_HELLO)
          {
+            uint_t j;
             size_t k;
             size_t m;
             const Tls13KeyShareList *keyShareList;
@@ -505,9 +631,14 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
 
             //Malformed extension?
             if(n < sizeof(Tls13KeyShareList))
+            {
                return ERROR_DECODING_FAILED;
+            }
+
             if(n != (sizeof(Tls13KeyShareList) + ntohs(keyShareList->length)))
+            {
                return ERROR_DECODING_FAILED;
+            }
 
             //Point to the first KeyShareEntry of the list
             p = keyShareList->value;
@@ -515,11 +646,20 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
             m = ntohs(keyShareList->length);
 
             //Parse the list of key share entries offered by the peer
-            while(m > 0)
+            for(j = 0; m > 0; j++)
             {
+               //Limit the number of key share entries (the duplicate check
+               //below takes a time that is quadratic in the number of entries)
+               if(j >= TLS13_MAX_KEY_SHARE_ENTRIES)
+               {
+                  return ERROR_DECODING_FAILED;
+               }
+
                //Malformed extension?
                if(m < sizeof(Tls13KeyShareEntry))
+               {
                   return ERROR_DECODING_FAILED;
+               }
 
                //Point to the current key share entry
                keyShareEntry = (Tls13KeyShareEntry *) p;
@@ -528,7 +668,9 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
 
                //Malformed extension?
                if(m < (sizeof(Tls13KeyShareEntry) + k))
+               {
                   return ERROR_DECODING_FAILED;
+               }
 
                //Point to the next entry
                p += sizeof(Tls13KeyShareEntry) + k;
@@ -542,7 +684,9 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
                   p, m);
                //Any error to report?
                if(error)
+               {
                   return ERROR_ILLEGAL_PARAMETER;
+               }
             }
 
             //The KeyShare extension is valid
@@ -553,7 +697,9 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
             //The extension contains the mutually supported group the server
             //intends to negotiate
             if(n != sizeof(uint16_t))
+            {
                return ERROR_DECODING_FAILED;
+            }
 
             //The KeyShare extension is valid
             extensions->selectedGroup = extension;
@@ -568,9 +714,14 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
 
             //Malformed extension?
             if(n < sizeof(Tls13KeyShareEntry))
+            {
                return ERROR_DECODING_FAILED;
+            }
+
             if(n != (sizeof(Tls13KeyShareEntry) + ntohs(serverShare->length)))
+            {
                return ERROR_DECODING_FAILED;
+            }
 
             //The KeyShare extension is valid
             extensions->serverShare = serverShare;
@@ -578,11 +729,7 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
          else
          {
             //The extension is not specified for the message in which it appears
-#if (TLS_MAX_EMPTY_RECORDS > 0)
-            return ERROR_UNSUPPORTED_EXTENSION;
-#else
             return ERROR_ILLEGAL_PARAMETER;
-#endif
          }
       }
       else if(type == TLS_EXT_PSK_KEY_EXCHANGE_MODES)
@@ -595,9 +742,14 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
 
          //Malformed extension?
          if(n < sizeof(Tls13PskKeModeList))
+         {
             return ERROR_DECODING_FAILED;
+         }
+
          if(n != (sizeof(Tls13PskKeModeList) + pskKeModeList->length))
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //The PskKeyExchangeModes extension is valid
          extensions->pskKeModeList = pskKeModeList;
@@ -614,7 +766,9 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
             //ClientHello. Servers must check that it is the last extension and
             //otherwise fail the handshake with an illegal_parameter alert
             if(length != 0)
+            {
                return ERROR_ILLEGAL_PARAMETER;
+            }
 
             //The extension contains a list of the identities that the client
             //is willing to negotiate with the server
@@ -622,9 +776,14 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
 
             //Malformed extension?
             if(n < sizeof(Tls13PskIdentityList))
+            {
                return ERROR_DECODING_FAILED;
+            }
+
             if(n < (sizeof(Tls13PskIdentityList) + ntohs(identityList->length)))
+            {
                return ERROR_DECODING_FAILED;
+            }
 
             //Remaining bytes to process
             n -= sizeof(Tls13PskIdentityList) + ntohs(identityList->length);
@@ -636,9 +795,14 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
 
             //Malformed extension?
             if(n < sizeof(Tls13PskBinderList))
+            {
                return ERROR_DECODING_FAILED;
+            }
+
             if(n != (sizeof(Tls13PskBinderList) + ntohs(binderList->length)))
+            {
                return ERROR_DECODING_FAILED;
+            }
 
             //The PreSharedKey extension is valid
             extensions->identityList = identityList;
@@ -649,7 +813,9 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
             //The extension contains the chosen identity expressed as a 0-based
             //index into the identities in the client's list
             if(n != sizeof(uint16_t))
+            {
                return ERROR_DECODING_FAILED;
+            }
 
             //The PreSharedKey extension is valid
             extensions->selectedIdentity = extension;
@@ -668,13 +834,17 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
          {
             //The extension data field is empty
             if(n != 0)
+            {
                return ERROR_DECODING_FAILED;
+            }
          }
          else if(msgType == TLS_TYPE_NEW_SESSION_TICKET)
          {
             //The extension data field contains an unsigned 32-bit integer
             if(n != sizeof(uint32_t))
+            {
                return ERROR_DECODING_FAILED;
+            }
          }
          else
          {
@@ -695,7 +865,6 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
             msgType == TLS_TYPE_HELLO_RETRY_REQUEST ||
             msgType == TLS_TYPE_ENCRYPTED_EXTENSIONS)
          {
-            //Report an error
             return ERROR_UNSUPPORTED_EXTENSION;
          }
       }
@@ -877,7 +1046,7 @@ error_t tlsCheckHelloExtensions(TlsMessageType msgType, uint16_t version,
 
 #if (TLS_ENCRYPT_THEN_MAC_SUPPORT == ENABLED)
       //EncryptThenMac extension found?
-      else if(extensions->encryptThenMac != NULL)
+      if(extensions->encryptThenMac != NULL)
       {
          //The extension can only appear in CH
          if(msgType != TLS_TYPE_CLIENT_HELLO)
@@ -1080,9 +1249,14 @@ error_t tlsCheckDuplicateExtension(uint16_t type, const uint8_t *p,
 
       //Check the length of the extension
       if(length < sizeof(TlsExtension))
+      {
          return ERROR_DECODING_FAILED;
+      }
+
       if(length < (sizeof(TlsExtension) + ntohs(extension->length)))
+      {
          return ERROR_DECODING_FAILED;
+      }
 
       //There must not be more than one extension of the same type (refer to
       //RFC 5246, section 7.4.1.4)
@@ -1149,7 +1323,7 @@ bool_t tlsIsAlpnProtocolSupported(TlsContext *context,
             if(length == (i - j))
             {
                //Compare protocol names
-               if(!osMemcmp(protocol, context->protocolList + j, i - j))
+               if(osMemcmp(protocol, context->protocolList + j, i - j) == 0)
                {
                   //The specified protocol is supported
                   supported = TRUE;

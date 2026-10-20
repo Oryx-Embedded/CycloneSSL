@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -62,6 +62,7 @@ error_t dtls13EncryptRecord(TlsContext *context,
    error_t error;
    size_t n;
    size_t authTagLen;
+   size_t paddingLen;
    uint8_t header[5];
    size_t headerLen;
    uint8_t nonce[48];
@@ -75,6 +76,17 @@ error_t dtls13EncryptRecord(TlsContext *context,
    else
    {
       authTagLen = encryptionEngine->authTagLen;
+   }
+
+   //The ciphertext length must be at least 16 bytes. Senders must pad short
+   //plaintexts out (refer to RFC 9147, section 4.2.3)
+   if((dataLen + 1 + authTagLen) < DTLS13_MIN_CIPHERTEXT_LEN)
+   {
+      paddingLen = DTLS13_MIN_CIPHERTEXT_LEN - (dataLen + 1 + authTagLen);
+   }
+   else
+   {
+      paddingLen = 0;
    }
 
    //The unified header is a structure of variable length
@@ -100,8 +112,8 @@ error_t dtls13EncryptRecord(TlsContext *context,
    if((header[0] & DTLS13_HEADER_FLAG_L) != 0)
    {
       //The length field is 16 bits
-      header[n++] = MSB(dataLen + authTagLen + 1);
-      header[n++] = LSB(dataLen + authTagLen + 1);
+      header[n++] = MSB(dataLen + 1 + paddingLen + authTagLen);
+      header[n++] = LSB(dataLen + 1 + paddingLen + authTagLen);
    }
 
    //Save the length of the unified header
@@ -123,15 +135,22 @@ error_t dtls13EncryptRecord(TlsContext *context,
    //Adjust the length of the payload data
    dataLen++;
 
+   //Append padding bytes
+   osMemset(record + headerLen + dataLen, 0, paddingLen);
+   dataLen += paddingLen;
+
    //Generate the nonce
    dtls13FormatNonce(encryptionEngine, &encryptionEngine->dtlsSeqNum, nonce,
       &nonceLen);
 
 #if (TLS_CCM_CIPHER_SUPPORT == ENABLED || TLS_CCM_8_CIPHER_SUPPORT == ENABLED || \
-   TLS_GCM_CIPHER_SUPPORT == ENABLED || TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
+   TLS_GCM_CIPHER_SUPPORT == ENABLED || TLS_AEGIS128L_SUPPORT == ENABLED || \
+   TLS_AEGIS256_SUPPORT == ENABLED || TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
    //AEAD cipher?
    if(encryptionEngine->cipherMode == CIPHER_MODE_CCM ||
       encryptionEngine->cipherMode == CIPHER_MODE_GCM ||
+      encryptionEngine->cipherMode == CIPHER_MODE_AEGIS128L ||
+      encryptionEngine->cipherMode == CIPHER_MODE_AEGIS256 ||
       encryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
    {
       //Perform authenticated encryption
@@ -225,6 +244,28 @@ error_t dtls13EncryptAeadRecord(TlsContext *context,
    }
    else
 #endif
+#if (TLS_AEGIS128L_SUPPORT == ENABLED)
+   //AEGIS-128L AEAD cipher?
+   if(encryptionEngine->cipherMode == CIPHER_MODE_AEGIS128L)
+   {
+      //Authenticated encryption using AEGIS-128L
+      error = aegis128lEncrypt(encryptionEngine->encKey,
+         encryptionEngine->encKeyLen, nonce, nonceLen, aad, aadLen,
+         data, data, dataLen, tag, encryptionEngine->authTagLen);
+   }
+   else
+#endif
+#if (TLS_AEGIS256_SUPPORT == ENABLED)
+   //AEGIS-256 AEAD cipher?
+   if(encryptionEngine->cipherMode == CIPHER_MODE_AEGIS256)
+   {
+      //Authenticated encryption using AEGIS-256
+      error = aegis256Encrypt(encryptionEngine->encKey,
+         encryptionEngine->encKeyLen, nonce, nonceLen, aad, aadLen,
+         data, data, dataLen, tag, encryptionEngine->authTagLen);
+   }
+   else
+#endif
 #if (TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
    //ChaCha20Poly1305 AEAD cipher?
    if(encryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
@@ -266,6 +307,7 @@ error_t dtls13ComputeMac(TlsContext *context,
    size_t nonceLen, const uint8_t *aad, size_t aadLen, const uint8_t *data,
    size_t dataLen, uint8_t *mac)
 {
+   error_t error;
    HmacContext *hmacContext;
 
    //Point to the HMAC context
@@ -273,19 +315,23 @@ error_t dtls13ComputeMac(TlsContext *context,
 
    //The protect operation provides the integrity protection using HMAC SHA-256
    //or HMAC SHA-384 (refer to RFC 9150, section 5)
-   hmacInit(hmacContext, encryptionEngine->hashAlgo,
+   error = hmacInit(hmacContext, encryptionEngine->hashAlgo,
       encryptionEngine->encKey, encryptionEngine->encKeyLen);
 
-   //Compute HMAC(write_key, nonce || additional_data || DTLSInnerPlaintext)
-   hmacUpdate(hmacContext, nonce, nonceLen);
-   hmacUpdate(hmacContext, aad, aadLen);
-   hmacUpdate(hmacContext, data, dataLen);
+   //Check status code
+   if(!error)
+   {
+      //Compute HMAC(write_key, nonce || additional_data || DTLSInnerPlaintext)
+      hmacUpdate(hmacContext, nonce, nonceLen);
+      hmacUpdate(hmacContext, aad, aadLen);
+      hmacUpdate(hmacContext, data, dataLen);
 
-   //Finalize HMAC computation
-   hmacFinal(hmacContext, mac);
+      //Finalize HMAC computation
+      hmacFinal(hmacContext, mac);
+   }
 
-   //Successful processing
-   return NO_ERROR;
+   //Return status code
+   return error;
 }
 
 
@@ -337,6 +383,33 @@ error_t dtls13EncryptSequenceNumber(TlsEncryptionEngine *encryptionEngine,
       //section 4.2.3)
       encryptionEngine->cipherAlgo->encryptBlock(
          encryptionEngine->snCipherContext, record + n, mask);
+   }
+   else
+#endif
+#if (TLS_AEGIS128L_SUPPORT == ENABLED)
+   //AEGIS-128L AEAD cipher?
+   if(encryptionEngine->cipherMode == CIPHER_MODE_AEGIS128L)
+   {
+      //The mask is generated using the AEGIS Stream function
+      error = aegis128lStream(encryptionEngine->snKey,
+         encryptionEngine->encKeyLen, record + n, 16, mask, 2);
+   }
+   else
+#endif
+#if (TLS_AEGIS256_SUPPORT == ENABLED)
+   //AEGIS-256 AEAD cipher?
+   if(encryptionEngine->cipherMode == CIPHER_MODE_AEGIS256)
+   {
+      uint8_t nonce[32];
+
+      //Copy the first 16 bytes of the DTLS ciphertext
+      osMemcpy(nonce, record + n, 16);
+      //Append zeroes to form the 256-bit nonce
+      osMemset(nonce + 16, 0, 16);
+
+      //The mask is generated using the AEGIS Stream function
+      error = aegis256Stream(encryptionEngine->snKey,
+         encryptionEngine->encKeyLen, nonce, 32, mask, 2);
    }
    else
 #endif

@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -55,6 +55,7 @@ error_t tlsInitTranscriptHash(TlsContext *context)
    //MD5 context already instantiated?
    if(context->transcriptMd5Context != NULL)
    {
+      md5Deinit(context->transcriptMd5Context);
       tlsFreeMem(context->transcriptMd5Context);
       context->transcriptMd5Context = NULL;
    }
@@ -64,6 +65,7 @@ error_t tlsInitTranscriptHash(TlsContext *context)
    //SHA-1 context already instantiated?
    if(context->transcriptSha1Context != NULL)
    {
+      sha1Deinit(context->transcriptSha1Context);
       tlsFreeMem(context->transcriptSha1Context);
       context->transcriptSha1Context = NULL;
    }
@@ -86,7 +88,9 @@ error_t tlsInitTranscriptHash(TlsContext *context)
       context->transcriptMd5Context = tlsAllocMem(sizeof(Md5Context));
       //Failed to allocate memory?
       if(context->transcriptMd5Context == NULL)
+      {
          return ERROR_OUT_OF_MEMORY;
+      }
 
       //Initialize MD5 context
       md5Init(context->transcriptMd5Context);
@@ -101,7 +105,9 @@ error_t tlsInitTranscriptHash(TlsContext *context)
       context->transcriptSha1Context = tlsAllocMem(sizeof(Sha1Context));
       //Failed to allocate memory?
       if(context->transcriptSha1Context == NULL)
+      {
          return ERROR_OUT_OF_MEMORY;
+      }
 
       //Initialize SHA-1 context
       sha1Init(context->transcriptSha1Context);
@@ -118,13 +124,17 @@ error_t tlsInitTranscriptHash(TlsContext *context)
       hashAlgo = context->cipherSuite.prfHashAlgo;
       //Make sure the hash algorithm is valid
       if(hashAlgo == NULL)
+      {
          return ERROR_FAILURE;
+      }
 
       //Allocate hash algorithm context
       context->transcriptHashContext = tlsAllocMem(hashAlgo->contextSize);
       //Failed to allocate memory?
       if(context->transcriptHashContext == NULL)
+      {
          return ERROR_OUT_OF_MEMORY;
+      }
 
       //Initialize the hash algorithm context
       hashAlgo->init(context->transcriptHashContext);
@@ -280,7 +290,9 @@ error_t tlsFinalizeTranscriptHash(TlsContext *context, const HashAlgo *hash,
 
    //Make sure the hash context is valid
    if(hash == NULL || hashContext == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Allocate a temporary hash context
    tempHashContext = tlsAllocMem(hash->contextSize);
@@ -322,7 +334,7 @@ void tlsFreeTranscriptHash(TlsContext *context)
    //Release MD5 hash context
    if(context->transcriptMd5Context != NULL)
    {
-      osMemset(context->transcriptMd5Context, 0, sizeof(Md5Context));
+      md5Deinit(context->transcriptMd5Context);
       tlsFreeMem(context->transcriptMd5Context);
       context->transcriptMd5Context = NULL;
    }
@@ -332,7 +344,7 @@ void tlsFreeTranscriptHash(TlsContext *context)
    //Release SHA-1 hash context
    if(context->transcriptSha1Context != NULL)
    {
-      osMemset(context->transcriptSha1Context, 0, sizeof(Sha1Context));
+      sha1Deinit(context->transcriptSha1Context);
       tlsFreeMem(context->transcriptSha1Context);
       context->transcriptSha1Context = NULL;
    }

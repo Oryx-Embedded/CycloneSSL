@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 #ifndef _TLS_H
@@ -41,6 +41,7 @@ struct _TlsEncryptionEngine;
 
 //Dependencies
 #include "core/crypto.h"
+#include "core/crypto_mem.h"
 #include "mac/hmac.h"
 #include "cipher_modes/cipher_modes.h"
 #include "aead/aead_algorithms.h"
@@ -83,13 +84,13 @@ struct _TlsEncryptionEngine;
 #endif
 
 //Version string
-#define CYCLONE_SSL_VERSION_STRING "2.6.6"
+#define CYCLONE_SSL_VERSION_STRING "2.6.8"
 //Major version
 #define CYCLONE_SSL_MAJOR_VERSION 2
 //Minor version
 #define CYCLONE_SSL_MINOR_VERSION 6
 //Revision number
-#define CYCLONE_SSL_REV_NUMBER 6
+#define CYCLONE_SSL_REV_NUMBER 8
 
 //TLS version numbers
 #define SSL_VERSION_3_0 0x0300
@@ -285,6 +286,13 @@ struct _TlsEncryptionEngine;
    #define TLS_MAX_CERTIFICATES 3
 #elif (TLS_MAX_CERTIFICATES < 1)
    #error TLS_MAX_CERTIFICATES parameter is not valid
+#endif
+
+//Maximum size of the lists of CA distinguished names
+#ifndef TLS_MAX_CERT_AUTHORITIES_SIZE
+   #define TLS_MAX_CERT_AUTHORITIES_SIZE 512
+#elif (TLS_MAX_CERT_AUTHORITIES_SIZE < 0 || TLS_MAX_CERT_AUTHORITIES_SIZE > 65535)
+   #error TLS_MAX_CERT_AUTHORITIES_SIZE parameter is not valid
 #endif
 
 //RSA key exchange support
@@ -840,6 +848,13 @@ struct _TlsEncryptionEngine;
    #error TLS_MAX_RSA_MODULUS_SIZE parameter is not valid
 #endif
 
+//Maximum acceptable size for RSA public exponent
+#ifndef TLS_MAX_RSA_PUBLIC_EXPONENT_SIZE
+   #define TLS_MAX_RSA_PUBLIC_EXPONENT_SIZE 64
+#elif (TLS_MAX_RSA_PUBLIC_EXPONENT_SIZE < 17)
+   #error TLS_MAX_RSA_PUBLIC_EXPONENT_SIZE parameter is not valid
+#endif
+
 //Minimum acceptable size for DSA prime modulus
 #ifndef TLS_MIN_DSA_MODULUS_SIZE
    #define TLS_MIN_DSA_MODULUS_SIZE 2048
@@ -866,6 +881,13 @@ struct _TlsEncryptionEngine;
    #define TLS_PREMASTER_SECRET_SIZE (TLS_MAX_DH_MODULUS_SIZE / 8)
 #elif (TLS_PREMASTER_SECRET_SIZE < 48)
    #error TLS_PREMASTER_SECRET_SIZE parameter is not valid
+#endif
+
+//Maximum number of extensions in a message
+#ifndef TLS_MAX_EXTENSIONS
+   #define TLS_MAX_EXTENSIONS 64
+#elif (TLS_MAX_EXTENSIONS < 1)
+   #error TLS_MAX_EXTENSIONS parameter is not valid
 #endif
 
 //Maximum number of consecutive warning alerts
@@ -976,14 +998,17 @@ struct _TlsEncryptionEngine;
    #define TLS_PSK_SUPPORT ENABLED
 #elif ((TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3) && \
    (TLS13_PSK_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
-   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED))
+   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_MLKEM_KE_SUPPORT == ENABLED || \
+   TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED))
    #define TLS_PSK_SUPPORT ENABLED
 #else
    #define TLS_PSK_SUPPORT DISABLED
 #endif
 
 //Maximum size for HKDF digests
-#if (TLS_SHA384_SUPPORT == ENABLED)
+#if (TLS_AEGIS256_SUPPORT == ENABLED && TLS_SHA512_SUPPORT == ENABLED)
+   #define TLS_MAX_HKDF_DIGEST_SIZE 64
+#elif (TLS_SHA384_SUPPORT == ENABLED)
    #define TLS_MAX_HKDF_DIGEST_SIZE 48
 #else
    #define TLS_MAX_HKDF_DIGEST_SIZE 32
@@ -1542,6 +1567,8 @@ typedef enum
    TLS_GROUP_MLKEM512                   = 512,   //Draft
    TLS_GROUP_MLKEM768                   = 513,   //Draft
    TLS_GROUP_MLKEM1024                  = 514,   //Draft
+   TLS_GROUP_SECP256R1_MLKEM512         = 4585,  //Draft
+   TLS_GROUP_MLKEM512_X25519            = 4586,  //Draft
    TLS_GROUP_SECP256R1_MLKEM768         = 4587,  //RFC 10024
    TLS_GROUP_X25519_MLKEM768            = 4588,  //RFC 10024
    TLS_GROUP_SECP384R1_MLKEM1024        = 4589,  //RFC 10024
@@ -2447,6 +2474,8 @@ struct _TlsContext
    size_t trustedCaListLen;                  ///<Total length of the trusted CA list
    TlsCertVerifyCallback certVerifyCallback; ///<Certificate verification callback function
    void *certVerifyParam;                    ///<Opaque pointer passed to the certificate verification callback
+   bool_t certChainValidation;               ///<Validate the peer's certificate chain against the trusted CA list
+   bool_t certValidityCheck;                 ///<Check the validity period of certificates
    TlsCertDesc *cert;                        ///<Pointer to the currently selected certificate
 
    TlsCache *cache;                          ///<TLS session cache
@@ -2525,7 +2554,6 @@ struct _TlsContext
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    uint8_t masterSecret[TLS_MASTER_SECRET_SIZE]; ///<Master secret
    uint8_t keyBlock[192];                    ///<Key material
-   HmacContext hmacContext;                  ///<HMAC context
    Sha1Context *transcriptSha1Context;       ///<SHA-1 context used to compute verify data
 #endif
 
@@ -2570,6 +2598,11 @@ struct _TlsContext
    bool_t earlyDataRejected;                 ///<The 0-RTT data have been rejected by the server
    bool_t earlyDataExtReceived;              ///<The EarlyData extension has been received
    TlsSequenceNumber earlyDataSeqNum;        ///<Early data sequence number
+#endif
+
+#if (TLS_NULL_CIPHER_SUPPORT == ENABLED || TLS_STREAM_CIPHER_SUPPORT == ENABLED || \
+   TLS_CBC_CIPHER_SUPPORT == ENABLED)
+   HmacContext hmacContext;                  ///<HMAC context
 #endif
 
 #if (TLS_DH_SUPPORT == ENABLED)
@@ -2721,7 +2754,7 @@ struct _TlsContext
 #endif
 
 #if (DTLS_SUPPORT == ENABLED && TLS_MAX_VERSION >= TLS_VERSION_1_3)
-   uint8_t clientHelloDigest[48];            ///<Hash(ClientHello1)
+   uint8_t clientHelloDigest[64];            ///<Hash(ClientHello1)
    size_t clientHelloDigestLen;              ///<Length of Hash(ClientHello1)
    Dtls13RecordNumber rxRecordNum;           ///<Epoch/sequence number pair
    Dtls13RecordNumber ackRecords[DTLS13_MAX_ACK_RECORDS]; ///<List of records received and processed
@@ -2824,6 +2857,8 @@ error_t tlsLoadCertificate(TlsContext *context, uint_t index,
 error_t tlsSetCertificateVerifyCallback(TlsContext *context,
    TlsCertVerifyCallback certVerifyCallback, void *param);
 
+error_t tlsEnableCertChainValidation(TlsContext *context, bool_t enabled);
+error_t tlsEnableCertValidityCheck(TlsContext *context, bool_t enabled);
 error_t tlsEnableSessionTickets(TlsContext *context, bool_t enabled);
 error_t tlsEnableTrustedCaKeys(TlsContext *context, bool_t enabled);
 error_t tlsEnableCertAuthorities(TlsContext *context, bool_t enabled);

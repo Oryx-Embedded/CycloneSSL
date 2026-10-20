@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -732,7 +732,11 @@ error_t tlsParseClientSniExtension(TlsContext *context,
       size_t i;
       size_t n;
       size_t length;
+      bool_t found;
       const TlsServerName *serverName;
+
+      //No host name has been found yet
+      found = FALSE;
 
       //In order to provide the server name, clients may include ServerName
       //extension
@@ -754,28 +758,39 @@ error_t tlsParseClientSniExtension(TlsContext *context,
 
          //Malformed extension?
          if(length < (i + sizeof(TlsServerName)))
+         {
             return ERROR_DECODING_FAILED;
+         }
+
          if(length < (i + sizeof(TlsServerName) + ntohs(serverName->length)))
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //Retrieve the length of the server name
          n = ntohs(serverName->length);
 
          //Empty strings must not be included in the list
          if(n == 0)
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //Currently, the only server names supported are DNS hostnames
          if(serverName->type == TLS_NAME_TYPE_HOSTNAME)
          {
             //The server name must be a valid DNS hostname
             if(!tlsCheckDnsHostname(serverName->hostname, n))
+            {
                return ERROR_ILLEGAL_PARAMETER;
+            }
 
             //The ServerNameList must not contain more than one name of the
             //same type (refer to RFC 6066, section 3)
-            if(context->serverName != NULL)
+            if(found)
+            {
                return ERROR_ILLEGAL_PARAMETER;
+            }
 
             //Check the length of the name
             if(n <= TLS_MAX_SERVER_NAME_LEN)
@@ -784,13 +799,18 @@ error_t tlsParseClientSniExtension(TlsContext *context,
                context->serverName = tlsAllocMem(n + 1);
                //Failed to allocate memory?
                if(context->serverName == NULL)
+               {
                   return ERROR_OUT_OF_MEMORY;
+               }
 
                //Save server name
                osMemcpy(context->serverName, serverName->hostname, n);
                //Properly terminate the string with a NULL character
                context->serverName[n] = '\0';
             }
+
+            //A host name has been found (even if it is too long to be saved)
+            found = TRUE;
          }
       }
    }
@@ -914,13 +934,13 @@ error_t tlsParseClientRecordSizeLimitExtension(TlsContext *context,
          n--;
       }
 
-      //Initial or updated ClientHello?
+      //Updated ClientHello?
       if(context->state == TLS_STATE_CLIENT_HELLO_2)
       {
          //When responding to a HelloRetryRequest, the client must send the
          //same ClientHello without modification
          if(!context->recordSizeLimitExtReceived ||
-            context->recordSizeLimit != n)
+            context->recordSizeLimit != MIN(n, TLS_MAX_RECORD_LENGTH))
          {
             return ERROR_ILLEGAL_PARAMETER;
          }
@@ -942,7 +962,9 @@ error_t tlsParseClientRecordSizeLimitExtension(TlsContext *context,
          //When responding to a HelloRetryRequest, the client must send the
          //same ClientHello without modification
          if(context->recordSizeLimitExtReceived)
+         {
             return ERROR_ILLEGAL_PARAMETER;
+         }
       }
 
       //If this extension is not negotiated, endpoints can send records of any
@@ -1054,7 +1076,9 @@ error_t tlsParseClientAlpnExtension(TlsContext *context,
 
       //The list must not be be empty
       if(length == 0)
+      {
          return ERROR_DECODING_FAILED;
+      }
 
       //Loop through the list of protocols advertised by the client
       for(i = 0; i < length; i += sizeof(TlsProtocolName) + n)
@@ -1064,16 +1088,23 @@ error_t tlsParseClientAlpnExtension(TlsContext *context,
 
          //Malformed extension?
          if(length < (i + sizeof(TlsProtocolName)))
+         {
             return ERROR_DECODING_FAILED;
+         }
+
          if(length < (i + sizeof(TlsProtocolName) + protocolName->length))
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //Retrieve the length of the protocol name
          n = protocolName->length;
 
          //Empty strings must not be included in the list
          if(n == 0)
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //Check whether the protocol is supported by the server
          if(tlsIsAlpnProtocolSupported(context, protocolName->value, n))
@@ -1085,7 +1116,9 @@ error_t tlsParseClientAlpnExtension(TlsContext *context,
                context->selectedProtocol = tlsAllocMem(n + 1);
                //Failed to allocate memory?
                if(context->selectedProtocol == NULL)
+               {
                   return ERROR_OUT_OF_MEMORY;
+               }
 
                //Save protocol name
                osMemcpy(context->selectedProtocol, protocolName->value, n);
@@ -1436,8 +1469,8 @@ error_t tlsParseClientRenegoInfoExtension(TlsContext *context,
          {
             //Verify that the value of the renegotiated_connection field is
             //equal to the saved client_verify_data value
-            if(osMemcmp(extensions->renegoInfo->value,
-               context->clientVerifyData, context->clientVerifyDataLen))
+            if(cryptoCompMem(extensions->renegoInfo->value,
+               context->clientVerifyData, context->clientVerifyDataLen) != 0)
             {
                //If it is not, the server must abort the handshake
                error = ERROR_HANDSHAKE_FAILED;

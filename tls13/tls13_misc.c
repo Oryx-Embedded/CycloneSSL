@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -96,23 +96,31 @@ error_t tls13ComputePskBinder(TlsContext *context, const void *clientHello,
 
    //Check parameters
    if(truncatedClientHelloLen >= clientHelloLen)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //The hash function used by HKDF is the cipher suite hash algorithm
    hash = context->cipherSuite.prfHashAlgo;
    //Make sure the hash algorithm is valid
    if(hash == NULL)
+   {
       return ERROR_FAILURE;
+   }
 
    //Check the length of the PSK binder
    if(binderLen != hash->digestSize)
+   {
       return ERROR_INVALID_LENGTH;
+   }
 
    //Allocate a memory buffer to hold the hash context
    hashContext = tlsAllocMem(hash->contextSize);
    //Failed to allocate memory?
    if(hashContext == NULL)
+   {
       return ERROR_OUT_OF_MEMORY;
+   }
 
    //Intialize transcript hash
    if(context->transcriptHashContext != NULL)
@@ -153,7 +161,9 @@ error_t tls13ComputePskBinder(TlsContext *context, const void *clientHello,
          context->secret);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Debug message
       TRACE_DEBUG("Early secret:\r\n");
@@ -164,7 +174,9 @@ error_t tls13ComputePskBinder(TlsContext *context, const void *clientHello,
          "ext binder", "", 0, key, hash->digestSize);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
    }
    else if(tls13IsTicketValid(context))
    {
@@ -173,7 +185,9 @@ error_t tls13ComputePskBinder(TlsContext *context, const void *clientHello,
          NULL, 0, context->secret);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Debug message
       TRACE_DEBUG("Early secret:\r\n");
@@ -184,7 +198,9 @@ error_t tls13ComputePskBinder(TlsContext *context, const void *clientHello,
          "res binder", "", 0, key, hash->digestSize);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
    }
    else
    {
@@ -202,7 +218,9 @@ error_t tls13ComputePskBinder(TlsContext *context, const void *clientHello,
       hash->digestSize, "finished", NULL, 0, key, hash->digestSize);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Debug message
    TRACE_DEBUG("Finished key:\r\n");
@@ -213,7 +231,9 @@ error_t tls13ComputePskBinder(TlsContext *context, const void *clientHello,
       binder);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Debug message
    TRACE_DEBUG("PSK binder:\r\n");
@@ -562,7 +582,8 @@ error_t tls13Encapsulate(TlsContext *context, uint16_t namedGroup,
             //convention outlined in Section 3.2 of RFC 9954. Specifically, the
             //order of shares in the concatenation has been reversed. This is
             //due to historical reasons (refer to RFC 10024, section 4.1)
-            if(context->namedGroup == TLS_GROUP_X25519_MLKEM768)
+            if(context->namedGroup == TLS_GROUP_MLKEM512_X25519 ||
+               context->namedGroup == TLS_GROUP_X25519_MLKEM768)
             {
                keyShareOffset = kemAlgo->publicKeySize;
                sharedSecretOffset = kemAlgo->sharedSecretSize;
@@ -609,8 +630,9 @@ error_t tls13Encapsulate(TlsContext *context, uint16_t namedGroup,
             //Check status code
             if(!error)
             {
-               //X25519MLKEM768 group?
-               if(context->namedGroup == TLS_GROUP_X25519_MLKEM768)
+               //MLKEM512X25519 or X25519MLKEM768 group?
+               if(context->namedGroup == TLS_GROUP_MLKEM512_X25519 ||
+                  context->namedGroup == TLS_GROUP_X25519_MLKEM768)
                {
                   keyShareOffset = 0;
                }
@@ -715,7 +737,8 @@ error_t tls13Decapsulate(TlsContext *context, const uint8_t *keyShare,
          //convention outlined in Section 3.2 of RFC 9954. Specifically, the
          //order of shares in the concatenation has been reversed. This is due
          //to historical reasons (refer to RFC 10024, section 4.1)
-         if(context->namedGroup == TLS_GROUP_X25519_MLKEM768)
+         if(context->namedGroup == TLS_GROUP_MLKEM512_X25519 ||
+            context->namedGroup == TLS_GROUP_X25519_MLKEM768)
          {
             keyShareOffset = kemAlgo->ciphertextSize;
             sharedSecretOffset = kemAlgo->sharedSecretSize;
@@ -745,8 +768,9 @@ error_t tls13Decapsulate(TlsContext *context, const uint8_t *keyShare,
          //Check status code
          if(!error)
          {
-            //X25519MLKEM768 group?
-            if(context->namedGroup == TLS_GROUP_X25519_MLKEM768)
+            //MLKEM512X25519 or X25519MLKEM768 group?
+            if(context->namedGroup == TLS_GROUP_MLKEM512_X25519 ||
+               context->namedGroup == TLS_GROUP_X25519_MLKEM768)
             {
                keyShareOffset = 0;
                sharedSecretOffset = 0;
@@ -804,6 +828,7 @@ error_t tls13Decapsulate(TlsContext *context, const uint8_t *keyShare,
 error_t tls13ComputeMac(TlsContext *context, TlsEncryptionEngine *encryptionEngine,
    void *record, const uint8_t *data, size_t dataLen, uint8_t *mac)
 {
+   error_t error;
    size_t aadLen;
    size_t nonceLen;
    uint8_t aad[13];
@@ -814,26 +839,30 @@ error_t tls13ComputeMac(TlsContext *context, TlsEncryptionEngine *encryptionEngi
    hmacContext = encryptionEngine->hmacContext;
 
    //Initialize HMAC calculation
-   hmacInit(hmacContext, encryptionEngine->hashAlgo,
+   error = hmacInit(hmacContext, encryptionEngine->hashAlgo,
       encryptionEngine->encKey, encryptionEngine->encKeyLen);
 
-   //Additional data to be authenticated
-   tlsFormatAad(context, encryptionEngine, record, aad, &aadLen);
+   //Check status code
+   if(!error)
+   {
+      //Additional data to be authenticated
+      tlsFormatAad(context, encryptionEngine, record, aad, &aadLen);
 
-   //Generate the nonce
-   tlsFormatNonce(context, encryptionEngine, record, data, nonce,
-      &nonceLen);
+      //Generate the nonce
+      tlsFormatNonce(context, encryptionEngine, record, data, nonce,
+         &nonceLen);
 
-   //Compute HMAC(write_key, nonce || additional_data || plaintext)
-   hmacUpdate(hmacContext, nonce, nonceLen);
-   hmacUpdate(hmacContext, aad, aadLen);
-   hmacUpdate(hmacContext, data, dataLen);
+      //Compute HMAC(write_key, nonce || additional_data || plaintext)
+      hmacUpdate(hmacContext, nonce, nonceLen);
+      hmacUpdate(hmacContext, aad, aadLen);
+      hmacUpdate(hmacContext, data, dataLen);
 
-   //Finalize HMAC computation
-   hmacFinal(hmacContext, mac);
+      //Finalize HMAC computation
+      hmacFinal(hmacContext, mac);
+   }
 
-   //Successful processing
-   return NO_ERROR;
+   //Return status code
+   return error;
 }
 
 
@@ -850,13 +879,17 @@ error_t tls13DigestClientHello1(TlsContext *context)
 
    //Invalid hash context?
    if(context->transcriptHashContext == NULL)
+   {
       return ERROR_FAILURE;
+   }
 
    //The hash function used by HKDF is the cipher suite hash algorithm
    hash = context->cipherSuite.prfHashAlgo;
    //Make sure the hash algorithm is valid
    if(hash == NULL)
+   {
       return ERROR_FAILURE;
+   }
 
    //Point to the buffer where to format the handshake message
    message = (TlsHandshake *) context->txBuffer;
@@ -1135,9 +1168,11 @@ bool_t tls13IsHybridGroupSupported(TlsContext *context, uint16_t namedGroup)
 
 #if (TLS13_HYBRID_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
    //Hybrid key exchange method?
-   if(namedGroup == TLS_GROUP_SECP256R1_MLKEM768 ||
+   if(namedGroup == TLS_GROUP_SECP256R1_MLKEM512 ||
+      namedGroup == TLS_GROUP_SECP256R1_MLKEM768 ||
       namedGroup == TLS_GROUP_SECP384R1_MLKEM1024 ||
       namedGroup == TLS_GROUP_CURVE_SM2_MLKEM768 ||
+      namedGroup == TLS_GROUP_MLKEM512_X25519 ||
       namedGroup == TLS_GROUP_X25519_MLKEM768)
    {
       //Any TLS 1.3 cipher suite proposed by the client?
@@ -1214,7 +1249,9 @@ const KemAlgo *tls13GetMlkemAlgo(TlsContext *context, uint16_t namedGroup)
       {
          //Compare named groups
          if(context->supportedGroups[i] == namedGroup)
+         {
             break;
+         }
       }
 
       //Check whether the use of the algorithm is restricted
@@ -1251,6 +1288,7 @@ const EcCurve *tls13GetTraditionalAlgo(TlsContext *context,
    {
 #if (TLS_SECP256R1_SUPPORT == ENABLED)
    //secp256r1 elliptic curve?
+   case TLS_GROUP_SECP256R1_MLKEM512:
    case TLS_GROUP_SECP256R1_MLKEM768:
       curve = ecGetCurve(SECP256R1_OID, sizeof(SECP256R1_OID));
       break;
@@ -1269,6 +1307,7 @@ const EcCurve *tls13GetTraditionalAlgo(TlsContext *context,
 #endif
 #if (TLS_X25519_SUPPORT == ENABLED)
    //Curve25519 elliptic curve?
+   case TLS_GROUP_MLKEM512_X25519:
    case TLS_GROUP_X25519_MLKEM768:
       curve = ecGetCurve(X25519_OID, sizeof(X25519_OID));
       break;
@@ -1289,7 +1328,9 @@ const EcCurve *tls13GetTraditionalAlgo(TlsContext *context,
       {
          //Compare named groups
          if(context->supportedGroups[i] == namedGroup)
+         {
             break;
+         }
       }
 
       //Check whether the use of the algorithm is restricted
@@ -1323,6 +1364,13 @@ const KemAlgo *tls13GetNextGenAlgo(TlsContext *context, uint16_t namedGroup)
    //Check named group
    switch(namedGroup)
    {
+#if (TLS_MLKEM512_SUPPORT == ENABLED)
+   //ML-KEM-512 key encapsulation mechanism?
+   case TLS_GROUP_SECP256R1_MLKEM512:
+   case TLS_GROUP_MLKEM512_X25519:
+      kemAlgo = MLKEM512_KEM_ALGO;
+      break;
+#endif
 #if (TLS_MLKEM768_SUPPORT == ENABLED)
    //ML-KEM-768 key encapsulation mechanism?
    case TLS_GROUP_SECP256R1_MLKEM768:
@@ -1353,7 +1401,9 @@ const KemAlgo *tls13GetNextGenAlgo(TlsContext *context, uint16_t namedGroup)
       {
          //Compare named groups
          if(context->supportedGroups[i] == namedGroup)
+         {
             break;
+         }
       }
 
       //Check whether the use of the algorithm is restricted
@@ -1388,7 +1438,9 @@ error_t tls13CheckDuplicateKeyShare(uint16_t namedGroup, const uint8_t *p,
    {
       //Malformed extension?
       if(length < sizeof(Tls13KeyShareEntry))
+      {
          return ERROR_DECODING_FAILED;
+      }
 
       //Point to the current key share entry
       keyShareEntry = (Tls13KeyShareEntry *) p;
@@ -1397,13 +1449,17 @@ error_t tls13CheckDuplicateKeyShare(uint16_t namedGroup, const uint8_t *p,
 
       //Malformed extension?
       if(length < (sizeof(Tls13KeyShareEntry) + n))
+      {
          return ERROR_DECODING_FAILED;
+      }
 
       //Clients must not offer multiple KeyShareEntry values for the same
       //group. Servers may check for violations of this rule and abort the
       //handshake with an illegal_parameter alert
       if(ntohs(keyShareEntry->group) == namedGroup)
+      {
          return ERROR_ILLEGAL_PARAMETER;
+      }
 
       //Jump to the next key share entry
       p += sizeof(Tls13KeyShareEntry) + n;
@@ -1465,28 +1521,36 @@ error_t tls13ParseCertExtensions(const uint8_t *p, size_t length,
 
    //Malformed CertificateEntry?
    if(length < sizeof(TlsExtensionList))
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //Retrieve the length of the list
    n = sizeof(TlsExtensionList) + ntohs(extensionList->length);
 
    //Malformed CertificateEntry?
    if(length < n)
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //Parse the list of extensions for the current CertificateEntry
    error = tlsParseHelloExtensions(TLS_TYPE_CERTIFICATE, p, n,
       &extensions);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Check the list of extensions
    error = tlsCheckHelloExtensions(TLS_TYPE_CERTIFICATE, TLS_VERSION_1_3,
       &extensions);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Total number of bytes that have been consumed
    *consumed = n;

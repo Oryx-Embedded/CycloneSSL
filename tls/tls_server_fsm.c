@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -66,7 +66,8 @@ error_t tlsPerformServerHandshake(TlsContext *context)
    while(!error)
    {
       //TLS protocol?
-      if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM)
+      if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_STREAM ||
+         context->transportProtocol == TLS_TRANSPORT_PROTOCOL_EAP)
       {
          //Check current state
          if(context->state != TLS_STATE_INIT &&
@@ -76,7 +77,9 @@ error_t tlsPerformServerHandshake(TlsContext *context)
             error = tlsWriteProtocolData(context, NULL, 0, TLS_TYPE_NONE);
             //Any error to report?
             if(error)
+            {
                break;
+            }
          }
       }
 

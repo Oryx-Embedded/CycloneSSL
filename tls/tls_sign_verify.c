@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -71,9 +71,14 @@ error_t tlsVerifySignature(TlsContext *context, const uint8_t *p,
 
    //Check the length of the digitally-signed element
    if(length < sizeof(TlsDigitalSignature))
+   {
       return ERROR_DECODING_FAILED;
+   }
+
    if(length != (sizeof(TlsDigitalSignature) + ntohs(signature->length)))
+   {
       return ERROR_DECODING_FAILED;
+   }
 
 #if (TLS_RSA_SIGN_SUPPORT == ENABLED)
    //RSA certificate?
@@ -176,9 +181,14 @@ error_t tls12VerifySignature(TlsContext *context, const uint8_t *p,
 
    //Check the length of the digitally-signed element
    if(length < sizeof(Tls12DigitalSignature))
+   {
       return ERROR_DECODING_FAILED;
+   }
+
    if(length != (sizeof(Tls12DigitalSignature) + ntohs(signature->length)))
+   {
       return ERROR_DECODING_FAILED;
+   }
 
    //The algorithm field specifies the signature scheme
    signScheme = (TlsSignatureScheme) ntohs(signature->algorithm);
@@ -186,7 +196,9 @@ error_t tls12VerifySignature(TlsContext *context, const uint8_t *p,
    //The certificates must be signed using an acceptable hash/signature
    //algorithm pair (refer to RFC 5246, section 7.4.6)
    if(!tlsIsSignAlgoSupported(context, signScheme))
+   {
       return ERROR_ILLEGAL_PARAMETER;
+   }
 
    //Check signature scheme
    if(TLS_SIGN_ALGO(signScheme) == TLS_SIGN_ALGO_RSA ||
@@ -374,7 +386,9 @@ error_t tlsVerifyRsaSignature(const RsaPublicKey *key,
 
    //Check the length of the signature
    if(signatureLen != k)
+   {
       return ERROR_INVALID_SIGNATURE;
+   }
 
    //Initialize multiple-precision integers
    mpiInit(&s);
@@ -384,7 +398,9 @@ error_t tlsVerifyRsaSignature(const RsaPublicKey *key,
    em = tlsAllocMem(k);
    //Failed to allocate memory?
    if(em == NULL)
+   {
       return ERROR_OUT_OF_MEMORY;
+   }
 
    //Start of exception handling block
    do
@@ -393,20 +409,26 @@ error_t tlsVerifyRsaSignature(const RsaPublicKey *key,
       error = mpiImport(&s, signature, signatureLen, MPI_FORMAT_BIG_ENDIAN);
       //Conversion failed?
       if(error)
+      {
          break;
+      }
 
       //Apply the RSAVP1 verification primitive
       error = rsavp1(key, &s, &m);
       //Any error to report?
       if(error)
+      {
          break;
+      }
 
       //Convert the message representative m to an encoded message EM of
       //length k octets
       error = mpiExport(&m, em, k, MPI_FORMAT_BIG_ENDIAN);
       //Conversion failed?
       if(error)
+      {
          break;
+      }
 
       //Debug message
       TRACE_DEBUG("  Encoded message\r\n");
@@ -452,7 +474,9 @@ error_t tlsVerifyRsaEm(const uint8_t *digest, const uint8_t *em, size_t emLen)
 
    //Check the length of the encoded message
    if(emLen < (MD5_DIGEST_SIZE + SHA1_DIGEST_SIZE + 11))
+   {
       return ERROR_INVALID_LENGTH;
+   }
 
    //Point to the first byte of the encoded message
    i = 0;
@@ -629,7 +653,7 @@ error_t tlsVerifyEd25519Signature(TlsContext *context,
    //Valid Ed25519 public key?
    if(context->peerEddsaPublicKey.curve == ED25519_CURVE)
    {
-      //The Ed25519 signature shall consist of 32 octets
+      //The Ed25519 signature shall consist of 64 octets
       if(signatureLen == ED25519_SIGNATURE_LEN)
       {
          //Verify Ed25519 signature (PureEdDSA mode)
@@ -678,7 +702,7 @@ error_t tlsVerifyEd448Signature(TlsContext *context,
    //Valid Ed448 public key?
    if(context->peerEddsaPublicKey.curve == ED448_CURVE)
    {
-      //The Ed448 signature shall consist of 32 octets
+      //The Ed448 signature shall consist of 114 octets
       if(signatureLen == ED448_SIGNATURE_LEN)
       {
          //Verify Ed448 signature (PureEdDSA mode)

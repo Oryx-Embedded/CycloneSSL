@@ -31,7 +31,7 @@
  * is designed to prevent eavesdropping, tampering, or message forgery
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -59,7 +59,9 @@ error_t tlsRegisterQuicCallbacks(TlsContext *context,
 {
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Save QUIC-specific callback functions
    context->quicCallbacks = *quicCallbacks;
@@ -82,7 +84,9 @@ error_t tlsSetQuicHandle(TlsContext *context, void *handle)
 {
    //Invalid TLS context?
    if(context == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //This opaque pointer will be directly passed to the callback functions
    context->quicHandle = handle;
@@ -105,7 +109,9 @@ error_t tlsSetLocalQuicTransportParams(TlsContext *context,
 {
    //Check parameters
    if(context == NULL || params == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Check whether the QUIC transport parameters have already been configured
    if(context->localQuicTransportParams != NULL)
@@ -123,7 +129,9 @@ error_t tlsSetLocalQuicTransportParams(TlsContext *context,
       context->localQuicTransportParams = tlsAllocMem(length);
       //Failed to allocate memory?
       if(context->localQuicTransportParams == NULL)
+      {
          return ERROR_OUT_OF_MEMORY;
+      }
 
       //Save the QUIC transport parameters
       osMemcpy(context->localQuicTransportParams, params, length);
@@ -148,7 +156,9 @@ error_t tlsGetRemoteQuicTransportParams(TlsContext *context,
 {
    //Check parameters
    if(context == NULL || params == NULL || length == NULL)
+   {
       return ERROR_INVALID_PARAMETER;
+   }
 
    //Return the QUIC transport parameters
    *params = context->remoteQuicTransportParams;

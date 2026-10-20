@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -59,10 +59,13 @@ error_t tlsDecryptRecord(TlsContext *context,
    error_t error;
 
 #if (TLS_CCM_CIPHER_SUPPORT == ENABLED || TLS_CCM_8_CIPHER_SUPPORT == ENABLED || \
-   TLS_GCM_CIPHER_SUPPORT == ENABLED || TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
+   TLS_GCM_CIPHER_SUPPORT == ENABLED || TLS_AEGIS128L_SUPPORT == ENABLED || \
+   TLS_AEGIS256_SUPPORT == ENABLED || TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
    //AEAD cipher?
    if(decryptionEngine->cipherMode == CIPHER_MODE_CCM ||
       decryptionEngine->cipherMode == CIPHER_MODE_GCM ||
+      decryptionEngine->cipherMode == CIPHER_MODE_AEGIS128L ||
+      decryptionEngine->cipherMode == CIPHER_MODE_AEGIS256 ||
       decryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
    {
       //Perform authenticated decryption
@@ -127,7 +130,8 @@ __weak_func error_t tlsDecryptAeadRecord(TlsContext *context,
    TlsEncryptionEngine *decryptionEngine, void *record)
 {
 #if (TLS_CCM_CIPHER_SUPPORT == ENABLED || TLS_CCM_8_CIPHER_SUPPORT == ENABLED || \
-   TLS_GCM_CIPHER_SUPPORT == ENABLED || TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
+   TLS_GCM_CIPHER_SUPPORT == ENABLED || TLS_AEGIS128L_SUPPORT == ENABLED || \
+   TLS_AEGIS256_SUPPORT == ENABLED || TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
    error_t error;
    size_t length;
    size_t aadLen;
@@ -136,7 +140,7 @@ __weak_func error_t tlsDecryptAeadRecord(TlsContext *context,
    uint8_t *ciphertext;
    uint8_t *tag;
    uint8_t aad[13];
-   uint8_t nonce[12];
+   uint8_t nonce[32];
 
    //Get the length of the TLS record
    length = tlsGetRecordLength(context, record);
@@ -149,7 +153,9 @@ __weak_func error_t tlsDecryptAeadRecord(TlsContext *context,
 
    //Make sure the message length is acceptable
    if(length < (decryptionEngine->recordIvLen + decryptionEngine->authTagLen))
+   {
       return ERROR_BAD_RECORD_MAC;
+   }
 
    //Calculate the length of the ciphertext
    length -= decryptionEngine->recordIvLen + decryptionEngine->authTagLen;
@@ -166,12 +172,16 @@ __weak_func error_t tlsDecryptAeadRecord(TlsContext *context,
       //maximum AEAD expansion. An endpoint that receives a record that exceeds
       //this length must terminate the connection with a record_overflow alert
       if(length > (TLS_MAX_RECORD_LENGTH + 1))
+      {
          return ERROR_RECORD_OVERFLOW;
+      }
 
       //In TLS 1.3, the outer opaque_type field of a TLS record is always set
       //to the value 23 (application data)
       if(tlsGetRecordType(context, record) != TLS_TYPE_APPLICATION_DATA)
+      {
          return ERROR_UNEXPECTED_MESSAGE;
+      }
    }
 
    //Additional data to be authenticated
@@ -208,13 +218,35 @@ __weak_func error_t tlsDecryptAeadRecord(TlsContext *context,
    }
    else
 #endif
+#if (TLS_AEGIS128L_SUPPORT == ENABLED)
+   //AEGIS-128L AEAD cipher?
+   if(decryptionEngine->cipherMode == CIPHER_MODE_AEGIS128L)
+   {
+      //Authenticated decryption using AEGIS-128L
+      error = aegis128lDecrypt(decryptionEngine->encKey,
+         decryptionEngine->encKeyLen, nonce, nonceLen, aad, aadLen, data,
+         data, length, tag, decryptionEngine->authTagLen);
+   }
+   else
+#endif
+#if (TLS_AEGIS256_SUPPORT == ENABLED)
+   //AEGIS-256 AEAD cipher?
+   if(decryptionEngine->cipherMode == CIPHER_MODE_AEGIS256)
+   {
+      //Authenticated decryption using AEGIS-256
+      error = aegis256Decrypt(decryptionEngine->encKey,
+         decryptionEngine->encKeyLen, nonce, nonceLen, aad, aadLen, data,
+         data, length, tag, decryptionEngine->authTagLen);
+   }
+   else
+#endif
 #if (TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
    //ChaCha20Poly1305 AEAD cipher?
    if(decryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
    {
       //Authenticated decryption using ChaCha20Poly1305
       error = chacha20Poly1305Decrypt(decryptionEngine->encKey,
-         decryptionEngine->encKeyLen, nonce, 12, aad, aadLen, data,
+         decryptionEngine->encKeyLen, nonce, nonceLen, aad, aadLen, data,
          data, length, tag, decryptionEngine->authTagLen);
    }
    else
@@ -227,7 +259,9 @@ __weak_func error_t tlsDecryptAeadRecord(TlsContext *context,
 
    //Wrong authentication tag?
    if(error)
+   {
       return ERROR_BAD_RECORD_MAC;
+   }
 
    //Discard the explicit part of the nonce
    if(decryptionEngine->recordIvLen != 0)
@@ -250,7 +284,9 @@ __weak_func error_t tlsDecryptAeadRecord(TlsContext *context,
       //cleartext, it must terminate the connection with an unexpected_message
       //alert
       if(length == 0)
+      {
          return ERROR_UNEXPECTED_MESSAGE;
+      }
 
       //Retrieve the length of the plaintext
       length--;
@@ -313,10 +349,12 @@ __weak_func error_t tlsDecryptCbcRecord(TlsContext *context,
       error = tlsVerifyMessageAuthCode(context, decryptionEngine, record);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Calculate the minimum acceptable length of the ciphertext
-      n = cipherAlgo->blockSize;;
+      n = cipherAlgo->blockSize;
    }
    else
 #endif
@@ -343,18 +381,24 @@ __weak_func error_t tlsDecryptCbcRecord(TlsContext *context,
 
    //Malformed TLS record?
    if(length < n)
+   {
       return ERROR_BAD_RECORD_MAC;
+   }
 
    //The length of the ciphertext must be a multiple of the block size
    if((length % cipherAlgo->blockSize) != 0)
+   {
       return ERROR_BAD_RECORD_MAC;
+   }
 
    //Perform CBC decryption
    error = cbcDecrypt(cipherAlgo, decryptionEngine->cipherContext,
       decryptionEngine->iv, data, data, length);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //TLS 1.1 and 1.2 use an explicit IV
    if(decryptionEngine->version >= TLS_VERSION_1_1)
@@ -473,9 +517,7 @@ error_t tlsVerifyMessageAuthCode(TlsContext *context,
    TlsEncryptionEngine *decryptionEngine, void *record)
 {
    error_t error;
-   size_t i;
    size_t length;
-   uint8_t mask;
    uint8_t *data;
    uint8_t *digest;
    const HashAlgo *hashAlgo;
@@ -496,7 +538,9 @@ error_t tlsVerifyMessageAuthCode(TlsContext *context,
 
    //Make sure the message length is acceptable
    if(length < hashAlgo->digestSize)
+   {
       return ERROR_BAD_RECORD_MAC;
+   }
 
    //Adjust the length of the message
    length -= hashAlgo->digestSize;
@@ -523,12 +567,16 @@ error_t tlsVerifyMessageAuthCode(TlsContext *context,
       //maximum AEAD expansion. An endpoint that receives a record that exceeds
       //this length must terminate the connection with a record_overflow alert
       if(length > (TLS_MAX_RECORD_LENGTH + 1))
+      {
          return ERROR_RECORD_OVERFLOW;
+      }
 
       //In TLS 1.3, the outer opaque_type field of a TLS record is always set
       //to the value 23 (application data)
       if(tlsGetRecordType(context, record) != TLS_TYPE_APPLICATION_DATA)
+      {
          return ERROR_UNEXPECTED_MESSAGE;
+      }
 
       //The record is protected using HMAC SHA-256 or SHA-384
       error = tls13ComputeMac(context, decryptionEngine, record, data, length,
@@ -544,7 +592,9 @@ error_t tlsVerifyMessageAuthCode(TlsContext *context,
 
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Debug message
    TRACE_DEBUG("Read sequence number:\r\n");
@@ -552,16 +602,12 @@ error_t tlsVerifyMessageAuthCode(TlsContext *context,
    TRACE_DEBUG("Computed MAC:\r\n");
    TRACE_DEBUG_ARRAY("  ", digest, hashAlgo->digestSize);
 
-   //The calculated MAC is bitwise compared to the received message
-   //authentication code
-   for(mask = 0, i = 0; i < hashAlgo->digestSize; i++)
+   //The calculated MAC is compared to the received message authentication
+   //code
+   if(cryptoCompMem(data + length, digest, hashAlgo->digestSize) != 0)
    {
-      mask |= data[length + i] ^ digest[i];
-   }
-
-   //Invalid message authentication code?
-   if(mask != 0)
       return ERROR_BAD_RECORD_MAC;
+   }
 
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
    //TLS 1.3 currently selected?
@@ -579,7 +625,9 @@ error_t tlsVerifyMessageAuthCode(TlsContext *context,
       //cleartext, it must terminate the connection with an unexpected_message
       //alert
       if(length == 0)
+      {
          return ERROR_UNEXPECTED_MESSAGE;
+      }
 
       //Retrieve the length of the plaintext
       length--;
@@ -780,8 +828,11 @@ __weak_func uint32_t tlsVerifyMac(TlsContext *context,
          b = 0;
 
          //Generate the contents of each block in constant time
-         c = CRYPTO_TEST_LT_32(i, dataLen);
-         b = CRYPTO_SELECT_8(b, data[i], c);
+         if(i < maxDataLen)
+         {
+            c = CRYPTO_TEST_LT_32(i, dataLen);
+            b = CRYPTO_SELECT_8(b, data[i], c);
+         }
 
          c = CRYPTO_TEST_EQ_32(i, dataLen);
          b = CRYPTO_SELECT_8(b, 0x80, c);

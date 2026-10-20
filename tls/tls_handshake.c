@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -65,7 +65,9 @@ error_t tlsInitHandshake(TlsContext *context)
 
       //Failed to allocate memory?
       if(context->txBuffer == NULL)
+      {
          return ERROR_OUT_OF_MEMORY;
+      }
 
       //Clear TX buffer
       osMemset(context->txBuffer, 0, context->txBufferSize);
@@ -79,7 +81,9 @@ error_t tlsInitHandshake(TlsContext *context)
 
       //Failed to allocate memory?
       if(context->rxBuffer == NULL)
+      {
          return ERROR_OUT_OF_MEMORY;
+      }
 
       //Clear RX buffer
       osMemset(context->rxBuffer, 0, context->rxBufferSize);
@@ -211,9 +215,8 @@ error_t tlsSendHandshakeMessage(TlsContext *context, const void *data,
       length += sizeof(TlsHandshake);
    }
 
-   //The HelloRequest message must not be included in the message hashes
-   //that are maintained throughout the handshake and used in the Finished
-   //messages and the CertificateVerify message
+   //HelloRequest messages must not be included in the message hashes that are
+   //maintained throughout the handshake (refer to RFC 5246, section 7.4.1.1)
    if(type != TLS_TYPE_HELLO_REQUEST)
    {
       tlsUpdateTranscriptHash(context, data, length);
@@ -416,8 +419,13 @@ error_t tlsParseHandshakeMessage(TlsContext *context, const uint8_t *message,
       //Parse server's handshake message
       error = tlsParseServerHandshakeMessage(context, msgType, p, n);
 
-      //Update the hash value with the incoming handshake message
-      tlsUpdateTranscriptHash(context, message, length);
+      //HelloRequest messages must not be included in the message hashes that
+      //are maintained throughout the handshake (refer to RFC 5246, section
+      //7.4.1.1)
+      if(msgType != TLS_TYPE_HELLO_REQUEST)
+      {
+         tlsUpdateTranscriptHash(context, message, length);
+      }
    }
    else
 #endif

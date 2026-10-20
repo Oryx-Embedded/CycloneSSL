@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -75,7 +75,9 @@ error_t tls13NegotiateCipherSuite(TlsContext *context, const void *clientHello,
       clientHelloLen, extensions->identityList, extensions->binderList);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Externally established PSKs should influence cipher suite selection
    if(context->selectedIdentity >= 0)
@@ -105,7 +107,9 @@ error_t tls13NegotiateCipherSuite(TlsContext *context, const void *clientHello,
       error = tlsNegotiateCipherSuite(context, NULL, cipherSuites, extensions);
       //If no acceptable choices are presented, terminate the handshake
       if(error)
+      {
          return ERROR_HANDSHAKE_FAILED;
+      }
    }
 
    //If the handshake includes a HelloRetryRequest, the initial ClientHello
@@ -117,7 +121,9 @@ error_t tls13NegotiateCipherSuite(TlsContext *context, const void *clientHello,
       error = tlsInitTranscriptHash(context);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
    }
 
 #if (DTLS_SUPPORT == ENABLED)
@@ -129,7 +135,9 @@ error_t tls13NegotiateCipherSuite(TlsContext *context, const void *clientHello,
       error = dtls13ParseClientCookieExtension(context, extensions->cookie);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
    }
 #endif
 
@@ -139,14 +147,30 @@ error_t tls13NegotiateCipherSuite(TlsContext *context, const void *clientHello,
       extensions->earlyDataIndication);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //The KeyShare extension contains the client's cryptographic parameters
    error = tls13ParseClientKeyShareExtension(context, extensions->keyShareList,
       extensions->supportedGroupList);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
+
+   //Non-PSK handshake?
+   if(context->selectedIdentity < 0)
+   {
+      //Select the appropriate certificate
+      error = tlsSelectCertificate(context, extensions);
+      //Any error to report?
+      if(error)
+      {
+         return ERROR_HANDSHAKE_FAILED;
+      }
+   }
 
    //Incorrect (EC)DHE share?
    if(extensions->keyShareList != NULL && context->namedGroup == TLS_GROUP_NONE)
@@ -155,7 +179,9 @@ error_t tls13NegotiateCipherSuite(TlsContext *context, const void *clientHello,
       error = tls13SelectGroup(context, extensions->supportedGroupList);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //The server corrects the mismatch with a HelloRetryRequest
       context->wrongKeyShare = TRUE;
@@ -173,7 +199,9 @@ error_t tls13NegotiateCipherSuite(TlsContext *context, const void *clientHello,
             extensions->pskKeModeList);
          //Any error to report?
          if(error)
+         {
             return error;
+         }
       }
       else if(context->keyExchMethod == TLS13_KEY_EXCH_PSK ||
          context->keyExchMethod == TLS13_KEY_EXCH_PSK_DHE ||
@@ -187,7 +215,9 @@ error_t tls13NegotiateCipherSuite(TlsContext *context, const void *clientHello,
             extensions->pskKeModeList);
          //Any error to report?
          if(error)
+         {
             return error;
+         }
 
          //Prior to accepting PSK key establishment, the server must validate
          //the corresponding binder value
@@ -196,7 +226,9 @@ error_t tls13NegotiateCipherSuite(TlsContext *context, const void *clientHello,
             context->selectedIdentity);
          //If this value does not validate, the server must abort the handshake
          if(error)
+         {
             return error;
+         }
       }
       else
       {
@@ -410,13 +442,17 @@ error_t tls13DigestHelloRetryRequest(TlsContext *context,
 
    //Invalid hash context?
    if(context->transcriptHashContext == NULL)
+   {
       return ERROR_FAILURE;
+   }
 
    //The hash function used by HKDF is the cipher suite hash algorithm
    hash = context->cipherSuite.prfHashAlgo;
    //Make sure the hash algorithm is valid
    if(hash == NULL)
+   {
       return ERROR_FAILURE;
+   }
 
    //Point to the buffer where to format the handshake message
    message = (TlsHandshake *) context->txBuffer;
@@ -434,7 +470,9 @@ error_t tls13DigestHelloRetryRequest(TlsContext *context,
       (Tls13HelloRetryRequest *) message->data, &length);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Number of bytes in the message
    STORE24BE(length, message->length);
@@ -470,7 +508,8 @@ error_t tls13VerifyPskBinder(TlsContext *context, const void *clientHello,
    const Tls13PskBinderList *binderList, int_t selectedIdentity)
 {
 #if (TLS13_PSK_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
-   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
+   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_MLKEM_KE_SUPPORT == ENABLED || \
+   TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
    error_t error;
    int_t i;
    size_t n;
@@ -485,11 +524,15 @@ error_t tls13VerifyPskBinder(TlsContext *context, const void *clientHello,
 
    //Make sure the PreSharedKey extension is valid
    if(identityList == NULL || binderList == NULL)
+   {
       return ERROR_FAILURE;
+   }
 
    //Make sure the selected identity is valid
    if(selectedIdentity < 0)
+   {
       return ERROR_FAILURE;
+   }
 
    //Point to the list of the identities that the client is willing to
    //negotiate with the server
@@ -504,9 +547,14 @@ error_t tls13VerifyPskBinder(TlsContext *context, const void *clientHello,
 
       //Malformed PreSharedKey extension?
       if(n < sizeof(TlsPskIdentity))
+      {
          return ERROR_DECODING_FAILED;
+      }
+
       if(n < (sizeof(TlsPskIdentity) + ntohs(identity->length)))
+      {
          return ERROR_DECODING_FAILED;
+      }
 
       //Point to the obfuscated_ticket_age field
       p += sizeof(TlsPskIdentity) + ntohs(identity->length);
@@ -514,7 +562,9 @@ error_t tls13VerifyPskBinder(TlsContext *context, const void *clientHello,
 
       //The obfuscated_ticket_age field is a 32-bit unsigned integer
       if(n < sizeof(uint32_t))
+      {
          return ERROR_DECODING_FAILED;
+      }
 
       //Point to the next PskIdentity entry
       p += sizeof(uint32_t);
@@ -523,7 +573,9 @@ error_t tls13VerifyPskBinder(TlsContext *context, const void *clientHello,
 
    //Make sure the selected identity is within the range supplied by the client
    if(selectedIdentity >= i)
+   {
       return ERROR_FAILURE;
+   }
 
    //Point to the list of HMAC values, one for each PSK offered in the
    //PreSharedKey extension
@@ -538,9 +590,14 @@ error_t tls13VerifyPskBinder(TlsContext *context, const void *clientHello,
 
       //Malformed PreSharedKey extension?
       if(n < sizeof(Tls13PskBinder))
+      {
          return ERROR_DECODING_FAILED;
+      }
+
       if(n < (sizeof(Tls13PskBinder) + binder->length))
+      {
          return ERROR_DECODING_FAILED;
+      }
 
       //Point to the next PskBinderEntry
       p += sizeof(Tls13PskBinder) + binder->length;
@@ -549,11 +606,15 @@ error_t tls13VerifyPskBinder(TlsContext *context, const void *clientHello,
 
    //Make sure the selected identity is within the range supplied by the client
    if(selectedIdentity >= i)
+   {
       return ERROR_FAILURE;
+   }
 
    //Check the length of the PSK binder
    if(binder->length > TLS_MAX_HKDF_DIGEST_SIZE)
+   {
       return ERROR_DECRYPTION_FAILED;
+   }
 
    //The PSK binder is computed as an HMAC over a transcript hash containing
    //a partial ClientHello up to the binders list itself
@@ -564,7 +625,9 @@ error_t tls13VerifyPskBinder(TlsContext *context, const void *clientHello,
       n, identity, calculatedBinder, binder->length);
    //Any error to report?
    if(error)
+   {
       return ERROR_DECRYPTION_FAILED;
+   }
 
    //Debug message
    TRACE_DEBUG("PSK binder:\r\n");
@@ -574,7 +637,7 @@ error_t tls13VerifyPskBinder(TlsContext *context, const void *clientHello,
 
    //Prior to accepting PSK key establishment, the server must validate the
    //corresponding binder value
-   if(osMemcmp(calculatedBinder, binder->value, binder->length))
+   if(cryptoCompMem(calculatedBinder, binder->value, binder->length) != 0)
    {
       //If this value does not validate, the server must abort the handshake
       return ERROR_DECRYPTION_FAILED;
@@ -602,20 +665,28 @@ error_t tls13ProcessEarlyData(TlsContext *context, const uint8_t *data,
 {
    //Check TLS version
    if(context->version != TLS_VERSION_1_3)
+   {
       return ERROR_UNEXPECTED_MESSAGE;
+   }
 
    //Check operation mode
    if(context->entity != TLS_CONNECTION_END_SERVER)
+   {
       return ERROR_FAILURE;
+   }
 
    //Check current state
    if(context->state != TLS_STATE_CLIENT_HELLO_2)
+   {
       return ERROR_UNEXPECTED_MESSAGE;
+   }
 
    //If the client opts to send 0-RTT data, it must supply an EarlyData
    //extension in its ClientHello (refer to RFC 8446, section 4.2.10)
    if(!context->earlyDataExtReceived)
+   {
       return ERROR_UNEXPECTED_MESSAGE;
+   }
 
    //Amount of 0-RTT data received by the server
    context->earlyDataLen += length;
@@ -623,7 +694,9 @@ error_t tls13ProcessEarlyData(TlsContext *context, const uint8_t *data,
    //Discard records which fail deprotection (up to the configured
    //max_early_data_size)
    if(context->earlyDataLen > context->maxEarlyDataSize)
+   {
       return ERROR_BAD_RECORD_MAC;
+   }
 
    //Debug message
    TRACE_INFO("Discarding early data (%" PRIuSIZE " bytes)...\r\n", length);

@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -110,7 +110,8 @@ error_t tls13ComputePskBinders(TlsContext *context, const void *clientHello,
    error = NO_ERROR;
 
 #if (TLS13_PSK_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
-   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
+   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_MLKEM_KE_SUPPORT == ENABLED || \
+   TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
    //Check whether the ClientHello message contains a PreSharedKey extension
    if(identityList != NULL && binderList != NULL)
    {
@@ -136,9 +137,14 @@ error_t tls13ComputePskBinders(TlsContext *context, const void *clientHello,
 
          //Malformed PreSharedKey extension?
          if(n < sizeof(TlsPskIdentity))
+         {
             return ERROR_DECODING_FAILED;
+         }
+
          if(n < (sizeof(TlsPskIdentity) + ntohs(identity->length)))
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //Point to the obfuscated_ticket_age field
          p += sizeof(TlsPskIdentity) + ntohs(identity->length);
@@ -146,7 +152,9 @@ error_t tls13ComputePskBinders(TlsContext *context, const void *clientHello,
 
          //The obfuscated_ticket_age field is a 32-bit unsigned integer
          if(n < sizeof(uint32_t))
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //Point to the next PskIdentity entry
          p += sizeof(uint32_t);
@@ -157,9 +165,14 @@ error_t tls13ComputePskBinders(TlsContext *context, const void *clientHello,
 
          //Malformed PreSharedKey extension?
          if(m < sizeof(Tls13PskBinder))
+         {
             return ERROR_DECODING_FAILED;
+         }
+
          if(m < (sizeof(Tls13PskBinder) + binder->length))
+         {
             return ERROR_DECODING_FAILED;
+         }
 
          //Point to the next PskBinderEntry
          q += sizeof(Tls13PskBinder) + binder->length;
@@ -170,7 +183,9 @@ error_t tls13ComputePskBinders(TlsContext *context, const void *clientHello,
             truncatedClientHelloLen, identity, binder->value, binder->length);
          //Any error to report?
          if(error)
+         {
             break;
+         }
       }
    }
 #endif
@@ -204,13 +219,17 @@ error_t tls13SendEarlyData(TlsContext *context, const void *data,
    {
       //Make sure a valid cipher suite has been provisioned
       if(context->pskCipherSuite == 0)
+      {
          return ERROR_END_OF_STREAM;
+      }
    }
    else if(tls13IsTicketValid(context))
    {
       //Make sure the cipher suite associated with the ticket is valid
       if(context->ticketCipherSuite == 0)
+      {
          return ERROR_END_OF_STREAM;
+      }
    }
    else
    {
@@ -235,7 +254,9 @@ error_t tls13SendEarlyData(TlsContext *context, const void *data,
             error = tlsWriteProtocolData(context, NULL, 0, TLS_TYPE_NONE);
             //Any error to report?
             if(error)
+            {
                break;
+            }
          }
       }
 

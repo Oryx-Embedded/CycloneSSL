@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -180,6 +180,7 @@ error_t tls13SendEncryptedExtensions(TlsContext *context)
       if(context->keyExchMethod == TLS13_KEY_EXCH_PSK ||
          context->keyExchMethod == TLS13_KEY_EXCH_PSK_DHE ||
          context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE ||
+         context->keyExchMethod == TLS13_KEY_EXCH_PSK_MLKEM ||
          context->keyExchMethod == TLS13_KEY_EXCH_PSK_HYBRID)
       {
          //As the server is authenticating via a PSK, it does not send a
@@ -355,7 +356,9 @@ error_t tls13FormatHelloRetryRequest(TlsContext *context,
    error = tls13FormatServerSupportedVersionsExtension(context, p, &n);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Fix the length of the extension list
    extensionList->length += (uint16_t) n;
@@ -370,7 +373,9 @@ error_t tls13FormatHelloRetryRequest(TlsContext *context,
       error = tls13FormatSelectedGroupExtension(context, p, &n);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Fix the length of the extension list
       extensionList->length += (uint16_t) n;
@@ -389,7 +394,9 @@ error_t tls13FormatHelloRetryRequest(TlsContext *context,
       error = dtls13FormatServerCookieExtension(context, p, &n);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Fix the length of the extension list
       extensionList->length += (uint16_t) n;
@@ -436,7 +443,9 @@ error_t tls13FormatEncryptedExtensions(TlsContext *context,
    error = tlsFormatServerSniExtension(context, p, &n);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Fix the length of the extension list
    message->extensionsLen += (uint16_t) n;
@@ -451,7 +460,9 @@ error_t tls13FormatEncryptedExtensions(TlsContext *context,
    error = tlsFormatServerMaxFragLenExtension(context, p, &n);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Fix the length of the extension list
    message->extensionsLen += (uint16_t) n;
@@ -465,7 +476,9 @@ error_t tls13FormatEncryptedExtensions(TlsContext *context,
    error = tlsFormatServerRecordSizeLimitExtension(context, p, &n);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Fix the length of the extension list
    message->extensionsLen += (uint16_t) n;
@@ -478,7 +491,9 @@ error_t tls13FormatEncryptedExtensions(TlsContext *context,
    error = tlsFormatServerAlpnExtension(context, p, &n);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Fix the length of the extension list
    message->extensionsLen += (uint16_t) n;
@@ -493,7 +508,9 @@ error_t tls13FormatEncryptedExtensions(TlsContext *context,
    error = tlsFormatClientCertTypeExtension(context, p, &n);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Fix the length of the extension list
    message->extensionsLen += (uint16_t) n;
@@ -505,7 +522,9 @@ error_t tls13FormatEncryptedExtensions(TlsContext *context,
    error = tlsFormatServerCertTypeExtension(context, p, &n);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Fix the length of the extension list
    message->extensionsLen += (uint16_t) n;
@@ -520,7 +539,9 @@ error_t tls13FormatEncryptedExtensions(TlsContext *context,
       TLS_TYPE_ENCRYPTED_EXTENSIONS, p, &n);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Fix the length of the extension list
    message->extensionsLen += (uint16_t) n;
@@ -564,7 +585,9 @@ error_t tls13FormatNewSessionTicket(TlsContext *context,
       (uint8_t *) &message->ticketAgeAdd, sizeof(uint32_t));
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Point to ticket nonce
    p = message->ticketNonce;
@@ -593,7 +616,9 @@ error_t tls13FormatNewSessionTicket(TlsContext *context,
    error = tls13GenerateTicket(context, message, ticket->data, &n);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Fix the length of the ticket
    ticket->length = htons(n);
@@ -620,7 +645,9 @@ error_t tls13FormatNewSessionTicket(TlsContext *context,
       TLS_TYPE_NEW_SESSION_TICKET, p, &n);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Fix the length of the extension list
    extensionList->length += (uint16_t) n;

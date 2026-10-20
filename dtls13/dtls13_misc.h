@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 #ifndef _DTLS13_MISC_H
@@ -40,6 +40,9 @@
 #elif (DTLS13_MAX_ACK_RECORDS < 1)
    #error DTLS13_MAX_ACK_RECORDS parameter is not valid
 #endif
+
+//Minimum length of encrypted records
+#define DTLS13_MIN_CIPHERTEXT_LEN 16
 
 //DTLS 1.3 unified header
 #define DTLS13_HEADER_MASK   0xE0
@@ -120,7 +123,8 @@ error_t dtls13ParseAck(TlsContext *context, const Dtls13Ack *message,
 void dtls13FormatNonce(TlsEncryptionEngine *encryptionEngine,
    const DtlsSequenceNumber *seqNum, uint8_t *nonce, size_t *nonceLen);
 
-size_t dtls13ComputeEncryptionOverhead(TlsEncryptionEngine *encryptionEngine);
+size_t dtls13ComputeEncryptionOverhead(TlsEncryptionEngine *encryptionEngine,
+   size_t payloadLen);
 
 //C++ guard
 #ifdef __cplusplus

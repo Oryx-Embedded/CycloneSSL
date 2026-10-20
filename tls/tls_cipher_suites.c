@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -67,6 +67,16 @@ const TlsCipherSuiteInfo tlsSupportedCipherSuites[] =
 //TLS_AES_128_CCM_8_SHA256 cipher suite
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3 && TLS_CCM_8_CIPHER_SUPPORT == ENABLED && TLS_AES_128_SUPPORT == ENABLED && TLS_SHA256_SUPPORT == ENABLED)
    TLS_CIPHER_SUITE(TLS_AES_128_CCM_8_SHA256, TLS_KEY_EXCH_NONE, AES_CIPHER_ALGO, CIPHER_MODE_CCM, NULL, SHA256_HASH_ALGO, 0, 16, 12, 0, 8, 32),
+#endif
+
+//TLS_AEGIS_128L_SHA256 cipher suite
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3 && TLS_AEGIS128L_SUPPORT == ENABLED && TLS_SHA256_SUPPORT == ENABLED)
+   TLS_CIPHER_SUITE(TLS_AEGIS_128L_SHA256, TLS_KEY_EXCH_NONE, NULL, CIPHER_MODE_AEGIS128L, NULL, SHA256_HASH_ALGO, 0, 16, 16, 0, 16, 32),
+#endif
+
+//TLS_AEGIS_256_SHA512 cipher suite
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3 && TLS_AEGIS256_SUPPORT == ENABLED && TLS_SHA512_SUPPORT == ENABLED)
+   TLS_CIPHER_SUITE(TLS_AEGIS_256_SHA512, TLS_KEY_EXCH_NONE, NULL, CIPHER_MODE_AEGIS256, NULL, SHA512_HASH_ALGO, 0, 32, 32, 0, 16, 64),
 #endif
 
 //TLS_SM4_GCM_SM3 cipher suite
@@ -1236,7 +1246,9 @@ const char_t *tlsGetCipherSuiteName(uint16_t identifier)
    {
       //The current cipher suite matches the specified identifier?
       if(tlsSupportedCipherSuites[i].identifier == identifier)
+      {
          return tlsSupportedCipherSuites[i].name;
+      }
    }
 
    //Unknown cipher suite

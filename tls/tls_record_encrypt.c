@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -58,10 +58,13 @@ error_t tlsEncryptRecord(TlsContext *context,
    error_t error;
 
 #if (TLS_CCM_CIPHER_SUPPORT == ENABLED || TLS_CCM_8_CIPHER_SUPPORT == ENABLED || \
-   TLS_GCM_CIPHER_SUPPORT == ENABLED || TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
+   TLS_GCM_CIPHER_SUPPORT == ENABLED || TLS_AEGIS128L_SUPPORT == ENABLED || \
+   TLS_AEGIS256_SUPPORT == ENABLED || TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
    //AEAD cipher?
    if(encryptionEngine->cipherMode == CIPHER_MODE_CCM ||
       encryptionEngine->cipherMode == CIPHER_MODE_GCM ||
+      encryptionEngine->cipherMode == CIPHER_MODE_AEGIS128L ||
+      encryptionEngine->cipherMode == CIPHER_MODE_AEGIS256 ||
       encryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
    {
       //Perform authenticated encryption
@@ -152,7 +155,8 @@ __weak_func error_t tlsEncryptAeadRecord(TlsContext *context,
    TlsEncryptionEngine *encryptionEngine, void *record)
 {
 #if (TLS_CCM_CIPHER_SUPPORT == ENABLED || TLS_CCM_8_CIPHER_SUPPORT == ENABLED || \
-   TLS_GCM_CIPHER_SUPPORT == ENABLED || TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
+   TLS_GCM_CIPHER_SUPPORT == ENABLED || TLS_AEGIS128L_SUPPORT == ENABLED || \
+   TLS_AEGIS256_SUPPORT == ENABLED || TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
    error_t error;
    size_t length;
    size_t aadLen;
@@ -160,7 +164,7 @@ __weak_func error_t tlsEncryptAeadRecord(TlsContext *context,
    uint8_t *data;
    uint8_t *tag;
    uint8_t aad[13];
-   uint8_t nonce[12];
+   uint8_t nonce[32];
 
    //Get the length of the TLS record
    length = tlsGetRecordLength(context, record);
@@ -202,7 +206,9 @@ __weak_func error_t tlsEncryptAeadRecord(TlsContext *context,
          encryptionEngine->recordIvLen);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
    }
 
    //Generate the nonce
@@ -235,6 +241,28 @@ __weak_func error_t tlsEncryptAeadRecord(TlsContext *context,
    }
    else
 #endif
+#if (TLS_AEGIS128L_SUPPORT == ENABLED)
+   //AEGIS-128L AEAD cipher?
+   if(encryptionEngine->cipherMode == CIPHER_MODE_AEGIS128L)
+   {
+      //Authenticated encryption using AEGIS-128L
+      error = aegis128lEncrypt(encryptionEngine->encKey,
+         encryptionEngine->encKeyLen, nonce, nonceLen, aad, aadLen,
+         data, data, length, tag, encryptionEngine->authTagLen);
+   }
+   else
+#endif
+#if (TLS_AEGIS256_SUPPORT == ENABLED)
+   //AEGIS-256 AEAD cipher?
+   if(encryptionEngine->cipherMode == CIPHER_MODE_AEGIS256)
+   {
+      //Authenticated encryption using AEGIS-256
+      error = aegis256Encrypt(encryptionEngine->encKey,
+         encryptionEngine->encKeyLen, nonce, nonceLen, aad, aadLen,
+         data, data, length, tag, encryptionEngine->authTagLen);
+   }
+   else
+#endif
 #if (TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
    //ChaCha20Poly1305 AEAD cipher?
    if(encryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
@@ -254,7 +282,9 @@ __weak_func error_t tlsEncryptAeadRecord(TlsContext *context,
 
    //Failed to encrypt data?
    if(error)
+   {
       return error;
+   }
 
    //Compute the length of the resulting message
    length += encryptionEngine->recordIvLen + encryptionEngine->authTagLen;
@@ -320,7 +350,9 @@ __weak_func error_t tlsEncryptCbcRecord(TlsContext *context,
          encryptionEngine->recordIvLen);
       //Any error to report?
       if(error)
+      {
          return error;
+      }
 
       //Adjust the length of the message
       length += encryptionEngine->recordIvLen;
@@ -357,7 +389,9 @@ __weak_func error_t tlsEncryptCbcRecord(TlsContext *context,
       encryptionEngine->iv, data, data, length);
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Debug message
    TRACE_DEBUG("Encrypted record (%" PRIuSIZE " bytes):\r\n", length);
@@ -474,7 +508,9 @@ error_t tlsAppendMessageAuthCode(TlsContext *context,
 
    //Any error to report?
    if(error)
+   {
       return error;
+   }
 
    //Debug message
    TRACE_DEBUG("Write sequence number:\r\n");
@@ -510,59 +546,64 @@ __weak_func error_t tlsComputeMac(TlsContext *context,
    TlsEncryptionEngine *encryptionEngine, const void *record,
    const uint8_t *data, size_t dataLen, uint8_t *mac)
 {
+   error_t error;
    HmacContext *hmacContext;
 
    //Point to the HMAC context
    hmacContext = encryptionEngine->hmacContext;
 
    //Initialize HMAC calculation
-   hmacInit(hmacContext, encryptionEngine->hashAlgo,
+   error = hmacInit(hmacContext, encryptionEngine->hashAlgo,
       encryptionEngine->macKey, encryptionEngine->macKeyLen);
 
+   //Check status code
+   if(!error)
+   {
 #if (DTLS_SUPPORT == ENABLED)
-   //DTLS protocol?
-   if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_DATAGRAM)
-   {
-      const DtlsRecord *dtlsRecord;
+      //DTLS protocol?
+      if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_DATAGRAM)
+      {
+         const DtlsRecord *dtlsRecord;
 
-      //Point to the DTLS record
-      dtlsRecord = (DtlsRecord *) record;
+         //Point to the DTLS record
+         dtlsRecord = (DtlsRecord *) record;
 
-      //Rather than using TLS's implicit sequence number, the sequence number
-      //used to compute the MAC is the 64-bit value formed by concatenating the
-      //epoch and the sequence number in the order they appear on the wire
-      //(refer to RFC 9147, section 4.1.2.1)
-      hmacUpdate(hmacContext, (void *) &dtlsRecord->epoch, 2);
-      hmacUpdate(hmacContext, &dtlsRecord->seqNum, 6);
+         //Rather than using TLS's implicit sequence number, the sequence
+         //number used to compute the MAC is the 64-bit value formed by
+         //concatenating the epoch and the sequence number in the order they
+         //appear on the wire (refer to RFC 9147, section 4.1.2.1)
+         hmacUpdate(hmacContext, (void *) &dtlsRecord->epoch, 2);
+         hmacUpdate(hmacContext, &dtlsRecord->seqNum, 6);
 
-      //Compute MAC over the record contents
-      hmacUpdate(hmacContext, &dtlsRecord->type, 3);
-      hmacUpdate(hmacContext, (void *) &dtlsRecord->length, 2);
-      hmacUpdate(hmacContext, data, dataLen);
-   }
-   else
+         //Compute MAC over the record contents
+         hmacUpdate(hmacContext, &dtlsRecord->type, 3);
+         hmacUpdate(hmacContext, (void *) &dtlsRecord->length, 2);
+         hmacUpdate(hmacContext, data, dataLen);
+      }
+      else
 #endif
-   //TLS protocol?
-   {
-      const TlsRecord *tlsRecord;
+      //TLS protocol?
+      {
+         const TlsRecord *tlsRecord;
 
-      //Point to the TLS record
-      tlsRecord = (TlsRecord *) record;
+         //Point to the TLS record
+         tlsRecord = (TlsRecord *) record;
 
-      //Compute MAC over the implicit sequence number
-      hmacUpdate(hmacContext, &encryptionEngine->seqNum,
-         sizeof(TlsSequenceNumber));
+         //Compute MAC over the implicit sequence number
+         hmacUpdate(hmacContext, &encryptionEngine->seqNum,
+            sizeof(TlsSequenceNumber));
 
-      //Compute MAC over the record contents
-      hmacUpdate(hmacContext, tlsRecord, sizeof(TlsRecord));
-      hmacUpdate(hmacContext, data, dataLen);
+         //Compute MAC over the record contents
+         hmacUpdate(hmacContext, tlsRecord, sizeof(TlsRecord));
+         hmacUpdate(hmacContext, data, dataLen);
+      }
+
+      //Finalize HMAC computation
+      hmacFinal(hmacContext, mac);
    }
 
-   //Finalize HMAC computation
-   hmacFinal(hmacContext, mac);
-
-   //Successful processing
-   return NO_ERROR;
+   //Return status code
+   return error;
 }
 
 #endif

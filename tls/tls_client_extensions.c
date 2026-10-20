@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -47,7 +47,9 @@
 //List of supported ECDHE or FFDHE groups
 const uint16_t tlsSupportedGroups[] =
 {
+   TLS_GROUP_MLKEM512_X25519,
    TLS_GROUP_X25519_MLKEM768,
+   TLS_GROUP_SECP256R1_MLKEM512,
    TLS_GROUP_SECP256R1_MLKEM768,
    TLS_GROUP_SECP384R1_MLKEM1024,
    TLS_GROUP_CURVE_SM2_MLKEM768,
@@ -1172,7 +1174,9 @@ error_t tlsParseServerSniExtension(TlsContext *context,
       //not request in the associated ClientHello, it must abort the handshake
       //with an unsupported_extension fatal alert
       if(context->serverName == NULL)
+      {
          return ERROR_UNSUPPORTED_EXTENSION;
+      }
    }
 #endif
 
@@ -1225,7 +1229,9 @@ error_t tlsParseServerMaxFragLenExtension(TlsContext *context,
       //that differs from the length it requested, it must also abort the
       //handshake with an illegal_parameter alert
       if(n != context->maxFragLen)
+      {
          return ERROR_ILLEGAL_PARAMETER;
+      }
    }
 #endif
 
@@ -1363,37 +1369,50 @@ error_t tlsParseServerAlpnExtension(TlsContext *context,
       //did not request in the associated ClientHello, it must abort the
       //handshake with an unsupported_extension fatal alert
       if(context->protocolList == NULL)
+      {
          return ERROR_UNSUPPORTED_EXTENSION;
+      }
 
       //Retrieve the length of the list
       length = ntohs(protocolNameList->length);
 
       //The list must not be be empty
       if(length == 0)
+      {
          return ERROR_DECODING_FAILED;
+      }
 
       //Point to the selected protocol
       protocolName = (TlsProtocolName *) protocolNameList->value;
 
       //The list must contain exactly one protocol name
       if(length < sizeof(TlsProtocolName))
+      {
          return ERROR_DECODING_FAILED;
+      }
+
       if(length != (sizeof(TlsProtocolName) + protocolName->length))
+      {
          return ERROR_DECODING_FAILED;
+      }
 
       //Retrieve the length of the protocol name
       length -= sizeof(TlsProtocolName);
 
       //Empty strings must not be included in the list
       if(length == 0)
+      {
          return ERROR_DECODING_FAILED;
+      }
 
       //Check whether the protocol is supported by the client
       if(!tlsIsAlpnProtocolSupported(context, protocolName->value, length))
       {
          //Report an error if unknown ALPN protocols are disallowed
          if(!context->unknownProtocolsAllowed)
+         {
             return ERROR_ILLEGAL_PARAMETER;
+         }
       }
 
       //Sanity check
@@ -1408,7 +1427,9 @@ error_t tlsParseServerAlpnExtension(TlsContext *context,
       context->selectedProtocol = tlsAllocMem(length + 1);
       //Failed to allocate memory?
       if(context->selectedProtocol == NULL)
+      {
          return ERROR_OUT_OF_MEMORY;
+      }
 
       //Save protocol name
       osMemcpy(context->selectedProtocol, protocolName->value, length);
@@ -1517,7 +1538,9 @@ error_t tlsParseServerEtmExtension(TlsContext *context,
       //an encrypt-then-MAC response extension back to the client (refer to
       //RFC 7366, section 3)
       if(context->cipherSuite.cipherMode != CIPHER_MODE_CBC)
+      {
          return ERROR_HANDSHAKE_FAILED;
+      }
 
       //Use encrypt-then-MAC construction rather than the default
       //MAC-then-encrypt
@@ -1556,7 +1579,9 @@ error_t tlsParseServerEmsExtension(TlsContext *context,
          //extension but the new ServerHello contains the extension, the
          //client must abort the handshake
          if(!context->emsExtReceived)
+         {
             return ERROR_HANDSHAKE_FAILED;
+         }
       }
 
       //A valid ExtendedMasterSecret extension has been received
@@ -1567,11 +1592,13 @@ error_t tlsParseServerEmsExtension(TlsContext *context,
       //Abbreviated handshake?
       if(context->resume)
       {
-         //If the original session used the ExtendedMasterSecret extension
-         //but the new ServerHello does not contain the extension, the client
-         //must abort the handshake
+         //If the original session used the ExtendedMasterSecret extension but
+         //the new ServerHello does not contain the extension, the client must
+         //abort the handshake
          if(context->emsExtReceived)
+         {
             return ERROR_HANDSHAKE_FAILED;
+         }
       }
 
       //The ServerHello does not contain any ExtendedMasterSecret extension
@@ -1602,7 +1629,9 @@ error_t tlsParseServerSessionTicketExtension(TlsContext *context,
       //not request in the associated ClientHello, it must abort the handshake
       //with an unsupported_extension fatal alert
       if(!context->sessionTicketEnabled)
+      {
          return ERROR_UNSUPPORTED_EXTENSION;
+      }
 
       //The server uses the SessionTicket extension to indicate to the client
       //that it will send a new session ticket using the NewSessionTicket
@@ -1672,8 +1701,8 @@ error_t tlsParseServerRenegoInfoExtension(TlsContext *context,
 
          //The client must verify that the first half of the field is equal to
          //the saved client_verify_data value
-         if(osMemcmp(extensions->renegoInfo->value, context->clientVerifyData,
-            context->clientVerifyDataLen))
+         if(cryptoCompMem(extensions->renegoInfo->value, context->clientVerifyData,
+            context->clientVerifyDataLen) != 0)
          {
             //If it is not, the client must abort the handshake
             return ERROR_HANDSHAKE_FAILED;
@@ -1681,8 +1710,8 @@ error_t tlsParseServerRenegoInfoExtension(TlsContext *context,
 
          //The client must verify that the second half of the field is equal to
          //the saved server_verify_data value
-         if(osMemcmp(extensions->renegoInfo->value + context->clientVerifyDataLen,
-            context->serverVerifyData, context->serverVerifyDataLen))
+         if(cryptoCompMem(extensions->renegoInfo->value + context->clientVerifyDataLen,
+            context->serverVerifyData, context->serverVerifyDataLen) != 0)
          {
             //If it is not, the client must abort the handshake
             return ERROR_HANDSHAKE_FAILED;
@@ -1696,7 +1725,9 @@ error_t tlsParseServerRenegoInfoExtension(TlsContext *context,
             //extension but the new ServerHello contains the extension, the
             //client must abort the handshake
             if(!context->emsExtReceived)
+            {
                return ERROR_HANDSHAKE_FAILED;
+            }
          }
          else
          {
@@ -1704,7 +1735,9 @@ error_t tlsParseServerRenegoInfoExtension(TlsContext *context,
             //but the new ServerHello does not contain the extension, the
             //client must abort the handshake
             if(context->emsExtReceived)
+            {
                return ERROR_HANDSHAKE_FAILED;
+            }
          }
 #endif
       }

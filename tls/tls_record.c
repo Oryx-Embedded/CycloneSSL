@@ -25,7 +25,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * @author Oryx Embedded SARL (www.oryx-embedded.com)
- * @version 2.6.6
+ * @version 2.6.8
  **/
 
 //Switch to the appropriate trace level
@@ -137,6 +137,19 @@ error_t tlsWriteProtocolData(TlsContext *context,
 
          //We are done
          break;
+      }
+   }
+
+   //Any error to report?
+   if(error != NO_ERROR && error != ERROR_WOULD_BLOCK &&
+      error != ERROR_TIMEOUT)
+   {
+      //A record whose protection failed must never be sent
+      if(context->txRecordLen == 0)
+      {
+         //Discard the pending data
+         context->txBufferLen = 0;
+         context->txBufferPos = 0;
       }
    }
 
@@ -638,14 +651,18 @@ error_t tlsProcessRecord(TlsContext *context, TlsRecord *record)
       //of incoming records. In TLS 1.3, this field is deprecated. It may be
       //validated to match the fixed constant value 0x0303
       if(ntohs(record->version) != MIN(context->version, TLS_VERSION_1_2))
+      {
          return ERROR_VERSION_NOT_SUPPORTED;
+      }
    }
    else
    {
       //Compliant servers must accept any value {03,XX} as the record layer
       //version number for ClientHello
       if(MSB(ntohs(record->version)) != MSB(TLS_VERSION_1_0))
+      {
          return ERROR_VERSION_NOT_SUPPORTED;
+      }
    }
 
    //Version of TLS prior to TLS 1.3?
@@ -655,11 +672,21 @@ error_t tlsProcessRecord(TlsContext *context, TlsRecord *record)
       if(decryptionEngine->cipherMode != CIPHER_MODE_NULL ||
          decryptionEngine->hashAlgo != NULL)
       {
+         //The length of the TLSCiphertext must not exceed 2^14 + 2048 bytes. An
+         //endpoint that receives a longer record must terminate the connection
+         //with a record_overflow alert (refer to RFC 5246, section 6.2.3)
+         if(ntohs(record->length) > (TLS_MAX_RECORD_LENGTH + 2048))
+         {
+            return ERROR_RECORD_OVERFLOW;
+         }
+
          //Decrypt TLS record
          error = tlsDecryptRecord(context, decryptionEngine, record);
          //Any error to report?
          if(error)
+         {
             return error;
+         }
       }
    }
    else
@@ -682,13 +709,17 @@ error_t tlsProcessRecord(TlsContext *context, TlsRecord *record)
             error = tlsDecryptRecord(context, decryptionEngine, record);
             //Any error to report?
             if(error)
+            {
                return error;
+            }
          }
 
          //Abort the handshake with an unexpected_message alert if a protected
          //ChangeCipherSpec record was received
          if(record->type == TLS_TYPE_CHANGE_CIPHER_SPEC)
+         {
             return ERROR_UNEXPECTED_MESSAGE;
+         }
       }
 
       //Implementations must not send Handshake and Alert records that have a
@@ -699,13 +730,17 @@ error_t tlsProcessRecord(TlsContext *context, TlsRecord *record)
          //If such a message is received, the receiving implementation must
          //terminate the connection with an unexpected_message alert
          if(ntohs(record->length) == 0)
+         {
             return ERROR_UNEXPECTED_MESSAGE;
+         }
       }
    }
 
    //The length of the plaintext record must not exceed 2^14 bytes
    if(ntohs(record->length) > TLS_MAX_RECORD_LENGTH)
+   {
       return ERROR_RECORD_OVERFLOW;
+   }
 
 #if (TLS_RECORD_SIZE_LIMIT_SUPPORT == ENABLED)
    //Check whether the RecordSizeLimit extension has been negotiated
@@ -720,7 +755,9 @@ error_t tlsProcessRecord(TlsContext *context, TlsRecord *record)
          //A TLS endpoint that receives a record larger than its advertised
          //limit must generate a fatal record_overflow alert
          if(ntohs(record->length) > decryptionEngine->recordSizeLimit)
+         {
             return ERROR_RECORD_OVERFLOW;
+         }
       }
    }
 #endif
@@ -734,7 +771,9 @@ error_t tlsProcessRecord(TlsContext *context, TlsRecord *record)
 
       //Do not allow too many consecutive empty records
       if(context->emptyRecordCount > TLS_MAX_EMPTY_RECORDS)
+      {
          return ERROR_UNEXPECTED_MESSAGE;
+      }
    }
    else
    {
