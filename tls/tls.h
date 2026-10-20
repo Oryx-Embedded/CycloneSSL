@@ -983,7 +983,9 @@ struct _TlsEncryptionEngine;
 #endif
 
 //Maximum size for HKDF digests
-#if (TLS_SHA384_SUPPORT == ENABLED)
+#if (TLS_AEGIS256_SUPPORT == ENABLED && TLS_SHA512_SUPPORT == ENABLED)
+   #define TLS_MAX_HKDF_DIGEST_SIZE 64
+#elif (TLS_SHA384_SUPPORT == ENABLED)
    #define TLS_MAX_HKDF_DIGEST_SIZE 48
 #else
    #define TLS_MAX_HKDF_DIGEST_SIZE 32
@@ -2723,7 +2725,7 @@ struct _TlsContext
 #endif
 
 #if (DTLS_SUPPORT == ENABLED && TLS_MAX_VERSION >= TLS_VERSION_1_3)
-   uint8_t clientHelloDigest[48];            ///<Hash(ClientHello1)
+   uint8_t clientHelloDigest[64];            ///<Hash(ClientHello1)
    size_t clientHelloDigestLen;              ///<Length of Hash(ClientHello1)
    Dtls13RecordNumber rxRecordNum;           ///<Epoch/sequence number pair
    Dtls13RecordNumber ackRecords[DTLS13_MAX_ACK_RECORDS]; ///<List of records received and processed

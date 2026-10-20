@@ -59,10 +59,13 @@ error_t tlsDecryptRecord(TlsContext *context,
    error_t error;
 
 #if (TLS_CCM_CIPHER_SUPPORT == ENABLED || TLS_CCM_8_CIPHER_SUPPORT == ENABLED || \
-   TLS_GCM_CIPHER_SUPPORT == ENABLED || TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
+   TLS_GCM_CIPHER_SUPPORT == ENABLED || TLS_AEGIS128L_SUPPORT == ENABLED || \
+   TLS_AEGIS256_SUPPORT == ENABLED || TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
    //AEAD cipher?
    if(decryptionEngine->cipherMode == CIPHER_MODE_CCM ||
       decryptionEngine->cipherMode == CIPHER_MODE_GCM ||
+      decryptionEngine->cipherMode == CIPHER_MODE_AEGIS128L ||
+      decryptionEngine->cipherMode == CIPHER_MODE_AEGIS256 ||
       decryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
    {
       //Perform authenticated decryption
@@ -127,7 +130,8 @@ __weak_func error_t tlsDecryptAeadRecord(TlsContext *context,
    TlsEncryptionEngine *decryptionEngine, void *record)
 {
 #if (TLS_CCM_CIPHER_SUPPORT == ENABLED || TLS_CCM_8_CIPHER_SUPPORT == ENABLED || \
-   TLS_GCM_CIPHER_SUPPORT == ENABLED || TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
+   TLS_GCM_CIPHER_SUPPORT == ENABLED || TLS_AEGIS128L_SUPPORT == ENABLED || \
+   TLS_AEGIS256_SUPPORT == ENABLED || TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
    error_t error;
    size_t length;
    size_t aadLen;
@@ -136,7 +140,7 @@ __weak_func error_t tlsDecryptAeadRecord(TlsContext *context,
    uint8_t *ciphertext;
    uint8_t *tag;
    uint8_t aad[13];
-   uint8_t nonce[12];
+   uint8_t nonce[32];
 
    //Get the length of the TLS record
    length = tlsGetRecordLength(context, record);
@@ -208,13 +212,35 @@ __weak_func error_t tlsDecryptAeadRecord(TlsContext *context,
    }
    else
 #endif
+#if (TLS_AEGIS128L_SUPPORT == ENABLED)
+   //AEGIS-128L AEAD cipher?
+   if(decryptionEngine->cipherMode == CIPHER_MODE_AEGIS128L)
+   {
+      //Authenticated decryption using AEGIS-128L
+      error = aegis128lDecrypt(decryptionEngine->encKey,
+         decryptionEngine->encKeyLen, nonce, nonceLen, aad, aadLen, data,
+         data, length, tag, decryptionEngine->authTagLen);
+   }
+   else
+#endif
+#if (TLS_AEGIS256_SUPPORT == ENABLED)
+   //AEGIS-256 AEAD cipher?
+   if(decryptionEngine->cipherMode == CIPHER_MODE_AEGIS256)
+   {
+      //Authenticated decryption using AEGIS-256
+      error = aegis256Decrypt(decryptionEngine->encKey,
+         decryptionEngine->encKeyLen, nonce, nonceLen, aad, aadLen, data,
+         data, length, tag, decryptionEngine->authTagLen);
+   }
+   else
+#endif
 #if (TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
    //ChaCha20Poly1305 AEAD cipher?
    if(decryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
    {
       //Authenticated decryption using ChaCha20Poly1305
       error = chacha20Poly1305Decrypt(decryptionEngine->encKey,
-         decryptionEngine->encKeyLen, nonce, 12, aad, aadLen, data,
+         decryptionEngine->encKeyLen, nonce, nonceLen, aad, aadLen, data,
          data, length, tag, decryptionEngine->authTagLen);
    }
    else

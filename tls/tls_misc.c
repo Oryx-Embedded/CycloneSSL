@@ -960,6 +960,8 @@ __weak_func error_t tlsInitEncryptionEngine(TlsContext *context,
          //Check cipher mode of operation
          if(encryptionEngine->cipherMode == CIPHER_MODE_CCM ||
             encryptionEngine->cipherMode == CIPHER_MODE_GCM ||
+            encryptionEngine->cipherMode == CIPHER_MODE_AEGIS128L ||
+            encryptionEngine->cipherMode == CIPHER_MODE_AEGIS256 ||
             encryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
          {
             const HashAlgo *hashAlgo;

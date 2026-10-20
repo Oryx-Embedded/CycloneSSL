@@ -128,10 +128,13 @@ error_t dtls13EncryptRecord(TlsContext *context,
       &nonceLen);
 
 #if (TLS_CCM_CIPHER_SUPPORT == ENABLED || TLS_CCM_8_CIPHER_SUPPORT == ENABLED || \
-   TLS_GCM_CIPHER_SUPPORT == ENABLED || TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
+   TLS_GCM_CIPHER_SUPPORT == ENABLED || TLS_AEGIS128L_SUPPORT == ENABLED || \
+   TLS_AEGIS256_SUPPORT == ENABLED || TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
    //AEAD cipher?
    if(encryptionEngine->cipherMode == CIPHER_MODE_CCM ||
       encryptionEngine->cipherMode == CIPHER_MODE_GCM ||
+      encryptionEngine->cipherMode == CIPHER_MODE_AEGIS128L ||
+      encryptionEngine->cipherMode == CIPHER_MODE_AEGIS256 ||
       encryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
    {
       //Perform authenticated encryption
@@ -222,6 +225,28 @@ error_t dtls13EncryptAeadRecord(TlsContext *context,
       //Authenticated encryption using GCM
       error = gcmEncrypt(encryptionEngine->gcmContext, nonce, nonceLen,
          aad, aadLen, data, data, dataLen, tag, encryptionEngine->authTagLen);
+   }
+   else
+#endif
+#if (TLS_AEGIS128L_SUPPORT == ENABLED)
+   //AEGIS-128L AEAD cipher?
+   if(encryptionEngine->cipherMode == CIPHER_MODE_AEGIS128L)
+   {
+      //Authenticated encryption using AEGIS-128L
+      error = aegis128lEncrypt(encryptionEngine->encKey,
+         encryptionEngine->encKeyLen, nonce, nonceLen, aad, aadLen,
+         data, data, dataLen, tag, encryptionEngine->authTagLen);
+   }
+   else
+#endif
+#if (TLS_AEGIS256_SUPPORT == ENABLED)
+   //AEGIS-256 AEAD cipher?
+   if(encryptionEngine->cipherMode == CIPHER_MODE_AEGIS256)
+   {
+      //Authenticated encryption using AEGIS-256
+      error = aegis256Encrypt(encryptionEngine->encKey,
+         encryptionEngine->encKeyLen, nonce, nonceLen, aad, aadLen,
+         data, data, dataLen, tag, encryptionEngine->authTagLen);
    }
    else
 #endif
@@ -337,6 +362,33 @@ error_t dtls13EncryptSequenceNumber(TlsEncryptionEngine *encryptionEngine,
       //section 4.2.3)
       encryptionEngine->cipherAlgo->encryptBlock(
          encryptionEngine->snCipherContext, record + n, mask);
+   }
+   else
+#endif
+#if (TLS_AEGIS128L_SUPPORT == ENABLED)
+   //AEGIS-128L AEAD cipher?
+   if(encryptionEngine->cipherMode == CIPHER_MODE_AEGIS128L)
+   {
+      //The mask is generated using the AEGIS Stream function
+      error = aegis128lStream(encryptionEngine->snKey,
+         encryptionEngine->encKeyLen, record + n, 16, mask, 2);
+   }
+   else
+#endif
+#if (TLS_AEGIS256_SUPPORT == ENABLED)
+   //AEGIS-256 AEAD cipher?
+   if(encryptionEngine->cipherMode == CIPHER_MODE_AEGIS256)
+   {
+      uint8_t nonce[32];
+
+      //Copy the first 16 bytes of the DTLS ciphertext
+      osMemcpy(nonce, record + n, 16);
+      //Append zeroes to form the 256-bit nonce
+      osMemset(nonce + 16, 0, 16);
+
+      //The mask is generated using the AEGIS Stream function
+      error = aegis256Stream(encryptionEngine->snKey,
+         encryptionEngine->encKeyLen, nonce, 32, mask, 2);
    }
    else
 #endif

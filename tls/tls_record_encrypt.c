@@ -58,10 +58,13 @@ error_t tlsEncryptRecord(TlsContext *context,
    error_t error;
 
 #if (TLS_CCM_CIPHER_SUPPORT == ENABLED || TLS_CCM_8_CIPHER_SUPPORT == ENABLED || \
-   TLS_GCM_CIPHER_SUPPORT == ENABLED || TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
+   TLS_GCM_CIPHER_SUPPORT == ENABLED || TLS_AEGIS128L_SUPPORT == ENABLED || \
+   TLS_AEGIS256_SUPPORT == ENABLED || TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
    //AEAD cipher?
    if(encryptionEngine->cipherMode == CIPHER_MODE_CCM ||
       encryptionEngine->cipherMode == CIPHER_MODE_GCM ||
+      encryptionEngine->cipherMode == CIPHER_MODE_AEGIS128L ||
+      encryptionEngine->cipherMode == CIPHER_MODE_AEGIS256 ||
       encryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
    {
       //Perform authenticated encryption
@@ -152,7 +155,8 @@ __weak_func error_t tlsEncryptAeadRecord(TlsContext *context,
    TlsEncryptionEngine *encryptionEngine, void *record)
 {
 #if (TLS_CCM_CIPHER_SUPPORT == ENABLED || TLS_CCM_8_CIPHER_SUPPORT == ENABLED || \
-   TLS_GCM_CIPHER_SUPPORT == ENABLED || TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
+   TLS_GCM_CIPHER_SUPPORT == ENABLED || TLS_AEGIS128L_SUPPORT == ENABLED || \
+   TLS_AEGIS256_SUPPORT == ENABLED || TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
    error_t error;
    size_t length;
    size_t aadLen;
@@ -160,7 +164,7 @@ __weak_func error_t tlsEncryptAeadRecord(TlsContext *context,
    uint8_t *data;
    uint8_t *tag;
    uint8_t aad[13];
-   uint8_t nonce[12];
+   uint8_t nonce[32];
 
    //Get the length of the TLS record
    length = tlsGetRecordLength(context, record);
@@ -232,6 +236,28 @@ __weak_func error_t tlsEncryptAeadRecord(TlsContext *context,
       //Authenticated encryption using GCM
       error = gcmEncrypt(encryptionEngine->gcmContext, nonce, nonceLen,
          aad, aadLen, data, data, length, tag, encryptionEngine->authTagLen);
+   }
+   else
+#endif
+#if (TLS_AEGIS128L_SUPPORT == ENABLED)
+   //AEGIS-128L AEAD cipher?
+   if(encryptionEngine->cipherMode == CIPHER_MODE_AEGIS128L)
+   {
+      //Authenticated encryption using AEGIS-128L
+      error = aegis128lEncrypt(encryptionEngine->encKey,
+         encryptionEngine->encKeyLen, nonce, nonceLen, aad, aadLen,
+         data, data, length, tag, encryptionEngine->authTagLen);
+   }
+   else
+#endif
+#if (TLS_AEGIS256_SUPPORT == ENABLED)
+   //AEGIS-256 AEAD cipher?
+   if(encryptionEngine->cipherMode == CIPHER_MODE_AEGIS256)
+   {
+      //Authenticated encryption using AEGIS-256
+      error = aegis256Encrypt(encryptionEngine->encKey,
+         encryptionEngine->encKeyLen, nonce, nonceLen, aad, aadLen,
+         data, data, length, tag, encryptionEngine->authTagLen);
    }
    else
 #endif

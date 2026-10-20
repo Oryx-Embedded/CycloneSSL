@@ -439,10 +439,13 @@ error_t dtls13DecryptRecord(TlsContext *context,
       return ERROR_RECORD_OVERFLOW;
 
 #if (TLS_CCM_CIPHER_SUPPORT == ENABLED || TLS_CCM_8_CIPHER_SUPPORT == ENABLED || \
-   TLS_GCM_CIPHER_SUPPORT == ENABLED || TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
+   TLS_GCM_CIPHER_SUPPORT == ENABLED || TLS_AEGIS128L_SUPPORT == ENABLED || \
+   TLS_AEGIS256_SUPPORT == ENABLED || TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
    //AEAD cipher?
    if(decryptionEngine->cipherMode == CIPHER_MODE_CCM ||
       decryptionEngine->cipherMode == CIPHER_MODE_GCM ||
+      decryptionEngine->cipherMode == CIPHER_MODE_AEGIS128L ||
+      decryptionEngine->cipherMode == CIPHER_MODE_AEGIS256 ||
       decryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
    {
       //Perform authenticated decryption
@@ -545,13 +548,35 @@ error_t dtls13DecryptAeadRecord(TlsContext *context,
    }
    else
 #endif
+#if (TLS_AEGIS128L_SUPPORT == ENABLED)
+   //AEGIS-128L AEAD cipher?
+   if(decryptionEngine->cipherMode == CIPHER_MODE_AEGIS128L)
+   {
+      //Authenticated decryption using AEGIS-128L
+      error = aegis128lDecrypt(decryptionEngine->encKey,
+         decryptionEngine->encKeyLen, nonce, nonceLen, aad, aadLen, data,
+         data, dataLen, tag, decryptionEngine->authTagLen);
+   }
+   else
+#endif
+#if (TLS_AEGIS256_SUPPORT == ENABLED)
+   //AEGIS-256 AEAD cipher?
+   if(decryptionEngine->cipherMode == CIPHER_MODE_AEGIS256)
+   {
+      //Authenticated decryption using AEGIS-256
+      error = aegis256Decrypt(decryptionEngine->encKey,
+         decryptionEngine->encKeyLen, nonce, nonceLen, aad, aadLen, data,
+         data, dataLen, tag, decryptionEngine->authTagLen);
+   }
+   else
+#endif
 #if (TLS_CHACHA20_POLY1305_SUPPORT == ENABLED)
    //ChaCha20Poly1305 AEAD cipher?
    if(decryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
    {
       //Authenticated decryption using ChaCha20Poly1305
       error = chacha20Poly1305Decrypt(decryptionEngine->encKey,
-         decryptionEngine->encKeyLen, nonce, 12, aad, aadLen, data,
+         decryptionEngine->encKeyLen, nonce, nonceLen, aad, aadLen, data,
          data, dataLen, tag, decryptionEngine->authTagLen);
    }
    else
@@ -667,6 +692,33 @@ error_t dtls13DecryptSequenceNumber(TlsEncryptionEngine *decryptionEngine,
       //section 4.2.3)
       decryptionEngine->cipherAlgo->encryptBlock(
          decryptionEngine->snCipherContext, record + n, mask);
+   }
+   else
+#endif
+#if (TLS_AEGIS128L_SUPPORT == ENABLED)
+   //AEGIS-128L AEAD cipher?
+   if(decryptionEngine->cipherMode == CIPHER_MODE_AEGIS128L)
+   {
+      //The mask is generated using the AEGIS Stream function
+      error = aegis128lStream(decryptionEngine->snKey,
+         decryptionEngine->encKeyLen, record + n, 16, mask, 2);
+   }
+   else
+#endif
+#if (TLS_AEGIS256_SUPPORT == ENABLED)
+   //AEGIS-256 AEAD cipher?
+   if(decryptionEngine->cipherMode == CIPHER_MODE_AEGIS256)
+   {
+      uint8_t nonce[32];
+
+      //Copy the first 16 bytes of the DTLS ciphertext
+      osMemcpy(nonce, record + n, 16);
+      //Append zeroes to form the 256-bit nonce
+      osMemset(nonce + 16, 0, 16);
+
+      //The mask is generated using the AEGIS Stream function
+      error = aegis256Stream(decryptionEngine->snKey,
+         decryptionEngine->encKeyLen, nonce, 32, mask, 2);
    }
    else
 #endif
