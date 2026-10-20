@@ -224,7 +224,8 @@ error_t tls13FormatClientKeyShareExtension(TlsContext *context,
       //outlined in Section 3.2 of RFC 9954. Specifically, the order of shares
       //in the concatenation has been reversed. This is due to historical
       //reasons (refer to RFC 10024, section 4.1)
-      if(context->namedGroup == TLS_GROUP_X25519_MLKEM768)
+      if(context->namedGroup == TLS_GROUP_MLKEM512_X25519 ||
+         context->namedGroup == TLS_GROUP_X25519_MLKEM768)
       {
          offset = kemAlgo->publicKeySize;
       }
@@ -241,8 +242,9 @@ error_t tls13FormatClientKeyShareExtension(TlsContext *context,
       if(error)
          return error;
 
-      //X25519MLKEM768 group?
-      if(context->namedGroup == TLS_GROUP_X25519_MLKEM768)
+      //MLKEM512X25519 or X25519MLKEM768 group?
+      if(context->namedGroup == TLS_GROUP_MLKEM512_X25519 ||
+         context->namedGroup == TLS_GROUP_X25519_MLKEM768)
       {
          offset = 0;
       }

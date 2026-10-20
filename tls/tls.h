@@ -1542,6 +1542,8 @@ typedef enum
    TLS_GROUP_MLKEM512                   = 512,   //Draft
    TLS_GROUP_MLKEM768                   = 513,   //Draft
    TLS_GROUP_MLKEM1024                  = 514,   //Draft
+   TLS_GROUP_SECP256R1_MLKEM512         = 4585,  //Draft
+   TLS_GROUP_MLKEM512_X25519            = 4586,  //Draft
    TLS_GROUP_SECP256R1_MLKEM768         = 4587,  //RFC 10024
    TLS_GROUP_X25519_MLKEM768            = 4588,  //RFC 10024
    TLS_GROUP_SECP384R1_MLKEM1024        = 4589,  //RFC 10024

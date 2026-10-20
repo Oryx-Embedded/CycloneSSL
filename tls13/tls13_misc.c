@@ -562,7 +562,8 @@ error_t tls13Encapsulate(TlsContext *context, uint16_t namedGroup,
             //convention outlined in Section 3.2 of RFC 9954. Specifically, the
             //order of shares in the concatenation has been reversed. This is
             //due to historical reasons (refer to RFC 10024, section 4.1)
-            if(context->namedGroup == TLS_GROUP_X25519_MLKEM768)
+            if(context->namedGroup == TLS_GROUP_MLKEM512_X25519 ||
+               context->namedGroup == TLS_GROUP_X25519_MLKEM768)
             {
                keyShareOffset = kemAlgo->publicKeySize;
                sharedSecretOffset = kemAlgo->sharedSecretSize;
@@ -609,8 +610,9 @@ error_t tls13Encapsulate(TlsContext *context, uint16_t namedGroup,
             //Check status code
             if(!error)
             {
-               //X25519MLKEM768 group?
-               if(context->namedGroup == TLS_GROUP_X25519_MLKEM768)
+               //MLKEM512X25519 or X25519MLKEM768 group?
+               if(context->namedGroup == TLS_GROUP_MLKEM512_X25519 ||
+                  context->namedGroup == TLS_GROUP_X25519_MLKEM768)
                {
                   keyShareOffset = 0;
                }
@@ -715,7 +717,8 @@ error_t tls13Decapsulate(TlsContext *context, const uint8_t *keyShare,
          //convention outlined in Section 3.2 of RFC 9954. Specifically, the
          //order of shares in the concatenation has been reversed. This is due
          //to historical reasons (refer to RFC 10024, section 4.1)
-         if(context->namedGroup == TLS_GROUP_X25519_MLKEM768)
+         if(context->namedGroup == TLS_GROUP_MLKEM512_X25519 ||
+            context->namedGroup == TLS_GROUP_X25519_MLKEM768)
          {
             keyShareOffset = kemAlgo->ciphertextSize;
             sharedSecretOffset = kemAlgo->sharedSecretSize;
@@ -745,8 +748,9 @@ error_t tls13Decapsulate(TlsContext *context, const uint8_t *keyShare,
          //Check status code
          if(!error)
          {
-            //X25519MLKEM768 group?
-            if(context->namedGroup == TLS_GROUP_X25519_MLKEM768)
+            //MLKEM512X25519 or X25519MLKEM768 group?
+            if(context->namedGroup == TLS_GROUP_MLKEM512_X25519 ||
+               context->namedGroup == TLS_GROUP_X25519_MLKEM768)
             {
                keyShareOffset = 0;
                sharedSecretOffset = 0;
@@ -1135,9 +1139,11 @@ bool_t tls13IsHybridGroupSupported(TlsContext *context, uint16_t namedGroup)
 
 #if (TLS13_HYBRID_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
    //Hybrid key exchange method?
-   if(namedGroup == TLS_GROUP_SECP256R1_MLKEM768 ||
+   if(namedGroup == TLS_GROUP_SECP256R1_MLKEM512 ||
+      namedGroup == TLS_GROUP_SECP256R1_MLKEM768 ||
       namedGroup == TLS_GROUP_SECP384R1_MLKEM1024 ||
       namedGroup == TLS_GROUP_CURVE_SM2_MLKEM768 ||
+      namedGroup == TLS_GROUP_MLKEM512_X25519 ||
       namedGroup == TLS_GROUP_X25519_MLKEM768)
    {
       //Any TLS 1.3 cipher suite proposed by the client?
@@ -1251,6 +1257,7 @@ const EcCurve *tls13GetTraditionalAlgo(TlsContext *context,
    {
 #if (TLS_SECP256R1_SUPPORT == ENABLED)
    //secp256r1 elliptic curve?
+   case TLS_GROUP_SECP256R1_MLKEM512:
    case TLS_GROUP_SECP256R1_MLKEM768:
       curve = ecGetCurve(SECP256R1_OID, sizeof(SECP256R1_OID));
       break;
@@ -1269,6 +1276,7 @@ const EcCurve *tls13GetTraditionalAlgo(TlsContext *context,
 #endif
 #if (TLS_X25519_SUPPORT == ENABLED)
    //Curve25519 elliptic curve?
+   case TLS_GROUP_MLKEM512_X25519:
    case TLS_GROUP_X25519_MLKEM768:
       curve = ecGetCurve(X25519_OID, sizeof(X25519_OID));
       break;
@@ -1323,6 +1331,13 @@ const KemAlgo *tls13GetNextGenAlgo(TlsContext *context, uint16_t namedGroup)
    //Check named group
    switch(namedGroup)
    {
+#if (TLS_MLKEM512_SUPPORT == ENABLED)
+   //ML-KEM-512 key encapsulation mechanism?
+   case TLS_GROUP_SECP256R1_MLKEM512:
+   case TLS_GROUP_MLKEM512_X25519:
+      kemAlgo = MLKEM512_KEM_ALGO;
+      break;
+#endif
 #if (TLS_MLKEM768_SUPPORT == ENABLED)
    //ML-KEM-768 key encapsulation mechanism?
    case TLS_GROUP_SECP256R1_MLKEM768:
