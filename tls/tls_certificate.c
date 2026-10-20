@@ -538,7 +538,7 @@ __weak_func error_t tlsParseCertificateList(TlsContext *context,
             //Check if the intermediate certificate can be matched with a
             //trusted CA
             certValidResult = tlsValidateCertificate(context, issuerCertInfo,
-               i, subjectName);
+               i + 1, subjectName);
 
             //Check validation result
             if(certValidResult != NO_ERROR && certValidResult != ERROR_UNKNOWN_CA)
