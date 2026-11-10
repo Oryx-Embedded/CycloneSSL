@@ -322,7 +322,7 @@ void tlsFreeTranscriptHash(TlsContext *context)
    //Release MD5 hash context
    if(context->transcriptMd5Context != NULL)
    {
-      osMemset(context->transcriptMd5Context, 0, sizeof(Md5Context));
+      cryptoZeroizeMem(context->transcriptMd5Context, sizeof(Md5Context));
       tlsFreeMem(context->transcriptMd5Context);
       context->transcriptMd5Context = NULL;
    }
@@ -332,7 +332,7 @@ void tlsFreeTranscriptHash(TlsContext *context)
    //Release SHA-1 hash context
    if(context->transcriptSha1Context != NULL)
    {
-      osMemset(context->transcriptSha1Context, 0, sizeof(Sha1Context));
+      cryptoZeroizeMem(context->transcriptSha1Context, sizeof(Sha1Context));
       tlsFreeMem(context->transcriptSha1Context);
       context->transcriptSha1Context = NULL;
    }

@@ -307,15 +307,49 @@ error_t tlsSelectVersion(TlsContext *context, uint16_t version)
    error_t error;
 
    //Initialize status code
-   error = ERROR_VERSION_NOT_SUPPORTED;
+   error = NO_ERROR;
 
-   //Check TLS version
-   if(version >= context->versionMin && version <= context->versionMax)
+#if (TLS_SECURE_RENEGOTIATION_SUPPORT == ENABLED)
+   //Renegotiation?
+   if(context->clientVerifyDataLen != 0)
    {
-      //Save the TLS protocol version to be used
-      context->version = version;
-      //The specified TLS version is acceptable
-      error = NO_ERROR;
+      //The renegotiated handshake must use the protocol version of the
+      //established connection (refer to RFC 8446, section 4.1.2)
+      if(version != context->version)
+      {
+         error = ERROR_VERSION_NOT_SUPPORTED;
+      }
+   }
+#endif
+
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+   //Updated ClientHello?
+   if(context->entity == TLS_CONNECTION_END_SERVER &&
+      context->state == TLS_STATE_CLIENT_HELLO_2)
+   {
+      //After a HelloRetryRequest, the server must not accept an updated
+      //ClientHello for another protocol version
+      if(version != context->version)
+      {
+         error = ERROR_ILLEGAL_PARAMETER;
+      }
+   }
+#endif
+
+   //Check status code
+   if(!error)
+   {
+      //Check TLS version
+      if(version >= context->versionMin && version <= context->versionMax)
+      {
+         //Save the TLS protocol version to be used
+         context->version = version;
+      }
+      else
+      {
+         //The specified TLS version is not acceptable
+         error = ERROR_VERSION_NOT_SUPPORTED;
+      }
    }
 
    //Return status code
@@ -384,6 +418,29 @@ error_t tlsSelectCipherSuite(TlsContext *context, uint16_t identifier)
          cipherSuite = NULL;
       }
    }
+
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+   //Acceptable cipher suite?
+   if(cipherSuite != NULL)
+   {
+      //Server mode?
+      if(context->entity == TLS_CONNECTION_END_SERVER &&
+         context->version == TLS_VERSION_1_3)
+      {
+         //Updated ClientHello?
+         if(context->state == TLS_STATE_CLIENT_HELLO_2)
+         {
+            //Servers must ensure that they negotiate the same cipher suite when
+            //receiving a conformant updated ClientHello (refer to RFC 8446,
+            //section 4.1.4)
+            if(cipherSuite->identifier != context->cipherSuite.identifier)
+            {
+               cipherSuite = NULL;
+            }
+         }
+      }
+   }
+#endif
 
    //Ensure that the selected cipher suite matches all the criteria
    if(cipherSuite != NULL)
@@ -626,7 +683,7 @@ error_t tlsRestoreSessionTicket(TlsContext *context,
    //Release existing session ticket, if any
    if(context->ticket != NULL)
    {
-      osMemset(context->ticket, 0, context->ticketLen);
+      cryptoZeroizeMem(context->ticket, context->ticketLen);
       tlsFreeMem(context->ticket);
       context->ticket = NULL;
       context->ticketLen = 0;
@@ -782,7 +839,8 @@ __weak_func error_t tlsInitEncryptionEngine(TlsContext *context,
    //Initialize cipher context
    encryptionEngine->cipherContext = NULL;
 
-#if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
+#if (TLS_NULL_CIPHER_SUPPORT == ENABLED || TLS_STREAM_CIPHER_SUPPORT == ENABLED || \
+   TLS_CBC_CIPHER_SUPPORT == ENABLED)
    //Initialize HMAC context
    encryptionEngine->hmacContext = &context->hmacContext;
 #endif
@@ -1167,13 +1225,18 @@ void tlsFreeEncryptionEngine(TlsEncryptionEngine *encryptionEngine)
    if(encryptionEngine->gcmContext != NULL)
    {
       //Erase GCM context
-      osMemset(encryptionEngine->gcmContext, 0, sizeof(GcmContext));
+      cryptoZeroizeMem(encryptionEngine->gcmContext, sizeof(GcmContext));
 
       //Release memory
       tlsFreeMem(encryptionEngine->gcmContext);
       encryptionEngine->gcmContext = NULL;
    }
 #endif
+
+   //Erase key material
+   cryptoZeroizeMem(encryptionEngine->macKey, sizeof(encryptionEngine->macKey));
+   cryptoZeroizeMem(encryptionEngine->encKey, sizeof(encryptionEngine->encKey));
+   cryptoZeroizeMem(encryptionEngine->iv, sizeof(encryptionEngine->iv));
 
 #if (DTLS_SUPPORT == ENABLED && TLS_MAX_VERSION >= TLS_VERSION_1_3)
    //Valid sequence number encryption context?
@@ -1186,6 +1249,9 @@ void tlsFreeEncryptionEngine(TlsEncryptionEngine *encryptionEngine)
       tlsFreeMem(encryptionEngine->snCipherContext);
       encryptionEngine->snCipherContext = NULL;
    }
+
+   //Erase sequence number encryption key
+   cryptoZeroizeMem(encryptionEngine->snKey, sizeof(encryptionEngine->snKey));
 #endif
 
    //Reset encryption parameters
@@ -1822,7 +1888,9 @@ size_t tlsComputeEncryptionOverhead(TlsEncryptionEngine *encryptionEngine,
       //Consider the explicit nonce and the authentication tag
       n += encryptionEngine->recordIvLen + encryptionEngine->authTagLen;
    }
-   else if(encryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
+   else if(encryptionEngine->cipherMode == CIPHER_MODE_AEGIS128L ||
+      encryptionEngine->cipherMode == CIPHER_MODE_AEGIS256 ||
+      encryptionEngine->cipherMode == CIPHER_MODE_CHACHA20_POLY1305)
    {
       //Consider the authentication tag only
       n += encryptionEngine->authTagLen;

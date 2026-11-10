@@ -398,7 +398,7 @@ void tlsCheckTicketKeyLifetime(TlsTicketEncryptionState *state)
       if((time - state->timestamp) >= (2 * TLS_TICKET_LIFETIME))
       {
          //Clear ticket keys
-         osMemset(state, 0, sizeof(TlsTicketEncryptionState));
+         cryptoZeroizeMem(state, sizeof(TlsTicketEncryptionState));
       }
    }
 }
@@ -454,7 +454,7 @@ void tlsFreeTicketContext(TlsTicketContext *ticketContext)
       osDeleteMutex(&ticketContext->mutex);
 
       //Erase ticket encryption context
-      osMemset(ticketContext, 0, sizeof(TlsTicketContext));
+      cryptoZeroizeMem(ticketContext, sizeof(TlsTicketContext));
    }
 }
 

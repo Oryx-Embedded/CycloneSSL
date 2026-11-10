@@ -232,7 +232,7 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
             return ERROR_DECODING_FAILED;
 
          //Check the length of the list
-         if(ntohs(ecPointFormatList->length) == 0)
+         if(ecPointFormatList->length == 0)
             return ERROR_DECODING_FAILED;
 
          //The EcPointFormats extension is valid
@@ -877,7 +877,7 @@ error_t tlsCheckHelloExtensions(TlsMessageType msgType, uint16_t version,
 
 #if (TLS_ENCRYPT_THEN_MAC_SUPPORT == ENABLED)
       //EncryptThenMac extension found?
-      else if(extensions->encryptThenMac != NULL)
+      if(extensions->encryptThenMac != NULL)
       {
          //The extension can only appear in CH
          if(msgType != TLS_TYPE_CLIENT_HELLO)

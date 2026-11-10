@@ -629,7 +629,7 @@ error_t tlsVerifyEd25519Signature(TlsContext *context,
    //Valid Ed25519 public key?
    if(context->peerEddsaPublicKey.curve == ED25519_CURVE)
    {
-      //The Ed25519 signature shall consist of 32 octets
+      //The Ed25519 signature shall consist of 64 octets
       if(signatureLen == ED25519_SIGNATURE_LEN)
       {
          //Verify Ed25519 signature (PureEdDSA mode)
@@ -678,7 +678,7 @@ error_t tlsVerifyEd448Signature(TlsContext *context,
    //Valid Ed448 public key?
    if(context->peerEddsaPublicKey.curve == ED448_CURVE)
    {
-      //The Ed448 signature shall consist of 32 octets
+      //The Ed448 signature shall consist of 114 octets
       if(signatureLen == ED448_SIGNATURE_LEN)
       {
          //Verify Ed448 signature (PureEdDSA mode)

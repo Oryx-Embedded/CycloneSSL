@@ -102,7 +102,7 @@ error_t tlsGenerateSessionKeys(TlsContext *context)
 
       //The premaster secret should be deleted from memory once the master
       //secret has been computed
-      osMemset(context->premasterSecret, 0, TLS_PREMASTER_SECRET_SIZE);
+      cryptoZeroizeMem(context->premasterSecret, TLS_PREMASTER_SECRET_SIZE);
    }
 
    //Debug message

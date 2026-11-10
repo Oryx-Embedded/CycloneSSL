@@ -655,6 +655,12 @@ error_t tlsProcessRecord(TlsContext *context, TlsRecord *record)
       if(decryptionEngine->cipherMode != CIPHER_MODE_NULL ||
          decryptionEngine->hashAlgo != NULL)
       {
+         //The length of the TLSCiphertext must not exceed 2^14 + 2048 bytes. An
+         //endpoint that receives a longer record must terminate the connection
+         //with a record_overflow alert (refer to RFC 5246, section 6.2.3)
+         if(ntohs(record->length) > (TLS_MAX_RECORD_LENGTH + 2048))
+            return ERROR_RECORD_OVERFLOW;
+
          //Decrypt TLS record
          error = tlsDecryptRecord(context, decryptionEngine, record);
          //Any error to report?

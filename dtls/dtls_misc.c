@@ -55,51 +55,68 @@ error_t dtlsSelectVersion(TlsContext *context, uint16_t version)
    error_t error;
 
    //Initialize status code
-   error = ERROR_VERSION_NOT_SUPPORTED;
+   error = NO_ERROR;
 
-   //Check DTLS version
-   if(version == DTLS_VERSION_1_0)
+#if (TLS_SECURE_RENEGOTIATION_SUPPORT == ENABLED)
+   //Renegotiation?
+   if(context->clientVerifyDataLen != 0)
    {
-      //DTLS 1.0 is defined as a series of deltas from TLS 1.1
-      if(context->versionMin <= TLS_VERSION_1_1 &&
+      //The renegotiated handshake must use the protocol version of the
+      //established connection (refer to RFC 8446, section 4.1.2)
+      if(version != dtlsTranslateVersion(context->version))
+      {
+         error = ERROR_VERSION_NOT_SUPPORTED;
+      }
+   }
+#endif
+
+#if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)
+   //Updated ClientHello?
+   if(context->entity == TLS_CONNECTION_END_SERVER &&
+      context->state == TLS_STATE_CLIENT_HELLO_2)
+   {
+      //After a HelloRetryRequest, the server must not accept an updated
+      //ClientHello for another protocol version
+      if(version != dtlsTranslateVersion(context->version))
+      {
+         error = ERROR_ILLEGAL_PARAMETER;
+      }
+   }
+#endif
+
+   //Check status code
+   if(!error)
+   {
+      //Check DTLS version
+      if(version == DTLS_VERSION_1_0 &&
+         context->versionMin <= TLS_VERSION_1_1 &&
          context->versionMax >= TLS_VERSION_1_1)
       {
-         //Save protocol version
+         //DTLS 1.0 is defined as a series of deltas from TLS 1.1
          context->version = TLS_VERSION_1_1;
-         //The specified DTLS version is acceptable
-         error = NO_ERROR;
       }
-   }
-   else if(version == DTLS_VERSION_1_2)
-   {
-      //DTLS 1.2 is defined as a series of deltas from TLS 1.2
-      if(context->versionMin <= TLS_VERSION_1_2 &&
+      else if(version == DTLS_VERSION_1_2 &&
+         context->versionMin <= TLS_VERSION_1_2 &&
          context->versionMax >= TLS_VERSION_1_2)
       {
-         //Save protocol version
+         //DTLS 1.2 is defined as a series of deltas from TLS 1.2
          context->version = TLS_VERSION_1_2;
-         //The specified DTLS version is acceptable
-         error = NO_ERROR;
       }
-   }
-   else if(version == DTLS_VERSION_1_3)
-   {
-      //DTLS 1.3 is defined as a series of deltas from TLS 1.3
-      if(context->versionMin <= TLS_VERSION_1_3 &&
+      else if(version == DTLS_VERSION_1_3 &&
+         context->versionMin <= TLS_VERSION_1_3 &&
          context->versionMax >= TLS_VERSION_1_3)
       {
-         //Save protocol version
+         //DTLS 1.3 is defined as a series of deltas from TLS 1.3
          context->version = TLS_VERSION_1_3;
-         //The specified DTLS version is acceptable
-         error = NO_ERROR;
+      }
+      else
+      {
+         //The specified DTLS version is not acceptable
+         error = ERROR_VERSION_NOT_SUPPORTED;
       }
    }
-   else
-   {
-      //Unknown DTLS version
-   }
 
-   //Check whether the DTLS version is supported
+   //Check status code
    if(!error)
    {
       //Initial handshake?

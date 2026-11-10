@@ -1020,7 +1020,7 @@ error_t tlsSetPsk(TlsContext *context, const uint8_t *psk, size_t length)
    if(context->psk != NULL)
    {
       //Release memory
-      osMemset(context->psk, 0, context->pskLen);
+      cryptoZeroizeMem(context->psk, context->pskLen);
       tlsFreeMem(context->psk);
       context->psk = NULL;
       context->pskLen = 0;
@@ -1943,7 +1943,10 @@ error_t tlsExportKeyingMaterial(TlsContext *context, const char_t *label,
       STORE16BE(contextValueLen, seed + 64);
 
       //Copy the context value provided by the application using the exporter
-      osMemcpy(seed + 66, contextValue, contextValueLen);
+      if(contextValueLen > 0)
+      {
+         osMemcpy(seed + 66, contextValue, contextValueLen);
+      }
    }
 
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_1)
@@ -2104,6 +2107,7 @@ error_t tlsExportChannelBinding(TlsContext *context, const char_t *type,
       {
          //Appendix C.5 of RFC 8446 notes the lack of channel bindings for
          //TLS 1.3 (refer to to RFC 9266, section 1)
+         error = ERROR_INVALID_VERSION;
       }
    }
    else if(osStrcmp(type, "tls-exporter") == 0)
@@ -2829,21 +2833,21 @@ void tlsFree(TlsContext *context)
       //Release cookie
       if(context->cookie != NULL)
       {
-         osMemset(context->cookie, 0, context->cookieLen);
+         cryptoZeroizeMem(context->cookie, context->cookieLen);
          tlsFreeMem(context->cookie);
       }
 
       //Release send buffer
       if(context->txBuffer != NULL)
       {
-         osMemset(context->txBuffer, 0, context->txBufferSize);
+         cryptoZeroizeMem(context->txBuffer, context->txBufferSize);
          tlsFreeMem(context->txBuffer);
       }
 
       //Release receive buffer
       if(context->rxBuffer != NULL)
       {
-         osMemset(context->rxBuffer, 0, context->rxBufferSize);
+         cryptoZeroizeMem(context->rxBuffer, context->rxBufferSize);
          tlsFreeMem(context->rxBuffer);
       }
 
@@ -2853,7 +2857,7 @@ void tlsFree(TlsContext *context)
       //Release session ticket
       if(context->ticket != NULL)
       {
-         osMemset(context->ticket, 0, context->ticketLen);
+         cryptoZeroizeMem(context->ticket, context->ticketLen);
          tlsFreeMem(context->ticket);
       }
 
@@ -2910,7 +2914,7 @@ void tlsFree(TlsContext *context)
       //Release the pre-shared key
       if(context->psk != NULL)
       {
-         osMemset(context->psk, 0, context->pskLen);
+         cryptoZeroizeMem(context->psk, context->pskLen);
          tlsFreeMem(context->psk);
       }
 
@@ -2968,7 +2972,7 @@ void tlsFree(TlsContext *context)
 #endif
 
       //Clear the TLS context before freeing memory
-      osMemset(context, 0, sizeof(TlsContext));
+      cryptoZeroizeMem(context, sizeof(TlsContext));
       tlsFreeMem(context);
    }
 }
@@ -3131,7 +3135,7 @@ void tlsFreeSessionState(TlsSessionState *session)
       //Release session ticket
       if(session->ticket != NULL)
       {
-         osMemset(session->ticket, 0, session->ticketLen);
+         cryptoZeroizeMem(session->ticket, session->ticketLen);
          tlsFreeMem(session->ticket);
       }
 
@@ -3152,7 +3156,7 @@ void tlsFreeSessionState(TlsSessionState *session)
 #endif
 
       //Erase session state
-      osMemset(session, 0, sizeof(TlsSessionState));
+      cryptoZeroizeMem(session, sizeof(TlsSessionState));
    }
 }
 

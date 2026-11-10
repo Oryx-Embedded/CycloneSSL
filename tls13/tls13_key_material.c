@@ -400,6 +400,11 @@ error_t tls13GenerateHandshakeTrafficKeys(TlsContext *context)
    if(error)
       return error;
 
+   //The (EC)DHE shared secret should be deleted from memory once the
+   //handshake secret has been computed
+   cryptoZeroizeMem(context->premasterSecret, TLS_PREMASTER_SECRET_SIZE);
+   context->premasterSecretLen = 0;
+
    //Debug message
    TRACE_DEBUG("Handshake secret:\r\n");
    TRACE_DEBUG_ARRAY("  ", context->secret, hash->digestSize);
@@ -659,6 +664,7 @@ error_t tls13GenerateServerAppTrafficKeys(TlsContext *context)
          if(context->keyExchMethod == TLS13_KEY_EXCH_PSK ||
             context->keyExchMethod == TLS13_KEY_EXCH_PSK_DHE ||
             context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE ||
+            context->keyExchMethod == TLS13_KEY_EXCH_PSK_MLKEM ||
             context->keyExchMethod == TLS13_KEY_EXCH_PSK_HYBRID)
          {
             //Send a Finished message to the server
@@ -677,6 +683,7 @@ error_t tls13GenerateServerAppTrafficKeys(TlsContext *context)
       if(context->keyExchMethod == TLS13_KEY_EXCH_PSK ||
          context->keyExchMethod == TLS13_KEY_EXCH_PSK_DHE ||
          context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE ||
+         context->keyExchMethod == TLS13_KEY_EXCH_PSK_MLKEM ||
          context->keyExchMethod == TLS13_KEY_EXCH_PSK_HYBRID)
       {
          //Wait for a Finished message from the client
@@ -765,10 +772,10 @@ error_t tls13GenerateClientAppTrafficKeys(TlsContext *context)
 
    //Once all the values which are to be derived from a given secret have been
    //computed, that secret should be erased
-   osMemset(context->secret, 0, TLS13_MAX_HKDF_DIGEST_SIZE);
-   osMemset(context->clientEarlyTrafficSecret, 0, TLS13_MAX_HKDF_DIGEST_SIZE);
-   osMemset(context->clientHsTrafficSecret, 0, TLS13_MAX_HKDF_DIGEST_SIZE);
-   osMemset(context->serverHsTrafficSecret, 0, TLS13_MAX_HKDF_DIGEST_SIZE);
+   cryptoZeroizeMem(context->secret, TLS13_MAX_HKDF_DIGEST_SIZE);
+   cryptoZeroizeMem(context->clientEarlyTrafficSecret, TLS13_MAX_HKDF_DIGEST_SIZE);
+   cryptoZeroizeMem(context->clientHsTrafficSecret, TLS13_MAX_HKDF_DIGEST_SIZE);
+   cryptoZeroizeMem(context->serverHsTrafficSecret, TLS13_MAX_HKDF_DIGEST_SIZE);
 
    //DTLS protocol?
    if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_DATAGRAM)

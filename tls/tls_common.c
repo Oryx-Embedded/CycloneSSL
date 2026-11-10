@@ -651,6 +651,7 @@ error_t tlsFormatCertificate(TlsContext *context, TlsCertificate *message,
       else
       {
          //In the case of server authentication, this field shall be zero length
+         //(refer to RFC 8446, section 4.4.2)
          certRequestContext->length = 0;
       }
 
@@ -1096,6 +1097,11 @@ error_t tlsParseCertificate(TlsContext *context, const TlsCertificate *message,
       if(length < (sizeof(Tls13CertRequestContext) + certRequestContext->length))
          return ERROR_DECODING_FAILED;
 
+      //The certificate_request_context field shall be zero length (refer to
+      //RFC 8446, section 4.4.2)
+      if(certRequestContext->length != 0)
+         return ERROR_DECODING_FAILED;
+
       //Point to the next field
       p += sizeof(Tls13CertRequestContext) + certRequestContext->length;
       //Remaining bytes to process
@@ -1499,8 +1505,11 @@ error_t tlsParseFinished(TlsContext *context, const TlsFinished *message,
       }
 
       //Check the resulting verify data
-      if(osMemcmp(message, context->serverVerifyData, context->serverVerifyDataLen))
+      if(cryptoCompMem(message, context->serverVerifyData,
+         context->serverVerifyDataLen) != 0)
+      {
          return ERROR_INVALID_SIGNATURE;
+      }
    }
    else
    {
@@ -1527,8 +1536,11 @@ error_t tlsParseFinished(TlsContext *context, const TlsFinished *message,
       }
 
       //Check the resulting verify data
-      if(osMemcmp(message, context->clientVerifyData, context->clientVerifyDataLen))
+      if(cryptoCompMem(message, context->clientVerifyData,
+         context->clientVerifyDataLen) != 0)
+      {
          return ERROR_INVALID_SIGNATURE;
+      }
    }
 
    //Version of TLS prior to TLS 1.3?

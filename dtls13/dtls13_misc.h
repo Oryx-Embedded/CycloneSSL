@@ -41,6 +41,9 @@
    #error DTLS13_MAX_ACK_RECORDS parameter is not valid
 #endif
 
+//Minimum length of encrypted records
+#define DTLS13_MIN_CIPHERTEXT_LEN 16
+
 //DTLS 1.3 unified header
 #define DTLS13_HEADER_MASK   0xE0
 #define DTLS13_HEADER_FIXED  0x20
@@ -120,7 +123,8 @@ error_t dtls13ParseAck(TlsContext *context, const Dtls13Ack *message,
 void dtls13FormatNonce(TlsEncryptionEngine *encryptionEngine,
    const DtlsSequenceNumber *seqNum, uint8_t *nonce, size_t *nonceLen);
 
-size_t dtls13ComputeEncryptionOverhead(TlsEncryptionEngine *encryptionEngine);
+size_t dtls13ComputeEncryptionOverhead(TlsEncryptionEngine *encryptionEngine,
+   size_t payloadLen);
 
 //C++ guard
 #ifdef __cplusplus

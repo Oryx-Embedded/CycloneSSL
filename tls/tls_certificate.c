@@ -639,20 +639,24 @@ error_t tlsParseRawPublicKey(TlsContext *context, const uint8_t *p,
       else
 #endif
       {
-         //The payload of the Certificate message contains a SubjectPublicKeyInfo
-         //structure
+         //The SubjectPublicKeyInfo structure contains length information (refer
+         //to RFC 7250, section 3)
          rawPublicKeyLen = length;
       }
 
       //Point to the raw public key
       rawPublicKey = p;
 
-      //Decode the SubjectPublicKeyInfo structure
+      //The payload contains the DER encoding of the SubjectPublicKeyInfo
       error = x509ParseSubjectPublicKeyInfo(rawPublicKey, rawPublicKeyLen, &n,
          &subjectPublicKeyInfo);
       //Any error to report?
       if(error)
          return error;
+
+      //Trailing bytes after a raw public key must be rejected
+      if(n != rawPublicKeyLen)
+         return ERROR_DECODING_FAILED;
 
       //Advance data pointer
       p += rawPublicKeyLen;
@@ -1872,7 +1876,8 @@ error_t tlsCheckKeyUsage(const X509CertInfo *certInfo,
       if(entity == TLS_CONNECTION_END_CLIENT)
       {
          //Make sure the certificate can be used for server authentication
-         if((extKeyUsage->bitmap & X509_EXT_KEY_USAGE_SERVER_AUTH) == 0)
+         if((extKeyUsage->bitmap & X509_EXT_KEY_USAGE_SERVER_AUTH) == 0 &&
+            (extKeyUsage->bitmap & X509_EXT_KEY_USAGE_ANY) == 0)
          {
             error = ERROR_BAD_CERTIFICATE;
          }
@@ -1880,7 +1885,8 @@ error_t tlsCheckKeyUsage(const X509CertInfo *certInfo,
       else
       {
          //Make sure the certificate can be used for client authentication
-         if((extKeyUsage->bitmap & X509_EXT_KEY_USAGE_CLIENT_AUTH) == 0)
+         if((extKeyUsage->bitmap & X509_EXT_KEY_USAGE_CLIENT_AUTH) == 0 &&
+            (extKeyUsage->bitmap & X509_EXT_KEY_USAGE_ANY) == 0)
          {
             error = ERROR_BAD_CERTIFICATE;
          }

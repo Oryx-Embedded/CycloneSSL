@@ -913,7 +913,7 @@ error_t tlsParseHelloRequest(TlsContext *context,
          //Release existing session ticket, if any
          if(context->ticket != NULL)
          {
-            osMemset(context->ticket, 0, context->ticketLen);
+            cryptoZeroizeMem(context->ticket, context->ticketLen);
             tlsFreeMem(context->ticket);
             context->ticket = NULL;
             context->ticketLen = 0;
@@ -928,6 +928,11 @@ error_t tlsParseHelloRequest(TlsContext *context,
             context->cookieLen = 0;
          }
 #endif
+         //The CertificateVerify message is sent only if the server requests it
+         //in the renegotiated handshake
+         context->clientCertRequested = FALSE;
+         context->cert = NULL;
+
          //HelloRequest is a simple notification that the client should begin
          //the negotiation process anew
          tlsChangeState(context, TLS_STATE_CLIENT_HELLO);
@@ -941,7 +946,7 @@ error_t tlsParseHelloRequest(TlsContext *context,
          //If the connection's secure_renegotiation flag is set to FALSE, it
          //is recommended that clients refuse this renegotiation request (refer
          //to RFC 5746, section 4.2)
-         error = tlsSendAlert(context, TLS_ALERT_LEVEL_FATAL,
+         error = tlsSendAlert(context, TLS_ALERT_LEVEL_WARNING,
             TLS_ALERT_NO_RENEGOTIATION);
       }
    }
@@ -1323,7 +1328,8 @@ error_t tlsParseServerHello(TlsContext *context,
       {
          //Clients must check that the cipher suite supplied in the ServerHello
          //is the same as that in the HelloRetryRequest and otherwise abort the
-         //handshake with an illegal_parameter alert
+         //handshake with an illegal_parameter alert (refer to RFC 8446,
+         //section 4.1.4)
          if(cipherSuite != context->cipherSuite.identifier)
             return ERROR_ILLEGAL_PARAMETER;
       }
@@ -1594,6 +1600,7 @@ error_t tlsParseCertificateRequest(TlsContext *context,
    else if(context->keyExchMethod == TLS13_KEY_EXCH_PSK ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_DHE ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE ||
+      context->keyExchMethod == TLS13_KEY_EXCH_PSK_MLKEM ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_HYBRID)
    {
       //Servers which are authenticating with a PSK must not send the
@@ -1980,7 +1987,7 @@ error_t tlsParseNewSessionTicket(TlsContext *context,
       //Release existing session ticket, if any
       if(context->ticket != NULL)
       {
-         osMemset(context->ticket, 0, context->ticketLen);
+         cryptoZeroizeMem(context->ticket, context->ticketLen);
          tlsFreeMem(context->ticket);
          context->ticket = NULL;
          context->ticketLen = 0;

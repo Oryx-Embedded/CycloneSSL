@@ -1226,6 +1226,10 @@ error_t tlsParseClientHello(TlsContext *context,
             //Secure renegotiation is disabled
             return ERROR_HANDSHAKE_FAILED;
          }
+
+         //The client certificate of the previous handshake must not be taken
+         //into account in the renegotiated handshake
+         context->peerCertType = TLS_CERT_NONE;
       }
       else
 #endif

@@ -62,6 +62,7 @@ error_t dtls13EncryptRecord(TlsContext *context,
    error_t error;
    size_t n;
    size_t authTagLen;
+   size_t paddingLen;
    uint8_t header[5];
    size_t headerLen;
    uint8_t nonce[48];
@@ -75,6 +76,17 @@ error_t dtls13EncryptRecord(TlsContext *context,
    else
    {
       authTagLen = encryptionEngine->authTagLen;
+   }
+
+   //The ciphertext length must be at least 16 bytes. Senders must pad short
+   //plaintexts out (refer to RFC 9147, section 4.2.3)
+   if((dataLen + 1 + authTagLen) < DTLS13_MIN_CIPHERTEXT_LEN)
+   {
+      paddingLen = DTLS13_MIN_CIPHERTEXT_LEN - (dataLen + 1 + authTagLen);
+   }
+   else
+   {
+      paddingLen = 0;
    }
 
    //The unified header is a structure of variable length
@@ -100,8 +112,8 @@ error_t dtls13EncryptRecord(TlsContext *context,
    if((header[0] & DTLS13_HEADER_FLAG_L) != 0)
    {
       //The length field is 16 bits
-      header[n++] = MSB(dataLen + authTagLen + 1);
-      header[n++] = LSB(dataLen + authTagLen + 1);
+      header[n++] = MSB(dataLen + 1 + paddingLen + authTagLen);
+      header[n++] = LSB(dataLen + 1 + paddingLen + authTagLen);
    }
 
    //Save the length of the unified header
@@ -122,6 +134,10 @@ error_t dtls13EncryptRecord(TlsContext *context,
 
    //Adjust the length of the payload data
    dataLen++;
+
+   //Append padding bytes
+   osMemset(record + headerLen + dataLen, 0, paddingLen);
+   dataLen += paddingLen;
 
    //Generate the nonce
    dtls13FormatNonce(encryptionEngine, &encryptionEngine->dtlsSeqNum, nonce,

@@ -1569,9 +1569,9 @@ error_t tlsParseServerEmsExtension(TlsContext *context,
       //Abbreviated handshake?
       if(context->resume)
       {
-         //If the original session used the ExtendedMasterSecret extension
-         //but the new ServerHello does not contain the extension, the client
-         //must abort the handshake
+         //If the original session used the ExtendedMasterSecret extension but
+         //the new ServerHello does not contain the extension, the client must
+         //abort the handshake
          if(context->emsExtReceived)
             return ERROR_HANDSHAKE_FAILED;
       }
@@ -1674,8 +1674,8 @@ error_t tlsParseServerRenegoInfoExtension(TlsContext *context,
 
          //The client must verify that the first half of the field is equal to
          //the saved client_verify_data value
-         if(osMemcmp(extensions->renegoInfo->value, context->clientVerifyData,
-            context->clientVerifyDataLen))
+         if(cryptoCompMem(extensions->renegoInfo->value, context->clientVerifyData,
+            context->clientVerifyDataLen) != 0)
          {
             //If it is not, the client must abort the handshake
             return ERROR_HANDSHAKE_FAILED;
@@ -1683,8 +1683,8 @@ error_t tlsParseServerRenegoInfoExtension(TlsContext *context,
 
          //The client must verify that the second half of the field is equal to
          //the saved server_verify_data value
-         if(osMemcmp(extensions->renegoInfo->value + context->clientVerifyDataLen,
-            context->serverVerifyData, context->serverVerifyDataLen))
+         if(cryptoCompMem(extensions->renegoInfo->value + context->clientVerifyDataLen,
+            context->serverVerifyData, context->serverVerifyDataLen) != 0)
          {
             //If it is not, the client must abort the handshake
             return ERROR_HANDSHAKE_FAILED;

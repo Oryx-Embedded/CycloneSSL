@@ -352,7 +352,8 @@ error_t dtlsWriteRecord(TlsContext *context, const uint8_t *data,
          if(context->version == TLS_VERSION_1_3)
          {
             //Overhead caused by record encryption must be considered
-            n = length + dtls13ComputeEncryptionOverhead(encryptionEngine);
+            n = length + dtls13ComputeEncryptionOverhead(encryptionEngine,
+               length);
 
             //Make sure the buffer is large enough to hold the DTLSCiphertext
             //record
@@ -1191,7 +1192,7 @@ error_t dtlsFragmentHandshakeMessage(TlsContext *context, uint16_t version,
       //DTLS handshake messages have 12 bytes of overhead
       n = sizeof(DtlsHandshake);
       //Overhead caused by record encryption must be considered
-      n += dtls13ComputeEncryptionOverhead(encryptionEngine);
+      n += dtls13ComputeEncryptionOverhead(encryptionEngine, n);
    }
    else
 #endif
@@ -1234,7 +1235,7 @@ error_t dtlsFragmentHandshakeMessage(TlsContext *context, uint16_t version,
             //Estimate the length of the DTLS handshake message
             n = fragLen + sizeof(DtlsHandshake);
             //Overhead caused by record encryption must be considered
-            n += dtls13ComputeEncryptionOverhead(encryptionEngine);
+            n += dtls13ComputeEncryptionOverhead(encryptionEngine, n);
          }
          else
 #endif
@@ -1376,7 +1377,7 @@ error_t dtlsFragmentHandshakeMessage(TlsContext *context, uint16_t version,
             //An implementation should omit ACKed records from any future
             //retransmissions
             if(retransmitState->index < 32 &&
-               (retransmitState->mask & (1 << retransmitState->index)) == 0)
+               (retransmitState->mask & (1U << retransmitState->index)) == 0)
             {
                n = 0;
             }
@@ -1498,8 +1499,8 @@ error_t dtlsReassembleHandshakeMessage(TlsContext *context,
          {
             //Coalesce overlapping fragments
             osMemmove(prevFragment->data + fragOffset - prevFragOffset,
-               fragment->data,
-               context->rxFragQueueLen - pos - sizeof(DtlsHandshake));
+               fragment->data, context->rxFragQueueLen - pos -
+               sizeof(DtlsHandshake));
 
             //Number of bytes that do not overlap with the previous fragment
             n = fragOffset + fragLen - prevFragOffset - prevFragLen;
@@ -1519,7 +1520,7 @@ error_t dtlsReassembleHandshakeMessage(TlsContext *context,
          {
             //Drop current fragment
             osMemmove(fragment, fragment->data + fragLen,
-               context->rxFragQueueLen - fragLen - sizeof(DtlsHandshake));
+               context->rxFragQueueLen - pos - fragLen - sizeof(DtlsHandshake));
 
             //Update the length of the reassembly queue
             context->rxFragQueueLen -= fragLen + sizeof(DtlsHandshake);

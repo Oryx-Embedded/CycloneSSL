@@ -211,9 +211,8 @@ error_t tlsSendHandshakeMessage(TlsContext *context, const void *data,
       length += sizeof(TlsHandshake);
    }
 
-   //The HelloRequest message must not be included in the message hashes
-   //that are maintained throughout the handshake and used in the Finished
-   //messages and the CertificateVerify message
+   //HelloRequest messages must not be included in the message hashes that are
+   //maintained throughout the handshake (refer to RFC 5246, section 7.4.1.1)
    if(type != TLS_TYPE_HELLO_REQUEST)
    {
       tlsUpdateTranscriptHash(context, data, length);
@@ -416,8 +415,13 @@ error_t tlsParseHandshakeMessage(TlsContext *context, const uint8_t *message,
       //Parse server's handshake message
       error = tlsParseServerHandshakeMessage(context, msgType, p, n);
 
-      //Update the hash value with the incoming handshake message
-      tlsUpdateTranscriptHash(context, message, length);
+      //HelloRequest messages must not be included in the message hashes that
+      //are maintained throughout the handshake (refer to RFC 5246, section
+      //7.4.1.1)
+      if(msgType != TLS_TYPE_HELLO_REQUEST)
+      {
+         tlsUpdateTranscriptHash(context, message, length);
+      }
    }
    else
 #endif

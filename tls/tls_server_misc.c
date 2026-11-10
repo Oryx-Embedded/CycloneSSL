@@ -858,9 +858,12 @@ error_t tlsResumeStatefulSession(TlsContext *context, const uint8_t *sessionId,
       uint_t n;
       TlsSessionState *session;
 
+      //Acquire exclusive access to the session cache
+      tlsLockCache(context->cache);
+
       //If the session ID was non-empty, the server will look in its session
       //cache for a match
-      session = tlsFindCache(context->cache, sessionId, sessionIdLen);
+      session = tlsFindSession(context->cache, sessionId, sessionIdLen);
 
       //Matching session found?
       if(session != NULL)
@@ -937,8 +940,19 @@ error_t tlsResumeStatefulSession(TlsContext *context, const uint8_t *sessionId,
          {
             //If the original session did not use the ExtendedMasterSecret
             //extension but the new ClientHello contains the extension, then
-            //the server must not perform the abbreviated handshake
+            //the server must not perform the abbreviated handshake (refer to
+            //RFC 7627, section 5.3)
             if(!session->extendedMasterSecret)
+            {
+               session = NULL;
+            }
+         }
+         else
+         {
+            //If the original session used the ExtendedMasterSecret extension
+            //but the new ClientHello does not contain it, the server must
+            //abort the abbreviated handshake
+            if(session->extendedMasterSecret)
             {
                session = NULL;
             }
@@ -978,6 +992,9 @@ error_t tlsResumeStatefulSession(TlsContext *context, const uint8_t *sessionId,
          //Generate a new random session ID
          error = tlsGenerateSessionId(context, 32);
       }
+
+      //Release exclusive access to the session cache
+      tlsUnlockCache(context->cache);
    }
    else
 #endif
@@ -1064,7 +1081,7 @@ error_t tlsResumeStatelessSession(TlsContext *context, const uint8_t *sessionId,
                   serverTicketAge = osGetSystemTime() - state->ticketTimestamp;
 
                   //Verify ticket's validity
-                  if(serverTicketAge >= (state->ticketLifetime * 1000))
+                  if(serverTicketAge >= state->ticketLifetime)
                   {
                      //The ticket is not valid
                      error = ERROR_INVALID_TICKET;
@@ -1099,7 +1116,19 @@ error_t tlsResumeStatelessSession(TlsContext *context, const uint8_t *sessionId,
                      //If the original session did not use the ExtendedMasterSecret
                      //extension but the new ClientHello contains the extension,
                      //then the server must not perform the abbreviated handshake
+                     //(refer to RFC 7627, section 5.3)
                      if(!state->extendedMasterSecret)
+                     {
+                        //The ticket is not valid
+                        error = ERROR_INVALID_TICKET;
+                     }
+                  }
+                  else
+                  {
+                     //If the original session used the ExtendedMasterSecret
+                     //extension but the new ClientHello does not contain it,
+                     //the server must abort the abbreviated handshake
+                     if(state->extendedMasterSecret)
                      {
                         //The ticket is not valid
                         error = ERROR_INVALID_TICKET;
@@ -1139,7 +1168,7 @@ error_t tlsResumeStatelessSession(TlsContext *context, const uint8_t *sessionId,
             }
 
             //Release state information
-            osMemset(state, 0, length);
+            cryptoZeroizeMem(state, length);
             tlsFreeMem(state);
          }
          else
@@ -1176,14 +1205,17 @@ error_t tlsResumeStatelessSession(TlsContext *context, const uint8_t *sessionId,
       }
       else
       {
+         //The ticket cannot be used to resume the session
+         context->resume = FALSE;
+
          //If a server is planning on issuing a session ticket to a client that
          //does not present one, it should include an empty Session ID in the
          //ServerHello
          context->sessionIdLen = 0;
 
-         //The server uses a zero-length SessionTicket extension to indicate to the
-         //client that it will send a new session ticket using the NewSessionTicket
-         //handshake message
+         //The server uses a zero-length SessionTicket extension to indicate to
+         //the client that it will send a new session ticket using the
+         //NewSessionTicket handshake message
          context->sessionTicketExtSent = TRUE;
       }
    }
@@ -1332,6 +1364,12 @@ error_t tlsNegotiateCipherSuite(TlsContext *context, const HashAlgo *hashAlgo,
    //Select the most appropriate cipher suite (2-pass process)
    for(k = 0; k < 2 && error; k++)
    {
+      //The second pass relaxes the constraints
+      if(k == 1)
+      {
+         extensions->certSignAlgoList = NULL;
+      }
+
       //Any preferred cipher suites?
       if(context->numCipherSuites > 0)
       {
@@ -1376,8 +1414,13 @@ error_t tlsNegotiateCipherSuite(TlsContext *context, const HashAlgo *hashAlgo,
                   //Check status code
                   if(!error)
                   {
-                     //Select the appropriate certificate
-                     error = tlsSelectCertificate(context, extensions);
+                     //In TLS 1.3, the certificate is selected once the key
+                     //exchange method is known
+                     if(context->version <= TLS_VERSION_1_2)
+                     {
+                        //Select the appropriate certificate
+                        error = tlsSelectCertificate(context, extensions);
+                     }
                   }
                }
             }
@@ -1419,14 +1462,16 @@ error_t tlsNegotiateCipherSuite(TlsContext *context, const HashAlgo *hashAlgo,
             //Check status code
             if(!error)
             {
-               //Select the appropriate certificate
-               error = tlsSelectCertificate(context, extensions);
+               //In TLS 1.3, the certificate is selected once the key exchange
+               //method is known
+               if(context->version <= TLS_VERSION_1_2)
+               {
+                  //Select the appropriate certificate
+                  error = tlsSelectCertificate(context, extensions);
+               }
             }
          }
       }
-
-      //The second pass relaxes the constraints
-      extensions->certSignAlgoList = NULL;
    }
 
    //Return status code

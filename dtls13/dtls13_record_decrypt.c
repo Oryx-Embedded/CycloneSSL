@@ -266,6 +266,17 @@ error_t dtls13ReadCiphertextRecord(TlsContext *context, uint8_t *record)
       return ERROR_INVALID_LENGTH;
    }
 
+   //The ciphertext length must be at least 16 bytes. Receivers must reject
+   //shorter records as if they had failed deprotection (refer to RFC 9147,
+   //section 4.2)
+   if(dataLen < DTLS13_MIN_CIPHERTEXT_LEN)
+   {
+      //Drop the received datagram
+      context->rxDatagramLen = 0;
+      //Report an error
+      return ERROR_INVALID_LENGTH;
+   }
+
    //Point to the payload data
    context->rxRecordPos = context->rxDatagramPos + headerLen;
 
@@ -433,10 +444,9 @@ error_t dtls13DecryptRecord(TlsContext *context,
    n -= authTagLen;
 
    //The length must not exceed 2^14 octets + 1 octet for ContentType + the
-   //maximum AEAD expansion. An endpoint that receives a record that exceeds
-   //this length must terminate the connection with a record_overflow alert
+   //maximum AEAD expansion
    if(n > (TLS_MAX_RECORD_LENGTH + 1))
-      return ERROR_RECORD_OVERFLOW;
+      return ERROR_INVALID_LENGTH;
 
 #if (TLS_CCM_CIPHER_SUPPORT == ENABLED || TLS_CCM_8_CIPHER_SUPPORT == ENABLED || \
    TLS_GCM_CIPHER_SUPPORT == ENABLED || TLS_AEGIS128L_SUPPORT == ENABLED || \

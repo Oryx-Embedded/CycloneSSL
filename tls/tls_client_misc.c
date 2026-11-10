@@ -1124,6 +1124,11 @@ error_t tlsVerifyServerKeySignature(TlsContext *context,
          //Release previously allocated memory
          tlsFreeMem(sha1Context);
       }
+      else
+      {
+         //Failed to allocate memory
+         error = ERROR_OUT_OF_MEMORY;
+      }
 
       //Check status code
       if(!error)

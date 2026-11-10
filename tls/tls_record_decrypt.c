@@ -342,7 +342,7 @@ __weak_func error_t tlsDecryptCbcRecord(TlsContext *context,
          return error;
 
       //Calculate the minimum acceptable length of the ciphertext
-      n = cipherAlgo->blockSize;;
+      n = cipherAlgo->blockSize;
    }
    else
 #endif
@@ -806,8 +806,11 @@ __weak_func uint32_t tlsVerifyMac(TlsContext *context,
          b = 0;
 
          //Generate the contents of each block in constant time
-         c = CRYPTO_TEST_LT_32(i, dataLen);
-         b = CRYPTO_SELECT_8(b, data[i], c);
+         if(i < maxDataLen)
+         {
+            c = CRYPTO_TEST_LT_32(i, dataLen);
+            b = CRYPTO_SELECT_8(b, data[i], c);
+         }
 
          c = CRYPTO_TEST_EQ_32(i, dataLen);
          b = CRYPTO_SELECT_8(b, 0x80, c);

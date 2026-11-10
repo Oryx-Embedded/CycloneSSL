@@ -914,13 +914,13 @@ error_t tlsParseClientRecordSizeLimitExtension(TlsContext *context,
          n--;
       }
 
-      //Initial or updated ClientHello?
+      //Updated ClientHello?
       if(context->state == TLS_STATE_CLIENT_HELLO_2)
       {
          //When responding to a HelloRetryRequest, the client must send the
          //same ClientHello without modification
          if(!context->recordSizeLimitExtReceived ||
-            context->recordSizeLimit != n)
+            context->recordSizeLimit != MIN(n, TLS_MAX_RECORD_LENGTH))
          {
             return ERROR_ILLEGAL_PARAMETER;
          }
@@ -1436,8 +1436,8 @@ error_t tlsParseClientRenegoInfoExtension(TlsContext *context,
          {
             //Verify that the value of the renegotiated_connection field is
             //equal to the saved client_verify_data value
-            if(osMemcmp(extensions->renegoInfo->value,
-               context->clientVerifyData, context->clientVerifyDataLen))
+            if(cryptoCompMem(extensions->renegoInfo->value,
+               context->clientVerifyData, context->clientVerifyDataLen) != 0)
             {
                //If it is not, the server must abort the handshake
                error = ERROR_HANDSHAKE_FAILED;

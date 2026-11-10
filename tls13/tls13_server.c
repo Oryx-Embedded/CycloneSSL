@@ -180,6 +180,7 @@ error_t tls13SendEncryptedExtensions(TlsContext *context)
       if(context->keyExchMethod == TLS13_KEY_EXCH_PSK ||
          context->keyExchMethod == TLS13_KEY_EXCH_PSK_DHE ||
          context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE ||
+         context->keyExchMethod == TLS13_KEY_EXCH_PSK_MLKEM ||
          context->keyExchMethod == TLS13_KEY_EXCH_PSK_HYBRID)
       {
          //As the server is authenticating via a PSK, it does not send a

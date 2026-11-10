@@ -976,7 +976,8 @@ struct _TlsEncryptionEngine;
    #define TLS_PSK_SUPPORT ENABLED
 #elif ((TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3) && \
    (TLS13_PSK_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
-   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED))
+   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_MLKEM_KE_SUPPORT == ENABLED || \
+   TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED))
    #define TLS_PSK_SUPPORT ENABLED
 #else
    #define TLS_PSK_SUPPORT DISABLED
@@ -2529,7 +2530,6 @@ struct _TlsContext
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_0 && TLS_MIN_VERSION <= TLS_VERSION_1_2)
    uint8_t masterSecret[TLS_MASTER_SECRET_SIZE]; ///<Master secret
    uint8_t keyBlock[192];                    ///<Key material
-   HmacContext hmacContext;                  ///<HMAC context
    Sha1Context *transcriptSha1Context;       ///<SHA-1 context used to compute verify data
 #endif
 
@@ -2574,6 +2574,11 @@ struct _TlsContext
    bool_t earlyDataRejected;                 ///<The 0-RTT data have been rejected by the server
    bool_t earlyDataExtReceived;              ///<The EarlyData extension has been received
    TlsSequenceNumber earlyDataSeqNum;        ///<Early data sequence number
+#endif
+
+#if (TLS_NULL_CIPHER_SUPPORT == ENABLED || TLS_STREAM_CIPHER_SUPPORT == ENABLED || \
+   TLS_CBC_CIPHER_SUPPORT == ENABLED)
+   HmacContext hmacContext;                  ///<HMAC context
 #endif
 
 #if (TLS_DH_SUPPORT == ENABLED)

@@ -599,6 +599,7 @@ error_t tls13ParseEncryptedExtensions(TlsContext *context,
    if(context->keyExchMethod == TLS13_KEY_EXCH_PSK ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_DHE ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE ||
+      context->keyExchMethod == TLS13_KEY_EXCH_PSK_MLKEM ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_HYBRID)
    {
       //As the server is authenticating via a PSK, it does not send a
@@ -721,7 +722,7 @@ error_t tls13ParseNewSessionTicket(TlsContext *context,
          if(context->ticket != NULL)
          {
             //Release memory
-            osMemset(context->ticket, 0, context->ticketLen);
+            cryptoZeroizeMem(context->ticket, context->ticketLen);
             tlsFreeMem(context->ticket);
             context->ticket = NULL;
             context->ticketLen = 0;

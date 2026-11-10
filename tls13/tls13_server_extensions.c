@@ -360,11 +360,13 @@ error_t tls13FormatServerPreSharedKeyExtension(TlsContext *context,
    size_t n = 0;
 
 #if (TLS13_PSK_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
-   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
+   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_MLKEM_KE_SUPPORT == ENABLED || \
+   TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
    //PSK key exchange method?
    if(context->keyExchMethod == TLS13_KEY_EXCH_PSK ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_DHE ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE ||
+      context->keyExchMethod == TLS13_KEY_EXCH_PSK_MLKEM ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_HYBRID)
    {
       TlsExtension *extension;
@@ -572,14 +574,20 @@ error_t tls13ParseClientKeyShareExtension(TlsContext *context,
             if(error)
                return error;
 
-            //DHE key exchange mechanism provides forward secrecy
+#if (TLS13_PSK_DHE_KE_SUPPORT == ENABLED)
+            //Valid PSK?
             if(context->keyExchMethod == TLS13_KEY_EXCH_PSK)
             {
+               //Select PSK with DHE key establishment
                context->keyExchMethod = TLS13_KEY_EXCH_PSK_DHE;
             }
             else
+#endif
             {
+               //Select DHE key establishment
                context->keyExchMethod = TLS13_KEY_EXCH_DHE;
+               context->selectedIdentity = -1;
+               context->earlyDataRejected = TRUE;
             }
          }
          //Elliptic curve group?
@@ -598,14 +606,20 @@ error_t tls13ParseClientKeyShareExtension(TlsContext *context,
             if(error)
                return error;
 
-            //ECDHE key exchange mechanism provides forward secrecy
+#if (TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED)
+            //Valid PSK?
             if(context->keyExchMethod == TLS13_KEY_EXCH_PSK)
             {
+               //Select PSK with ECDHE key establishment
                context->keyExchMethod = TLS13_KEY_EXCH_PSK_ECDHE;
             }
             else
+#endif
             {
+               //Select ECDHE key establishment
                context->keyExchMethod = TLS13_KEY_EXCH_ECDHE;
+               context->selectedIdentity = -1;
+               context->earlyDataRejected = TRUE;
             }
          }
          //ML-KEM key exchange method?
@@ -618,15 +632,20 @@ error_t tls13ParseClientKeyShareExtension(TlsContext *context,
             if(error)
                return error;
 
-            //ML-KEM-512, ML-KEM-768, and ML-KEM-1024 can be used as a
-            //standalone algorithm to achieve post-quantum key agreement
+#if (TLS13_PSK_MLKEM_KE_SUPPORT == ENABLED)
+            //Valid PSK?
             if(context->keyExchMethod == TLS13_KEY_EXCH_PSK)
             {
+               //Select PSK with ML-KEM key establishment
                context->keyExchMethod = TLS13_KEY_EXCH_PSK_MLKEM;
             }
             else
+#endif
             {
+               //Select ML-KEM key establishment
                context->keyExchMethod = TLS13_KEY_EXCH_MLKEM;
+               context->selectedIdentity = -1;
+               context->earlyDataRejected = TRUE;
             }
          }
          //Hybrid key exchange method?
@@ -639,15 +658,20 @@ error_t tls13ParseClientKeyShareExtension(TlsContext *context,
             if(error)
                return error;
 
-            //Hybrid key exchange makes use of two key exchange algorithms
-            //based on different cryptographic assumptions
+#if (TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
+            //Valid PSK?
             if(context->keyExchMethod == TLS13_KEY_EXCH_PSK)
             {
+               //Select PSK with hybrid key establishment
                context->keyExchMethod = TLS13_KEY_EXCH_PSK_HYBRID;
             }
             else
+#endif
             {
+               //Select hybrid key establishment
                context->keyExchMethod = TLS13_KEY_EXCH_HYBRID;
+               context->selectedIdentity = -1;
+               context->earlyDataRejected = TRUE;
             }
          }
          //Unknown group?
@@ -704,6 +728,7 @@ error_t tls13ParsePskKeModesExtension(TlsContext *context,
    if(context->keyExchMethod == TLS13_KEY_EXCH_PSK ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_DHE ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE ||
+      context->keyExchMethod == TLS13_KEY_EXCH_PSK_MLKEM ||
       context->keyExchMethod == TLS13_KEY_EXCH_PSK_HYBRID)
    {
       //PskKeyExchangeModes extension found?
@@ -729,7 +754,7 @@ error_t tls13ParsePskKeModesExtension(TlsContext *context,
             else
 #endif
 #if (TLS13_PSK_DHE_KE_SUPPORT == ENABLED || TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || \
-   TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
+   TLS13_PSK_MLKEM_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
             //PSK with (EC)DHE key establishment?
             if(pskKeModeList->value[i] == TLS_PSK_KEY_EXCH_MODE_PSK_DHE_KE)
             {
@@ -737,6 +762,7 @@ error_t tls13ParsePskKeModesExtension(TlsContext *context,
                //by the client
                if(context->keyExchMethod == TLS13_KEY_EXCH_PSK_DHE ||
                   context->keyExchMethod == TLS13_KEY_EXCH_PSK_ECDHE ||
+                  context->keyExchMethod == TLS13_KEY_EXCH_PSK_MLKEM ||
                   context->keyExchMethod == TLS13_KEY_EXCH_PSK_HYBRID)
                {
                   error = NO_ERROR;
@@ -786,7 +812,8 @@ error_t tls13ParseClientPreSharedKeyExtension(TlsContext *context,
    const Tls13PskIdentityList *identityList, const Tls13PskBinderList *binderList)
 {
 #if (TLS13_PSK_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
-   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
+   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_MLKEM_KE_SUPPORT == ENABLED || \
+   TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
    //PreSharedKey extension found?
    if(identityList != NULL && binderList != NULL)
    {
@@ -913,7 +940,7 @@ error_t tls13ParseClientPreSharedKeyExtension(TlsContext *context,
          {
             //Decrypt the received ticket and verify the ticket's validity
             error = tls13VerifyTicket(context, identity->value,
-               htons(identity->length), obfuscatedTicketAge);
+               ntohs(identity->length), obfuscatedTicketAge);
 
             //Valid ticket?
             if(!error)

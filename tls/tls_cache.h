@@ -42,8 +42,13 @@ extern "C" {
 //Session cache management
 TlsCache *tlsInitCache(uint_t size);
 
-TlsSessionState *tlsFindCache(TlsCache *cache, const uint8_t *sessionId,
+void tlsLockCache(TlsCache *cache);
+void tlsUnlockCache(TlsCache *cache);
+
+TlsSessionState *tlsFindSession(TlsCache *cache, const uint8_t *sessionId,
    size_t sessionIdLen);
+
+TlsSessionState *tlsCreateSession(TlsCache *cache);
 
 error_t tlsSaveToCache(TlsContext *context);
 error_t tlsRemoveFromCache(TlsContext *context);

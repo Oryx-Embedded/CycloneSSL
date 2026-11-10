@@ -148,6 +148,16 @@ error_t tls13NegotiateCipherSuite(TlsContext *context, const void *clientHello,
    if(error)
       return error;
 
+   //Non-PSK handshake?
+   if(context->selectedIdentity < 0)
+   {
+      //Select the appropriate certificate
+      error = tlsSelectCertificate(context, extensions);
+      //Any error to report?
+      if(error)
+         return ERROR_HANDSHAKE_FAILED;
+   }
+
    //Incorrect (EC)DHE share?
    if(extensions->keyShareList != NULL && context->namedGroup == TLS_GROUP_NONE)
    {
@@ -470,7 +480,8 @@ error_t tls13VerifyPskBinder(TlsContext *context, const void *clientHello,
    const Tls13PskBinderList *binderList, int_t selectedIdentity)
 {
 #if (TLS13_PSK_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
-   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
+   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_MLKEM_KE_SUPPORT == ENABLED || \
+   TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
    error_t error;
    int_t i;
    size_t n;
@@ -574,7 +585,7 @@ error_t tls13VerifyPskBinder(TlsContext *context, const void *clientHello,
 
    //Prior to accepting PSK key establishment, the server must validate the
    //corresponding binder value
-   if(osMemcmp(calculatedBinder, binder->value, binder->length))
+   if(cryptoCompMem(calculatedBinder, binder->value, binder->length) != 0)
    {
       //If this value does not validate, the server must abort the handshake
       return ERROR_DECRYPTION_FAILED;

@@ -124,7 +124,7 @@ error_t tls13SaveSessionTicket(const TlsContext *context,
    session->ticketTimestamp = context->ticketTimestamp;
    session->ticketLifetime = context->ticketLifetime;
    session->ticketAgeAdd = context->ticketAgeAdd;
-   session->maxEarlyDataSize = context->maxEarlyDataSize;
+   session->maxEarlyDataSize = (uint32_t) context->maxEarlyDataSize;
 
    //Copy session ticket
    osMemcpy(session->ticket, context->ticket, context->ticketLen);
@@ -224,7 +224,7 @@ error_t tls13RestoreSessionTicket(TlsContext *context,
    //Release existing session ticket, if any
    if(context->ticket != NULL)
    {
-      osMemset(context->ticket, 0, context->ticketLen);
+      cryptoZeroizeMem(context->ticket, context->ticketLen);
       tlsFreeMem(context->ticket);
       context->ticket = NULL;
       context->ticketLen = 0;
@@ -517,7 +517,7 @@ error_t tls13VerifyTicket(TlsContext *context, const uint8_t *ticket,
    } while(0);
 
    //Release state information
-   osMemset(state, 0, length);
+   cryptoZeroizeMem(state, length);
    tlsFreeMem(state);
 
    //Return status code

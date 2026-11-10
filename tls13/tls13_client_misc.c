@@ -110,7 +110,8 @@ error_t tls13ComputePskBinders(TlsContext *context, const void *clientHello,
    error = NO_ERROR;
 
 #if (TLS13_PSK_KE_SUPPORT == ENABLED || TLS13_PSK_DHE_KE_SUPPORT == ENABLED || \
-   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
+   TLS13_PSK_ECDHE_KE_SUPPORT == ENABLED || TLS13_PSK_MLKEM_KE_SUPPORT == ENABLED || \
+   TLS13_PSK_HYBRID_KE_SUPPORT == ENABLED)
    //Check whether the ClientHello message contains a PreSharedKey extension
    if(identityList != NULL && binderList != NULL)
    {
