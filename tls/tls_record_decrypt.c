@@ -499,9 +499,7 @@ error_t tlsVerifyMessageAuthCode(TlsContext *context,
    TlsEncryptionEngine *decryptionEngine, void *record)
 {
    error_t error;
-   size_t i;
    size_t length;
-   uint8_t mask;
    uint8_t *data;
    uint8_t *digest;
    const HashAlgo *hashAlgo;
@@ -578,15 +576,9 @@ error_t tlsVerifyMessageAuthCode(TlsContext *context,
    TRACE_DEBUG("Computed MAC:\r\n");
    TRACE_DEBUG_ARRAY("  ", digest, hashAlgo->digestSize);
 
-   //The calculated MAC is bitwise compared to the received message
-   //authentication code
-   for(mask = 0, i = 0; i < hashAlgo->digestSize; i++)
-   {
-      mask |= data[length + i] ^ digest[i];
-   }
-
-   //Invalid message authentication code?
-   if(mask != 0)
+   //The calculated MAC is compared to the received message authentication
+   //code
+   if(cryptoCompMem(data + length, digest, hashAlgo->digestSize) != 0)
       return ERROR_BAD_RECORD_MAC;
 
 #if (TLS_MAX_VERSION >= TLS_VERSION_1_3 && TLS_MIN_VERSION <= TLS_VERSION_1_3)

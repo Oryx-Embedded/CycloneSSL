@@ -307,6 +307,7 @@ error_t dtls13ComputeMac(TlsContext *context,
    size_t nonceLen, const uint8_t *aad, size_t aadLen, const uint8_t *data,
    size_t dataLen, uint8_t *mac)
 {
+   error_t error;
    HmacContext *hmacContext;
 
    //Point to the HMAC context
@@ -314,19 +315,23 @@ error_t dtls13ComputeMac(TlsContext *context,
 
    //The protect operation provides the integrity protection using HMAC SHA-256
    //or HMAC SHA-384 (refer to RFC 9150, section 5)
-   hmacInit(hmacContext, encryptionEngine->hashAlgo,
+   error = hmacInit(hmacContext, encryptionEngine->hashAlgo,
       encryptionEngine->encKey, encryptionEngine->encKeyLen);
 
-   //Compute HMAC(write_key, nonce || additional_data || DTLSInnerPlaintext)
-   hmacUpdate(hmacContext, nonce, nonceLen);
-   hmacUpdate(hmacContext, aad, aadLen);
-   hmacUpdate(hmacContext, data, dataLen);
+   //Check status code
+   if(!error)
+   {
+      //Compute HMAC(write_key, nonce || additional_data || DTLSInnerPlaintext)
+      hmacUpdate(hmacContext, nonce, nonceLen);
+      hmacUpdate(hmacContext, aad, aadLen);
+      hmacUpdate(hmacContext, data, dataLen);
 
-   //Finalize HMAC computation
-   hmacFinal(hmacContext, mac);
+      //Finalize HMAC computation
+      hmacFinal(hmacContext, mac);
+   }
 
-   //Successful processing
-   return NO_ERROR;
+   //Return status code
+   return error;
 }
 
 

@@ -55,6 +55,7 @@ error_t tlsInitTranscriptHash(TlsContext *context)
    //MD5 context already instantiated?
    if(context->transcriptMd5Context != NULL)
    {
+      md5Deinit(context->transcriptMd5Context);
       tlsFreeMem(context->transcriptMd5Context);
       context->transcriptMd5Context = NULL;
    }
@@ -64,6 +65,7 @@ error_t tlsInitTranscriptHash(TlsContext *context)
    //SHA-1 context already instantiated?
    if(context->transcriptSha1Context != NULL)
    {
+      sha1Deinit(context->transcriptSha1Context);
       tlsFreeMem(context->transcriptSha1Context);
       context->transcriptSha1Context = NULL;
    }
@@ -322,7 +324,7 @@ void tlsFreeTranscriptHash(TlsContext *context)
    //Release MD5 hash context
    if(context->transcriptMd5Context != NULL)
    {
-      cryptoZeroizeMem(context->transcriptMd5Context, sizeof(Md5Context));
+      md5Deinit(context->transcriptMd5Context);
       tlsFreeMem(context->transcriptMd5Context);
       context->transcriptMd5Context = NULL;
    }
@@ -332,7 +334,7 @@ void tlsFreeTranscriptHash(TlsContext *context)
    //Release SHA-1 hash context
    if(context->transcriptSha1Context != NULL)
    {
-      cryptoZeroizeMem(context->transcriptSha1Context, sizeof(Sha1Context));
+      sha1Deinit(context->transcriptSha1Context);
       tlsFreeMem(context->transcriptSha1Context);
       context->transcriptSha1Context = NULL;
    }

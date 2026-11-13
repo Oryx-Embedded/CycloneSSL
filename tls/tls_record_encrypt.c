@@ -536,59 +536,64 @@ __weak_func error_t tlsComputeMac(TlsContext *context,
    TlsEncryptionEngine *encryptionEngine, const void *record,
    const uint8_t *data, size_t dataLen, uint8_t *mac)
 {
+   error_t error;
    HmacContext *hmacContext;
 
    //Point to the HMAC context
    hmacContext = encryptionEngine->hmacContext;
 
    //Initialize HMAC calculation
-   hmacInit(hmacContext, encryptionEngine->hashAlgo,
+   error = hmacInit(hmacContext, encryptionEngine->hashAlgo,
       encryptionEngine->macKey, encryptionEngine->macKeyLen);
 
+   //Check status code
+   if(!error)
+   {
 #if (DTLS_SUPPORT == ENABLED)
-   //DTLS protocol?
-   if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_DATAGRAM)
-   {
-      const DtlsRecord *dtlsRecord;
+      //DTLS protocol?
+      if(context->transportProtocol == TLS_TRANSPORT_PROTOCOL_DATAGRAM)
+      {
+         const DtlsRecord *dtlsRecord;
 
-      //Point to the DTLS record
-      dtlsRecord = (DtlsRecord *) record;
+         //Point to the DTLS record
+         dtlsRecord = (DtlsRecord *) record;
 
-      //Rather than using TLS's implicit sequence number, the sequence number
-      //used to compute the MAC is the 64-bit value formed by concatenating the
-      //epoch and the sequence number in the order they appear on the wire
-      //(refer to RFC 9147, section 4.1.2.1)
-      hmacUpdate(hmacContext, (void *) &dtlsRecord->epoch, 2);
-      hmacUpdate(hmacContext, &dtlsRecord->seqNum, 6);
+         //Rather than using TLS's implicit sequence number, the sequence
+         //number used to compute the MAC is the 64-bit value formed by
+         //concatenating the epoch and the sequence number in the order they
+         //appear on the wire (refer to RFC 9147, section 4.1.2.1)
+         hmacUpdate(hmacContext, (void *) &dtlsRecord->epoch, 2);
+         hmacUpdate(hmacContext, &dtlsRecord->seqNum, 6);
 
-      //Compute MAC over the record contents
-      hmacUpdate(hmacContext, &dtlsRecord->type, 3);
-      hmacUpdate(hmacContext, (void *) &dtlsRecord->length, 2);
-      hmacUpdate(hmacContext, data, dataLen);
-   }
-   else
+         //Compute MAC over the record contents
+         hmacUpdate(hmacContext, &dtlsRecord->type, 3);
+         hmacUpdate(hmacContext, (void *) &dtlsRecord->length, 2);
+         hmacUpdate(hmacContext, data, dataLen);
+      }
+      else
 #endif
-   //TLS protocol?
-   {
-      const TlsRecord *tlsRecord;
+      //TLS protocol?
+      {
+         const TlsRecord *tlsRecord;
 
-      //Point to the TLS record
-      tlsRecord = (TlsRecord *) record;
+         //Point to the TLS record
+         tlsRecord = (TlsRecord *) record;
 
-      //Compute MAC over the implicit sequence number
-      hmacUpdate(hmacContext, &encryptionEngine->seqNum,
-         sizeof(TlsSequenceNumber));
+         //Compute MAC over the implicit sequence number
+         hmacUpdate(hmacContext, &encryptionEngine->seqNum,
+            sizeof(TlsSequenceNumber));
 
-      //Compute MAC over the record contents
-      hmacUpdate(hmacContext, tlsRecord, sizeof(TlsRecord));
-      hmacUpdate(hmacContext, data, dataLen);
+         //Compute MAC over the record contents
+         hmacUpdate(hmacContext, tlsRecord, sizeof(TlsRecord));
+         hmacUpdate(hmacContext, data, dataLen);
+      }
+
+      //Finalize HMAC computation
+      hmacFinal(hmacContext, mac);
    }
 
-   //Finalize HMAC computation
-   hmacFinal(hmacContext, mac);
-
-   //Successful processing
-   return NO_ERROR;
+   //Return status code
+   return error;
 }
 
 #endif

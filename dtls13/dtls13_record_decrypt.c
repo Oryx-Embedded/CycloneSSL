@@ -621,8 +621,7 @@ error_t dtls13VerifyMac(TlsContext *context,
    size_t nonceLen, const uint8_t *aad, size_t aadLen, const uint8_t *data,
    size_t dataLen, uint8_t *mac)
 {
-   size_t i;
-   uint8_t mask;
+   error_t error;
    HmacContext *hmacContext;
    uint8_t temp[MAX_HASH_DIGEST_SIZE];
 
@@ -631,26 +630,30 @@ error_t dtls13VerifyMac(TlsContext *context,
 
    //The protect operation provides the integrity protection using HMAC SHA-256
    //or HMAC SHA-384 (refer to RFC 9150, section 5)
-   hmacInit(hmacContext, decryptionEngine->hashAlgo,
+   error = hmacInit(hmacContext, decryptionEngine->hashAlgo,
       decryptionEngine->encKey, decryptionEngine->encKeyLen);
 
-   //Compute HMAC(write_key, nonce || additional_data || DTLSInnerPlaintext)
-   hmacUpdate(hmacContext, nonce, nonceLen);
-   hmacUpdate(hmacContext, aad, aadLen);
-   hmacUpdate(hmacContext, data, dataLen);
-
-   //Finalize HMAC computation
-   hmacFinal(hmacContext, temp);
-
-   //The calculated MAC is bitwise compared to the received message
-   //authentication code
-   for(mask = 0, i = 0; i < decryptionEngine->hashAlgo->digestSize; i++)
+   //Check status code
+   if(!error)
    {
-      mask |= mac[i] ^ temp[i];
+      //Compute HMAC(write_key, nonce || additional_data || DTLSInnerPlaintext)
+      hmacUpdate(hmacContext, nonce, nonceLen);
+      hmacUpdate(hmacContext, aad, aadLen);
+      hmacUpdate(hmacContext, data, dataLen);
+
+      //Finalize HMAC computation
+      hmacFinal(hmacContext, temp);
+
+      //The calculated MAC is compared to the received message authentication
+      //code. The message is authenticated if and only if the MAC values match
+      if(cryptoCompMem(mac, temp, decryptionEngine->hashAlgo->digestSize) != 0)
+      {
+         error = ERROR_BAD_RECORD_MAC;
+      }
    }
 
-   //The message is authenticated if and only if the MAC values match
-   return (mask == 0) ? NO_ERROR : ERROR_BAD_RECORD_MAC;
+   //Return status code
+   return error;
 }
 
 

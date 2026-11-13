@@ -1225,7 +1225,7 @@ void tlsFreeEncryptionEngine(TlsEncryptionEngine *encryptionEngine)
    if(encryptionEngine->gcmContext != NULL)
    {
       //Erase GCM context
-      cryptoZeroizeMem(encryptionEngine->gcmContext, sizeof(GcmContext));
+      gcmDeinit(encryptionEngine->gcmContext);
 
       //Release memory
       tlsFreeMem(encryptionEngine->gcmContext);

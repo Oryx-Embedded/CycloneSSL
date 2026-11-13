@@ -808,6 +808,7 @@ error_t tls13Decapsulate(TlsContext *context, const uint8_t *keyShare,
 error_t tls13ComputeMac(TlsContext *context, TlsEncryptionEngine *encryptionEngine,
    void *record, const uint8_t *data, size_t dataLen, uint8_t *mac)
 {
+   error_t error;
    size_t aadLen;
    size_t nonceLen;
    uint8_t aad[13];
@@ -818,26 +819,30 @@ error_t tls13ComputeMac(TlsContext *context, TlsEncryptionEngine *encryptionEngi
    hmacContext = encryptionEngine->hmacContext;
 
    //Initialize HMAC calculation
-   hmacInit(hmacContext, encryptionEngine->hashAlgo,
+   error = hmacInit(hmacContext, encryptionEngine->hashAlgo,
       encryptionEngine->encKey, encryptionEngine->encKeyLen);
 
-   //Additional data to be authenticated
-   tlsFormatAad(context, encryptionEngine, record, aad, &aadLen);
+   //Check status code
+   if(!error)
+   {
+      //Additional data to be authenticated
+      tlsFormatAad(context, encryptionEngine, record, aad, &aadLen);
 
-   //Generate the nonce
-   tlsFormatNonce(context, encryptionEngine, record, data, nonce,
-      &nonceLen);
+      //Generate the nonce
+      tlsFormatNonce(context, encryptionEngine, record, data, nonce,
+         &nonceLen);
 
-   //Compute HMAC(write_key, nonce || additional_data || plaintext)
-   hmacUpdate(hmacContext, nonce, nonceLen);
-   hmacUpdate(hmacContext, aad, aadLen);
-   hmacUpdate(hmacContext, data, dataLen);
+      //Compute HMAC(write_key, nonce || additional_data || plaintext)
+      hmacUpdate(hmacContext, nonce, nonceLen);
+      hmacUpdate(hmacContext, aad, aadLen);
+      hmacUpdate(hmacContext, data, dataLen);
 
-   //Finalize HMAC computation
-   hmacFinal(hmacContext, mac);
+      //Finalize HMAC computation
+      hmacFinal(hmacContext, mac);
+   }
 
-   //Successful processing
-   return NO_ERROR;
+   //Return status code
+   return error;
 }
 
 
