@@ -143,6 +143,13 @@
    #error TLS13_NEW_SESSION_TICKET_COUNT parameter is not valid
 #endif
 
+//Maximum number of key share entries in a ClientHello
+#ifndef TLS13_MAX_KEY_SHARE_ENTRIES
+   #define TLS13_MAX_KEY_SHARE_ENTRIES 16
+#elif (TLS13_MAX_KEY_SHARE_ENTRIES < 1)
+   #error TLS13_MAX_KEY_SHARE_ENTRIES parameter is not valid
+#endif
+
 //Maximum size for HKDF digests
 #if (TLS_SHA384_SUPPORT == ENABLED)
    #define TLS13_MAX_HKDF_DIGEST_SIZE 48

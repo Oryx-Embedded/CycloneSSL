@@ -41,6 +41,7 @@ struct _TlsEncryptionEngine;
 
 //Dependencies
 #include "core/crypto.h"
+#include "core/crypto_mem.h"
 #include "mac/hmac.h"
 #include "cipher_modes/cipher_modes.h"
 #include "aead/aead_algorithms.h"
@@ -866,6 +867,13 @@ struct _TlsEncryptionEngine;
    #define TLS_PREMASTER_SECRET_SIZE (TLS_MAX_DH_MODULUS_SIZE / 8)
 #elif (TLS_PREMASTER_SECRET_SIZE < 48)
    #error TLS_PREMASTER_SECRET_SIZE parameter is not valid
+#endif
+
+//Maximum number of extensions in a message
+#ifndef TLS_MAX_EXTENSIONS
+   #define TLS_MAX_EXTENSIONS 64
+#elif (TLS_MAX_EXTENSIONS < 1)
+   #error TLS_MAX_EXTENSIONS parameter is not valid
 #endif
 
 //Maximum number of consecutive warning alerts

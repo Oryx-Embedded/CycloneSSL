@@ -57,6 +57,7 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
    size_t length, TlsHelloExtensions *extensions)
 {
    error_t error;
+   uint_t i;
    size_t n;
    uint16_t type;
    const TlsExtension *extension;
@@ -95,8 +96,13 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
    length -= sizeof(TlsExtensionList);
 
    //Parse the list of extensions offered by the peer
-   while(length > 0)
+   for(i = 0; length > 0; i++)
    {
+      //Limit the number of extensions (the duplicate check below takes a time
+      //that is quadratic in the number of extensions)
+      if(i >= TLS_MAX_EXTENSIONS)
+         return ERROR_DECODING_FAILED;
+
       //Point to the current extension
       extension = (TlsExtension *) p;
 
@@ -494,6 +500,7 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
          //Check message type
          if(msgType == TLS_TYPE_CLIENT_HELLO)
          {
+            uint_t j;
             size_t k;
             size_t m;
             const Tls13KeyShareList *keyShareList;
@@ -515,8 +522,13 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
             m = ntohs(keyShareList->length);
 
             //Parse the list of key share entries offered by the peer
-            while(m > 0)
+            for(j = 0; m > 0; j++)
             {
+               //Limit the number of key share entries (the duplicate check
+               //below takes a time that is quadratic in the number of entries)
+               if(j >= TLS13_MAX_KEY_SHARE_ENTRIES)
+                  return ERROR_DECODING_FAILED;
+
                //Malformed extension?
                if(m < sizeof(Tls13KeyShareEntry))
                   return ERROR_DECODING_FAILED;
