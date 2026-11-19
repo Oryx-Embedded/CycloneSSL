@@ -970,16 +970,26 @@ error_t tlsFormatCertAuthorities(TlsContext *context, uint8_t *p,
                //Valid CA certificate?
                if(!error)
                {
-                  //Each distinguished name is preceded by a 2-byte length field
-                  STORE16BE(certInfo->tbsCert.subject.raw.length, p);
+                  //Limit the size of the list
+                  if((n + certInfo->tbsCert.subject.raw.length + 2) <=
+                     TLS_MAX_CERT_AUTHORITIES_SIZE)
+                  {
+                     //Each distinguished name is preceded by a 2-byte length
+                     //field
+                     STORE16BE(certInfo->tbsCert.subject.raw.length, p);
 
-                  //The distinguished name shall be DER-encoded
-                  osMemcpy(p + 2, certInfo->tbsCert.subject.raw.value,
-                     certInfo->tbsCert.subject.raw.length);
+                     //The distinguished name shall be DER-encoded
+                     osMemcpy(p + 2, certInfo->tbsCert.subject.raw.value,
+                        certInfo->tbsCert.subject.raw.length);
 
-                  //Advance write pointer
-                  p += certInfo->tbsCert.subject.raw.length + 2;
-                  n += certInfo->tbsCert.subject.raw.length + 2;
+                     //Advance write pointer
+                     p += certInfo->tbsCert.subject.raw.length + 2;
+                     n += certInfo->tbsCert.subject.raw.length + 2;
+                  }
+                  else
+                  {
+                     //The distinguished names that do not fit are omitted
+                  }
                }
                else
                {
@@ -1497,11 +1507,7 @@ error_t tlsParseFinished(TlsContext *context, const TlsFinished *message,
       //Check the length of the Finished message
       if(length != context->serverVerifyDataLen)
       {
-#if (TLS_MAX_EMPTY_RECORDS > 0)
-         return ERROR_INVALID_SIGNATURE;
-#else
          return ERROR_DECODING_FAILED;
-#endif
       }
 
       //Check the resulting verify data
@@ -1528,11 +1534,7 @@ error_t tlsParseFinished(TlsContext *context, const TlsFinished *message,
       //Check the length of the Finished message
       if(length != context->clientVerifyDataLen)
       {
-#if (TLS_MAX_EMPTY_RECORDS > 0)
-         return ERROR_INVALID_SIGNATURE;
-#else
          return ERROR_DECODING_FAILED;
-#endif
       }
 
       //Check the resulting verify data

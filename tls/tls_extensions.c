@@ -590,11 +590,7 @@ error_t tlsParseHelloExtensions(TlsMessageType msgType, const uint8_t *p,
          else
          {
             //The extension is not specified for the message in which it appears
-#if (TLS_MAX_EMPTY_RECORDS > 0)
-            return ERROR_UNSUPPORTED_EXTENSION;
-#else
             return ERROR_ILLEGAL_PARAMETER;
-#endif
          }
       }
       else if(type == TLS_EXT_PSK_KEY_EXCHANGE_MODES)

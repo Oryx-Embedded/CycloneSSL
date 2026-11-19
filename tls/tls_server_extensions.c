@@ -732,7 +732,11 @@ error_t tlsParseClientSniExtension(TlsContext *context,
       size_t i;
       size_t n;
       size_t length;
+      bool_t found;
       const TlsServerName *serverName;
+
+      //No host name has been found yet
+      found = FALSE;
 
       //In order to provide the server name, clients may include ServerName
       //extension
@@ -774,7 +778,7 @@ error_t tlsParseClientSniExtension(TlsContext *context,
 
             //The ServerNameList must not contain more than one name of the
             //same type (refer to RFC 6066, section 3)
-            if(context->serverName != NULL)
+            if(found)
                return ERROR_ILLEGAL_PARAMETER;
 
             //Check the length of the name
@@ -791,6 +795,9 @@ error_t tlsParseClientSniExtension(TlsContext *context,
                //Properly terminate the string with a NULL character
                context->serverName[n] = '\0';
             }
+
+            //A host name has been found (even if it is too long to be saved)
+            found = TRUE;
          }
       }
    }

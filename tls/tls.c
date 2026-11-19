@@ -87,6 +87,11 @@ TlsContext *tlsInit(void)
       //Default client authentication mode
       context->clientAuthMode = TLS_CLIENT_AUTH_NONE;
 
+      //The peer's certificate chain is validated by default
+      context->certChainValidation = TRUE;
+      //The validity period of certificates is checked by default
+      context->certValidityCheck = TRUE;
+
       //Minimum and maximum versions accepted by the implementation
       context->versionMin = TLS_MIN_VERSION;
       context->versionMax = TLS_MAX_VERSION;
@@ -915,6 +920,10 @@ error_t tlsSetAlpnProtocolList(TlsContext *context, const char_t *protocolList)
    //Retrieve the length of the list
    length = osStrlen(protocolList);
 
+   //Check the length of the list
+   if(length > 255)
+      return ERROR_INVALID_LENGTH;
+
    //Check whether the list of supported protocols has already been configured
    if(context->protocolList != NULL)
    {
@@ -1408,6 +1417,50 @@ error_t tlsSetCertificateVerifyCallback(TlsContext *context,
    context->certVerifyCallback = certVerifyCallback;
    //This opaque pointer will be directly passed to the callback function
    context->certVerifyParam = param;
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
+ * @brief Enable certificate chain validation
+ * @param[in] context Pointer to the TLS context
+ * @param[in] enabled Specifies whether the peer's certificate chain must be
+ *   validated against the trusted CA list
+ * @return Error code
+ **/
+
+error_t tlsEnableCertChainValidation(TlsContext *context, bool_t enabled)
+{
+   //Invalid TLS context?
+   if(context == NULL)
+      return ERROR_INVALID_PARAMETER;
+
+   //Enable or disable certificate chain validation
+   context->certChainValidation = enabled;
+
+   //Successful processing
+   return NO_ERROR;
+}
+
+
+/**
+ * @brief Enable certificate validity period check
+ * @param[in] context Pointer to the TLS context
+ * @param[in] enabled Specifies whether the validity period of certificates must
+ *   be checked
+ * @return Error code
+ **/
+
+error_t tlsEnableCertValidityCheck(TlsContext *context, bool_t enabled)
+{
+   //Invalid TLS context?
+   if(context == NULL)
+      return ERROR_INVALID_PARAMETER;
+
+   //Enable or disable the validity period check
+   context->certValidityCheck = enabled;
 
    //Successful processing
    return NO_ERROR;

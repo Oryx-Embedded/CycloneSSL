@@ -339,6 +339,7 @@ error_t tlsGenerateRsaSignature(const RsaPrivateKey *key,
    uint8_t *em;
    Mpi m;
    Mpi s;
+   Mpi t;
 
    //Debug message
    TRACE_DEBUG("RSA signature generation...\r\n");
@@ -364,6 +365,7 @@ error_t tlsGenerateRsaSignature(const RsaPrivateKey *key,
    //Initialize multiple-precision integers
    mpiInit(&m);
    mpiInit(&s);
+   mpiInit(&t);
 
    //Get the length in octets of the modulus n
    k = mpiGetByteLength(&key->n);
@@ -410,6 +412,33 @@ error_t tlsGenerateRsaSignature(const RsaPrivateKey *key,
       if(error)
          break;
 
+      //When unprotected, RSA-CRT is vulnerable to the Bellcore attack
+      if(mpiGetLength(&key->n) > 0 && mpiGetLength(&key->e) > 0 &&
+         mpiGetLength(&key->p) > 0 && mpiGetLength(&key->q) > 0 &&
+         mpiGetLength(&key->dp) > 0 && mpiGetLength(&key->dq) > 0 &&
+         mpiGetLength(&key->qinv) > 0)
+      {
+         RsaPublicKey publicKey;
+
+         //The pair of numbers (n, e) form the RSA public key
+         publicKey.n = key->n;
+         publicKey.e = key->e;
+
+         //Apply the RSAVP1 verification primitive
+         error = rsavp1(&publicKey, &s, &t);
+         //Any error to report?
+         if(error)
+            break;
+
+         //Verify the result in order to protect against RSA-CRT key leak
+         if(mpiComp(&t, &m) != 0)
+         {
+            //A signature fault has been detected
+            error = ERROR_FAILURE;
+            break;
+         }
+      }
+
       //Convert the signature representative s to a signature of length k octets
       error = mpiExport(&s, signature, k, MPI_FORMAT_BIG_ENDIAN);
       //Conversion failed?
@@ -429,6 +458,7 @@ error_t tlsGenerateRsaSignature(const RsaPrivateKey *key,
    //Free previously allocated memory
    mpiFree(&m);
    mpiFree(&s);
+   mpiFree(&t);
 
    //Return status code
    return error;

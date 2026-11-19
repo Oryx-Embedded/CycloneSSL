@@ -1042,7 +1042,20 @@ error_t tlsResumeStatelessSession(TlsContext *context, const uint8_t *sessionId,
       length = ntohs(extensions->sessionTicket->length);
 
       //Check the length of the ticket
-      if(length > 0 && length <= TLS_MAX_TICKET_SIZE)
+      if(length == 0)
+      {
+         //The extension will be empty if the client does not already possess
+         //a ticket for the server (refer to RFC 5077, section 3.1)
+         error = ERROR_NO_TICKET;
+      }
+      else if(length > TLS_MAX_TICKET_SIZE)
+      {
+         //The ticket is too large to be processed. Since a ticket has been
+         //presented, the server must not attempt to use the session ID for
+         //stateful session resumption (refer to RFC 5077, section 3.4)
+         error = ERROR_INVALID_TICKET;
+      }
+      else
       {
          //Allocate a buffer to store the decrypted state information
          state = tlsAllocMem(length);
@@ -1176,12 +1189,6 @@ error_t tlsResumeStatelessSession(TlsContext *context, const uint8_t *sessionId,
             //Failed to allocate memory
             error = ERROR_OUT_OF_MEMORY;
          }
-      }
-      else
-      {
-         //The extension will be empty if the client does not already possess
-         //a ticket for the server (refer to RFC 5077, section 3.1)
-         error = ERROR_NO_TICKET;
       }
 
       //Valid ticket?

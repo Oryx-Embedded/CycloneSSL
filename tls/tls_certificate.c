@@ -356,11 +356,7 @@ __weak_func error_t tlsParseCertificateList(TlsContext *context,
       if(error)
       {
          //Report an error
-#if (TLS_MAX_EMPTY_RECORDS > 0)
-         error = ERROR_DECODING_FAILED;
-#else
          error = ERROR_BAD_CERTIFICATE;
-#endif
          break;
       }
 
@@ -509,8 +505,15 @@ __weak_func error_t tlsParseCertificateList(TlsContext *context,
          //Certificate chain validation in progress?
          if(certValidResult == ERROR_UNKNOWN_CA)
          {
+            X509Options options;
+
+            //Certificate validation options
+            options = X509_DEFAULT_OPTIONS;
+            options.disableValidityCheck = !context->certValidityCheck;
+
             //Validate current certificate
-            error = x509ValidateCertificate(certInfo, issuerCertInfo, i);
+            error = x509ValidateCertificateEx(certInfo, issuerCertInfo, i,
+               &options);
             //Certificate validation failed?
             if(error)
                break;
@@ -1004,12 +1007,6 @@ error_t tlsValidateCertificate(TlsContext *context,
    const X509CertInfo *certInfo, uint_t pathLen, const char_t *subjectName)
 {
    error_t error;
-   size_t pemCertLen;
-   const char_t *trustedCaList;
-   size_t trustedCaListLen;
-   uint8_t *derCert;
-   size_t derCertLen;
-   X509CertInfo *caCertInfo;
 
    //Initialize status code
    error = ERROR_UNKNOWN_CA;
@@ -1029,9 +1026,26 @@ error_t tlsValidateCertificate(TlsContext *context,
    }
    else if(error == ERROR_UNKNOWN_CA)
    {
-      //Check whether the certificate should be checked against root CAs
-      if(context->trustedCaList != NULL)
+      //Check whether the certificate chain should be validated
+      if(!context->certChainValidation)
       {
+         //Do not check the certificate against root CAs
+         error = NO_ERROR;
+      }
+      else if(context->trustedCaList != NULL && context->trustedCaListLen > 0)
+      {
+         size_t pemCertLen;
+         const char_t *trustedCaList;
+         size_t trustedCaListLen;
+         uint8_t *derCert;
+         size_t derCertLen;
+         X509CertInfo *caCertInfo;
+         X509Options options;
+
+         //Certificate validation options
+         options = X509_DEFAULT_OPTIONS;
+         options.disableValidityCheck = !context->certValidityCheck;
+
          //Point to the first trusted CA certificate
          trustedCaList = context->trustedCaList;
          //Get the total length, in bytes, of the trusted CA list
@@ -1076,8 +1090,8 @@ error_t tlsValidateCertificate(TlsContext *context,
                      if(!error)
                      {
                         //Validate the certificate with the current CA
-                        error = x509ValidateCertificate(certInfo, caCertInfo,
-                           pathLen);
+                        error = x509ValidateCertificateEx(certInfo, caCertInfo,
+                           pathLen, &options);
                      }
 
                      //Check status code
@@ -1131,8 +1145,8 @@ error_t tlsValidateCertificate(TlsContext *context,
       }
       else
       {
-         //Do not check the certificate against root CAs
-         error = NO_ERROR;
+         //The certificate chain cannot be validated without a trusted CA list
+         error = ERROR_UNKNOWN_CA;
       }
    }
    else if(error == ERROR_BAD_CERTIFICATE ||
@@ -1547,12 +1561,38 @@ error_t tlsReadSubjectPublicKey(TlsContext *context,
       //Check status code
       if(!error)
       {
+         //The RSA modulus must be an odd integer
+         if(mpiIsEven(&context->peerRsaPublicKey.n))
+         {
+            //Report an error
+            error = ERROR_BAD_CERTIFICATE;
+         }
+
          //Get the length of the modulus, in bits
          k = mpiGetBitLength(&context->peerRsaPublicKey.n);
 
          //Applications should also enforce minimum and maximum key sizes (refer
          //to RFC 8446, appendix C.2)
          if(k < TLS_MIN_RSA_MODULUS_SIZE || k > TLS_MAX_RSA_MODULUS_SIZE)
+         {
+            //Report an error
+            error = ERROR_BAD_CERTIFICATE;
+         }
+
+         //The public exponent must be an odd integer greater than 1
+         if(mpiCompInt(&context->peerRsaPublicKey.e, 1) <= 0 ||
+            mpiIsEven(&context->peerRsaPublicKey.e))
+         {
+            //Report an error
+            error = ERROR_BAD_CERTIFICATE;
+         }
+
+         //Get the length of the public exponent, in bits
+         k = mpiGetBitLength(&context->peerRsaPublicKey.e);
+
+         //Limit the size of the public exponent to bound the cost of the RSA
+         //public operation
+         if(k > TLS_MAX_RSA_PUBLIC_EXPONENT_SIZE)
          {
             //Report an error
             error = ERROR_BAD_CERTIFICATE;

@@ -386,24 +386,35 @@ error_t tlsFormatTrustedAuthorities(TlsContext *context, uint8_t *p,
                //Valid CA certificate?
                if(!error)
                {
-                  //Point to the CA root key identifier
-                  trustedAuthority = (TlsTrustedAuthority *) p;
+                  //Limit the size of the list
+                  if((n + sizeof(TlsTrustedAuthority) + 2 +
+                     certInfo->tbsCert.subject.raw.length) <=
+                     TLS_MAX_CERT_AUTHORITIES_SIZE)
+                  {
+                     //Point to the CA root key identifier
+                     trustedAuthority = (TlsTrustedAuthority *) p;
 
-                  //The CA root key is identified via a distinguished name
-                  trustedAuthority->type = TLS_CA_ROOT_KEY_ID_TYPE_X509_NAME;
+                     //The CA root key is identified via a distinguished name
+                     trustedAuthority->type = TLS_CA_ROOT_KEY_ID_TYPE_X509_NAME;
 
-                  //Each distinguished name is preceded by a 2-byte length field
-                  STORE16BE(certInfo->tbsCert.subject.raw.length,
-                     trustedAuthority->identifier);
+                     //Each distinguished name is preceded by a 2-byte length
+                     //field
+                     STORE16BE(certInfo->tbsCert.subject.raw.length,
+                        trustedAuthority->identifier);
 
-                  //The distinguished name shall be DER-encoded
-                  osMemcpy(trustedAuthority->identifier + 2,
-                     certInfo->tbsCert.subject.raw.value,
-                     certInfo->tbsCert.subject.raw.length);
+                     //The distinguished name shall be DER-encoded
+                     osMemcpy(trustedAuthority->identifier + 2,
+                        certInfo->tbsCert.subject.raw.value,
+                        certInfo->tbsCert.subject.raw.length);
 
-                  //Advance write pointer
-                  p += sizeof(TlsTrustedAuthority) + 2 + certInfo->tbsCert.subject.raw.length;
-                  n += sizeof(TlsTrustedAuthority) + 2 + certInfo->tbsCert.subject.raw.length;
+                     //Advance write pointer
+                     p += sizeof(TlsTrustedAuthority) + 2 + certInfo->tbsCert.subject.raw.length;
+                     n += sizeof(TlsTrustedAuthority) + 2 + certInfo->tbsCert.subject.raw.length;
+                  }
+                  else
+                  {
+                     //The distinguished names that do not fit are omitted
+                  }
                }
                else
                {

@@ -288,6 +288,13 @@ struct _TlsEncryptionEngine;
    #error TLS_MAX_CERTIFICATES parameter is not valid
 #endif
 
+//Maximum size of the lists of CA distinguished names
+#ifndef TLS_MAX_CERT_AUTHORITIES_SIZE
+   #define TLS_MAX_CERT_AUTHORITIES_SIZE 512
+#elif (TLS_MAX_CERT_AUTHORITIES_SIZE < 0 || TLS_MAX_CERT_AUTHORITIES_SIZE > 65535)
+   #error TLS_MAX_CERT_AUTHORITIES_SIZE parameter is not valid
+#endif
+
 //RSA key exchange support
 #ifndef TLS_RSA_KE_SUPPORT
    #define TLS_RSA_KE_SUPPORT DISABLED
@@ -839,6 +846,13 @@ struct _TlsEncryptionEngine;
    #define TLS_MAX_RSA_MODULUS_SIZE 4096
 #elif (TLS_MAX_RSA_MODULUS_SIZE < TLS_MIN_RSA_MODULUS_SIZE)
    #error TLS_MAX_RSA_MODULUS_SIZE parameter is not valid
+#endif
+
+//Maximum acceptable size for RSA public exponent
+#ifndef TLS_MAX_RSA_PUBLIC_EXPONENT_SIZE
+   #define TLS_MAX_RSA_PUBLIC_EXPONENT_SIZE 64
+#elif (TLS_MAX_RSA_PUBLIC_EXPONENT_SIZE < 17)
+   #error TLS_MAX_RSA_PUBLIC_EXPONENT_SIZE parameter is not valid
 #endif
 
 //Minimum acceptable size for DSA prime modulus
@@ -2460,6 +2474,8 @@ struct _TlsContext
    size_t trustedCaListLen;                  ///<Total length of the trusted CA list
    TlsCertVerifyCallback certVerifyCallback; ///<Certificate verification callback function
    void *certVerifyParam;                    ///<Opaque pointer passed to the certificate verification callback
+   bool_t certChainValidation;               ///<Validate the peer's certificate chain against the trusted CA list
+   bool_t certValidityCheck;                 ///<Check the validity period of certificates
    TlsCertDesc *cert;                        ///<Pointer to the currently selected certificate
 
    TlsCache *cache;                          ///<TLS session cache
@@ -2841,6 +2857,8 @@ error_t tlsLoadCertificate(TlsContext *context, uint_t index,
 error_t tlsSetCertificateVerifyCallback(TlsContext *context,
    TlsCertVerifyCallback certVerifyCallback, void *param);
 
+error_t tlsEnableCertChainValidation(TlsContext *context, bool_t enabled);
+error_t tlsEnableCertValidityCheck(TlsContext *context, bool_t enabled);
 error_t tlsEnableSessionTickets(TlsContext *context, bool_t enabled);
 error_t tlsEnableTrustedCaKeys(TlsContext *context, bool_t enabled);
 error_t tlsEnableCertAuthorities(TlsContext *context, bool_t enabled);
